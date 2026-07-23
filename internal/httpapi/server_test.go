@@ -3530,7 +3530,7 @@ func testServer(t *testing.T, token string) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := control.NewService(store, box, control.NebulaIssuer{})
+	service := control.NewService(store, box, &httpTestIssuer{})
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	server, _, _ := newTestHTTPServer(t, service, token, false, logger, nil)
 	return server
