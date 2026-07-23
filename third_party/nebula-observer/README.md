@@ -21,7 +21,7 @@ f573e8a26695278f9d71587390fbfe0d0933aa21:
    x/net v0.56.0, x/sys v0.46.0, and x/term v0.44.0.
 
 The patches modify only a private copy of the locked upstream source. The
-source-controlled `v1.10.3-build.lock.json` additionally binds the complete
+source-controlled `v1.10.3-build.lock.json` also binds the complete
 upstream and patched trees, exact patch order and bytes, Go 1.26.5 build flags,
 the exact security dependency versions/checksums, the explicit
 `main.Build=1.10.3` runtime identity, and exact amd64/arm64

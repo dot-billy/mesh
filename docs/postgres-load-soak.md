@@ -18,7 +18,7 @@ The dependency phases keep every mutation valid while control and identity write
 | 30-second paced stage | revoke the remaining sessions | 12 |
 | 30-second paced stage | readiness, network, node, and revoked-session reads | 108 |
 
-The load stage therefore commits 220 writes and the paced stage commits 36 writes plus 108 reads. Global write concurrency is eight; writes are split exactly 128/128 across the two application replicas. The paced schedule interleaves one write with three reads and must finish in 25–45 seconds.
+The load stage therefore commits 220 writes and the paced stage commits 36 writes plus 108 reads. Global write concurrency is eight; writes are split exactly 128/128 across the two application replicas. The paced schedule interleaves one write with three reads and must finish in 25 to 45 seconds.
 
 ## Exact correctness gates
 

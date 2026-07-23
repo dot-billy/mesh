@@ -95,7 +95,7 @@ of every active policy-eligible lighthouse, exact all-target replies, and at
 most 30 seconds of effective server-derived age. Route safety requires every
 current active node to be operational and exact-heartbeat matched and to report
 no intersecting non-default route within 90 seconds; one current observed
-conflict blocks. Member-side DNS additionally requires every current active
+conflict blocks. Member-side DNS also requires every current active
 member to report the exact active-lighthouse DNS-name count within 90 seconds;
 one observed unresolved result blocks. Anything partial, stale, replayed,
 duplicated, unsupported, policy-ineligible, over the probe ceiling, or
@@ -109,7 +109,7 @@ fleet-health snapshot. It attaches a record only when node ID and heartbeat
 sequence exactly match the displayed lifecycle snapshot, advances freshness
 from server time plus local elapsed time, and labels evidence only as
 `observed`, `unknown`, `not current`, `stale`, or `unavailable`. For an observed
-v5 record it additionally explains whether the immediately prior passive
+v5 record it also explains whether the immediately prior passive
 observation was continuous, crossed a restart, or was unavailable for
 comparison, and whether a consecutive same-policy attempted probe was stable,
 recovered, degraded, or changed. The strict browser parser also accepts exact
@@ -559,6 +559,6 @@ Runtime handshake telemetry is complete only when a locked Nebula build with
 the read-only local observer passes Phases 1 through 4 on packaged Linux, Mesh
 persists it through an explicit compatible schema, and the dashboard labels
 unknown, established, recently authenticated, and actively probed states
-without conflating them. Cross-platform completion additionally requires Phase
+without conflating them. Cross-platform completion also requires Phase
 5; process-running heartbeats and Prometheus/SSH workarounds do not satisfy this
 gate.

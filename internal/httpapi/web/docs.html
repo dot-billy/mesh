@@ -34,7 +34,7 @@
   <main id="documentation">
     <section class="docs-hero">
       <p class="eyebrow">Public documentation</p>
-      <h1>Operate private Nebula networks with clear, safe workflows.</h1>
+      <h1>Safe operating procedures for private Nebula networks.</h1>
       <p>A practical guide for network operators, administrators, and read-only reviewers using the Mesh control plane.</p>
       <div class="docs-hero-actions">
         <a class="primary-action" href="#quick-start">Start with the rollout checklist</a>
@@ -67,7 +67,7 @@
           <article class="quick-step">
             <span class="quick-step-number">4</span>
             <h3>Verify before rollout</h3>
-            <p>Run deployment readiness, confirm heartbeat freshness and active probes, test real overlay traffic, then add firewall, DNS, relay, and routed-subnet policy in small canaries.</p>
+            <p>Run deployment readiness and review heartbeat and active-probe evidence. Test real overlay traffic before adding firewall, DNS, relay, or routed-subnet policy. Roll out each change to a small canary group first.</p>
           </article>
       </div>
     </section>
@@ -108,13 +108,13 @@
           </article>
           <article class="docs-topic docs-topic-wide">
             <h3>Use the operations workspace</h3>
-            <p>The authenticated control plane separates fleet posture from network-level work so operators can identify risk first, then act in the correct trust domain.</p>
+            <p>The control plane has a fleet view and a separate workspace for each network. Review fleet alerts first, then open the affected network.</p>
             <ul class="docs-list">
-              <li>Networks opens the fleet overview, rollout convergence, and the network directory. Expand Needs attention to review the complete authoritative alert list without letting long incident detail obscure the rest of the fleet.</li>
-              <li>Open a network row to enter its topology-first workspace. The next-action panel guides incomplete setup, while Manage nodes exposes lifecycle detail without crowding the primary view.</li>
-              <li>Use Settings inside the selected network for readiness, DNS, relays, firewall, routing, certificate-authority, and retirement workflows. Available actions remain limited by the signed-in Viewer, Operator, or Admin role.</li>
-              <li>Activity contains append-only security events and, when enabled and permitted, recovery-code administration.</li>
-              <li>On smaller screens, the primary destinations remain available in the labeled bottom navigation. Keyboard users can use the skip link to move directly to the control-plane content.</li>
+              <li>Networks shows the fleet overview, rollout convergence, and network directory. Expand Needs attention to read the full alert list.</li>
+              <li>Open a network row to see its topology and next setup action. Manage nodes contains the detailed lifecycle controls.</li>
+              <li>Within a network, use Settings for readiness, DNS, relays, firewall, routing, certificate authority, and retirement. The signed-in Viewer, Operator, or Admin role controls which actions are available.</li>
+              <li>Activity shows append-only security events. It also includes recovery-code administration when the feature is enabled and the signed-in role has permission.</li>
+              <li>On smaller screens, use the labeled bottom navigation. Keyboard users can skip directly to the control-plane content.</li>
             </ul>
           </article>
         </div>
@@ -123,7 +123,7 @@
         <div class="docs-section-heading">
           <p class="eyebrow">Operator guide</p>
           <h2 id="enrollment-title">Enrollment and lifecycle</h2>
-          <p>Enrollment is intentionally one-time. The target generates its private key locally and Mesh returns signed, versioned runtime configuration.</p>
+          <p>An enrollment can be used once. The target generates its private key locally, and Mesh returns signed, versioned runtime configuration.</p>
         </div>
         <div class="docs-topic-grid">
           <article class="docs-topic">
@@ -144,12 +144,12 @@
           </article>
           <article class="docs-topic">
             <h3>Runtime prerequisite and trusted installation</h3>
-            <p>Production enrollment fails closed unless nebula and nebula-cert are both executable, report the same supported version, and resolve beside meshctl in one authenticated installed release. Mesh checks this prerequisite before reading the enrollment token, creating local enrollment state, generating a node key, or contacting the control plane.</p>
+            <p>Before production enrollment reads a token or changes local state, Mesh checks nebula and nebula-cert. Both files must be executable, report the same supported version, and resolve beside meshctl in one authenticated installed release.</p>
             <ul class="docs-list">
-              <li>Use mesh-install on Linux or the platform installer where that installer is supported. Online installation selects the exact OS and architecture artifact authorized by threshold-signed release metadata and verifies its signed size and SHA-256 before installation.</li>
+              <li>On Linux, use mesh-install. On another supported platform, use its Mesh installer. Online installation selects the OS and architecture artifact authorized by threshold-signed release metadata, then verifies its signed size and SHA-256 before installation.</li>
               <li>Do not fetch GitHub&#x27;s moving latest Nebula release during enrollment. That would bypass Mesh release-root authorization, compatibility policy, package evidence, anti-rollback state, and recovery.</li>
               <li>For an offline or air-gapped host, independently authenticate the bootstrap verifier and installer, then install the complete root-private signed snapshot before enrollment.</li>
-              <li>A missing, old, mismatched, split-directory, or unexecutable runtime pair leaves the token unread and enrollment untouched. Follow the mesh-install guidance in the error, then rerun the same enrollment command.</li>
+              <li>If either runtime is missing, old, mismatched, in another directory, or not executable, Mesh leaves the token unread and does not start enrollment. Follow the mesh-install guidance in the error, then rerun the same enrollment command.</li>
               <li>Development builds can exercise the version-pair check without claiming production package provenance. Production acceptance still requires the supported installer and its platform proof gates.</li>
             </ul>
           </article>
@@ -238,7 +238,7 @@
         <div class="docs-section-heading">
           <p class="eyebrow">Operator guide</p>
           <h2 id="connectivity-title">DNS, relays, and routed networks</h2>
-          <p>These features change how traffic finds or reaches peers. Introduce them independently and verify real packets after each revision.</p>
+          <p>DNS, relays, and routing change how traffic finds or reaches peers. Enable one feature at a time and test real packets after each revision.</p>
         </div>
         <div class="docs-topic-grid">
           <article class="docs-topic">
@@ -322,10 +322,10 @@
           </article>
           <article class="docs-topic docs-topic-wide">
             <h3>Use the API reference</h3>
-            <p>Mesh serves its canonical OpenAPI 3.1 contract at /openapi.json and a searchable interactive reference at /api-docs.html. Each operation documents its RBAC permission, availability, parameters, JSON request and response schemas, error responses, placeholder-only examples, and a curl command.</p>
+            <p>Mesh publishes its OpenAPI 3.1 contract at /openapi.json and a searchable reference at /api-docs.html. Each operation lists its RBAC permission, availability, parameters, JSON schemas, error responses, placeholder examples, and curl command.</p>
             <ul class="docs-list">
               <li>Sign in normally before using interactive calls. The page uses the current same-origin browser session and never asks for or stores a legacy administrator bearer credential.</li>
-              <li>For state-changing cookie-authenticated calls, the page reads the Mesh CSRF cookie, sends X-Mesh-CSRF, and relies on the browser&#x27;s exact Origin. A missing or mismatched cookie, header, origin, or JSON content type returns 403.</li>
+              <li>For a state-changing browser call, the page reads the Mesh CSRF cookie, sends X-Mesh-CSRF, and uses the browser&#x27;s exact Origin. The server returns 403 if the cookie, header, origin, or JSON content type is missing or does not match.</li>
               <li>Agent, enrollment, recovery, and other credential-bearing calls are intentionally not executable in the browser reference. Run their placeholder curl examples only from the intended client with an approved secret-delivery path.</li>
               <li>Read the current resource and revision before a mutation, preview policies where supported, review the exact request, confirm that it changes live state, then verify the returned state and health evidence.</li>
               <li>Treat 401 as missing or invalid authentication, 403 as permission or browser-request proof failure, 409 as stale revision or invalid lifecycle state, and 429 or 503 as a bounded service condition to retry later.</li>
@@ -341,7 +341,7 @@
         <div class="docs-section-heading">
           <p class="eyebrow">Operator guide</p>
           <h2 id="operations-title">Readiness, backup, and retirement</h2>
-          <p>Operational evidence is deliberately explicit. A green process check is not a substitute for current signed-state, placement, and packet evidence.</p>
+          <p>Readiness reports signed state, placement, and packet evidence separately. A green process check does not prove that peers can exchange traffic.</p>
         </div>
         <div class="docs-topic-grid">
           <article class="docs-topic">
@@ -398,7 +398,7 @@
         <div class="docs-section-heading">
           <p class="eyebrow">Operator guide</p>
           <h2 id="troubleshooting-title">Troubleshooting checklist</h2>
-          <p>Start with the exact failing layer. Avoid changing firewall, routing, DNS, and certificates at the same time.</p>
+          <p>Start with the failing layer. Change only one of firewall, routing, DNS, or certificates at a time.</p>
         </div>
         <div class="docs-topic-grid">
           <article class="docs-topic">

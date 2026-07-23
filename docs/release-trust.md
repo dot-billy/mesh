@@ -94,7 +94,7 @@ inner Linux `package.json` retains its established installer-trust JSON field
 name but binds the compiled initial-root digest. Package metadata is checked
 against the installer binary and can never become an authority itself.
 
-Linux bundle v3 additionally carries `installer_state_read_min`,
+Linux bundle v3 also carries `installer_state_read_min`,
 `installer_state_read_max`, and `installer_state_write_version`. `mesh-install`
 contains one canonical installer-only compatibility frame in a read-only ELF
 section. Release assembly requires that frame to match bundle metadata, and

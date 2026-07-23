@@ -128,7 +128,7 @@ def main() -> int:
         ]
         assert csp and "default-src 'self'" in csp[0], "landing page needs a CSP"
         for required in (
-            "Build private networks you can actually operate.",
+            "Operate private Nebula networks.",
             "Read the operator guide",
             'aria-controls="site-navigation"',
         ):

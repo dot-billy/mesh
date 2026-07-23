@@ -26,7 +26,7 @@ Keep copies of those items in independently protected systems. In particular, an
 
 ## Filesystem and operator requirements
 
-`mesh-backup` currently performs every filesystem-mutating operation only on Linux, where this implementation proves effective-user ownership, private modes, single-link regular files, advisory locks, and directory durability. macOS and Windows operations fail closed as unsupported. A future macOS implementation must additionally prove ACL and case-folding behavior rather than treating Unix mode bits as the whole access-control boundary.
+`mesh-backup` currently performs every filesystem-mutating operation only on Linux, where this implementation proves effective-user ownership, private modes, single-link regular files, advisory locks, and directory durability. macOS and Windows operations fail closed as unsupported. A future macOS implementation must also prove ACL and case-folding behavior rather than treating Unix mode bits as the whole access-control boundary.
 
 Run it as the same effective user that owns the Mesh data directory, on a local Linux filesystem that supports directory-FD `flock` and file/directory `fsync`. Network and userspace filesystems need separate proof before use. All paths must be clean absolute paths with no symbolic-link component. The data directory, backup-output parent, backup-key parent, and restore-target parent must be real owner-only mode-0700 directories. Keys, archives, state, credentials, markers, and receipts must be private, non-executable, single-link regular files. The key and archive must live outside the Mesh data directory.
 

@@ -1,7 +1,7 @@
 {
   "schema": "mesh-public-guide-v1",
   "title": "Mesh documentation",
-  "subtitle": "Operate private Nebula networks with clear, safe workflows.",
+  "subtitle": "Safe operating procedures for private Nebula networks.",
   "description": "A practical guide for network operators, administrators, and read-only reviewers using the Mesh control plane.",
   "reviewed_at": "2026-07-23",
   "quick_start": [
@@ -19,7 +19,7 @@
     },
     {
       "title": "Verify before rollout",
-      "body": "Run deployment readiness, confirm heartbeat freshness and active probes, test real overlay traffic, then add firewall, DNS, relay, and routed-subnet policy in small canaries."
+      "body": "Run deployment readiness and review heartbeat and active-probe evidence. Test real overlay traffic before adding firewall, DNS, relay, or routed-subnet policy. Roll out each change to a small canary group first."
     }
   ],
   "sections": [
@@ -58,13 +58,13 @@
         {
           "title": "Use the operations workspace",
           "wide": true,
-          "body": "The authenticated control plane separates fleet posture from network-level work so operators can identify risk first, then act in the correct trust domain.",
+          "body": "The control plane has a fleet view and a separate workspace for each network. Review fleet alerts first, then open the affected network.",
           "bullets": [
-            "Networks opens the fleet overview, rollout convergence, and the network directory. Expand Needs attention to review the complete authoritative alert list without letting long incident detail obscure the rest of the fleet.",
-            "Open a network row to enter its topology-first workspace. The next-action panel guides incomplete setup, while Manage nodes exposes lifecycle detail without crowding the primary view.",
-            "Use Settings inside the selected network for readiness, DNS, relays, firewall, routing, certificate-authority, and retirement workflows. Available actions remain limited by the signed-in Viewer, Operator, or Admin role.",
-            "Activity contains append-only security events and, when enabled and permitted, recovery-code administration.",
-            "On smaller screens, the primary destinations remain available in the labeled bottom navigation. Keyboard users can use the skip link to move directly to the control-plane content."
+            "Networks shows the fleet overview, rollout convergence, and network directory. Expand Needs attention to read the full alert list.",
+            "Open a network row to see its topology and next setup action. Manage nodes contains the detailed lifecycle controls.",
+            "Within a network, use Settings for readiness, DNS, relays, firewall, routing, certificate authority, and retirement. The signed-in Viewer, Operator, or Admin role controls which actions are available.",
+            "Activity shows append-only security events. It also includes recovery-code administration when the feature is enabled and the signed-in role has permission.",
+            "On smaller screens, use the labeled bottom navigation. Keyboard users can skip directly to the control-plane content."
           ]
         }
       ]
@@ -72,7 +72,7 @@
     {
       "id": "enrollment",
       "title": "Enrollment and lifecycle",
-      "intro": "Enrollment is intentionally one-time. The target generates its private key locally and Mesh returns signed, versioned runtime configuration.",
+      "intro": "An enrollment can be used once. The target generates its private key locally, and Mesh returns signed, versioned runtime configuration.",
       "topics": [
         {
           "title": "Enroll a machine",
@@ -93,12 +93,12 @@
         },
         {
           "title": "Runtime prerequisite and trusted installation",
-          "body": "Production enrollment fails closed unless nebula and nebula-cert are both executable, report the same supported version, and resolve beside meshctl in one authenticated installed release. Mesh checks this prerequisite before reading the enrollment token, creating local enrollment state, generating a node key, or contacting the control plane.",
+          "body": "Before production enrollment reads a token or changes local state, Mesh checks nebula and nebula-cert. Both files must be executable, report the same supported version, and resolve beside meshctl in one authenticated installed release.",
           "bullets": [
-            "Use mesh-install on Linux or the platform installer where that installer is supported. Online installation selects the exact OS and architecture artifact authorized by threshold-signed release metadata and verifies its signed size and SHA-256 before installation.",
+            "On Linux, use mesh-install. On another supported platform, use its Mesh installer. Online installation selects the OS and architecture artifact authorized by threshold-signed release metadata, then verifies its signed size and SHA-256 before installation.",
             "Do not fetch GitHub's moving latest Nebula release during enrollment. That would bypass Mesh release-root authorization, compatibility policy, package evidence, anti-rollback state, and recovery.",
             "For an offline or air-gapped host, independently authenticate the bootstrap verifier and installer, then install the complete root-private signed snapshot before enrollment.",
-            "A missing, old, mismatched, split-directory, or unexecutable runtime pair leaves the token unread and enrollment untouched. Follow the mesh-install guidance in the error, then rerun the same enrollment command.",
+            "If either runtime is missing, old, mismatched, in another directory, or not executable, Mesh leaves the token unread and does not start enrollment. Follow the mesh-install guidance in the error, then rerun the same enrollment command.",
             "Development builds can exercise the version-pair check without claiming production package provenance. Production acceptance still requires the supported installer and its platform proof gates."
           ]
         },
@@ -187,7 +187,7 @@
     {
       "id": "connectivity",
       "title": "DNS, relays, and routed networks",
-      "intro": "These features change how traffic finds or reaches peers. Introduce them independently and verify real packets after each revision.",
+      "intro": "DNS, relays, and routing change how traffic finds or reaches peers. Enable one feature at a time and test real packets after each revision.",
       "topics": [
         {
           "title": "Managed overlay DNS",
@@ -271,10 +271,10 @@
         {
           "title": "Use the API reference",
           "wide": true,
-          "body": "Mesh serves its canonical OpenAPI 3.1 contract at /openapi.json and a searchable interactive reference at /api-docs.html. Each operation documents its RBAC permission, availability, parameters, JSON request and response schemas, error responses, placeholder-only examples, and a curl command.",
+          "body": "Mesh publishes its OpenAPI 3.1 contract at /openapi.json and a searchable reference at /api-docs.html. Each operation lists its RBAC permission, availability, parameters, JSON schemas, error responses, placeholder examples, and curl command.",
           "bullets": [
             "Sign in normally before using interactive calls. The page uses the current same-origin browser session and never asks for or stores a legacy administrator bearer credential.",
-            "For state-changing cookie-authenticated calls, the page reads the Mesh CSRF cookie, sends X-Mesh-CSRF, and relies on the browser's exact Origin. A missing or mismatched cookie, header, origin, or JSON content type returns 403.",
+            "For a state-changing browser call, the page reads the Mesh CSRF cookie, sends X-Mesh-CSRF, and uses the browser's exact Origin. The server returns 403 if the cookie, header, origin, or JSON content type is missing or does not match.",
             "Agent, enrollment, recovery, and other credential-bearing calls are intentionally not executable in the browser reference. Run their placeholder curl examples only from the intended client with an approved secret-delivery path.",
             "Read the current resource and revision before a mutation, preview policies where supported, review the exact request, confirm that it changes live state, then verify the returned state and health evidence.",
             "Treat 401 as missing or invalid authentication, 403 as permission or browser-request proof failure, 409 as stale revision or invalid lifecycle state, and 429 or 503 as a bounded service condition to retry later."
@@ -290,7 +290,7 @@
     {
       "id": "operations",
       "title": "Readiness, backup, and retirement",
-      "intro": "Operational evidence is deliberately explicit. A green process check is not a substitute for current signed-state, placement, and packet evidence.",
+      "intro": "Readiness reports signed state, placement, and packet evidence separately. A green process check does not prove that peers can exchange traffic.",
       "topics": [
         {
           "title": "Deployment readiness",
@@ -347,7 +347,7 @@
     {
       "id": "troubleshooting",
       "title": "Troubleshooting checklist",
-      "intro": "Start with the exact failing layer. Avoid changing firewall, routing, DNS, and certificates at the same time.",
+      "intro": "Start with the failing layer. Change only one of firewall, routing, DNS, or certificates at a time.",
       "topics": [
         {
           "title": "Node is offline or stale",

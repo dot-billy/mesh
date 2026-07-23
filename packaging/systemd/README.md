@@ -135,8 +135,8 @@ warning that the dashboard, origin, and TLS do not authenticate it; the
 independent handoff digest is never configured or returned by Mesh. Users then
 receive the three-step flow: run `install-online` with the exact configured
 bundle URL, enroll by passing the one-time token on stdin with `--token-file -`,
-then run `mesh-install activate`. If the bundle flag is unset—or an older
-server returns 404—the UI keeps enrollment and activation available but
+then run `mesh-install activate`. If the bundle flag is unset, or an older
+server returns 404, the UI keeps enrollment and activation available but
 explicitly requires an
 independently authenticated offline/bootstrap installation first. The
 one-time token is displayed separately and is never concatenated into a shell

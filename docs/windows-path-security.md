@@ -23,7 +23,7 @@ directories propagate both object- and container-inheritance. A dynamic child
 is accepted only when all authority is inherited from an already authenticated
 parent; a managed object may instead carry the exact protected form. Secrets,
 transaction files, candidate artifacts, and every published release file
-additionally require exactly one hard link.
+also require exactly one hard link.
 
 The SCM service object has its own policy. Its protected DACL grants exact
 `SERVICE_ALL_ACCESS` only to LocalSystem and local Administrators, with one of
@@ -157,13 +157,13 @@ The canonical activation/rollback journal fixes one `activate` or `rollback`
 operation, the exact source and target authorities, and the unchanged accepted
 high-water authority, then advances only through:
 
-1. `prepared` — immutable source observations, target descriptor, selector
+1. `prepared`: immutable source observations, target descriptor, selector
    temporary name, and desired service/gate state are durable;
-2. `quiesced` — the gate is proven closed and the exact source or recovery
+2. `quiesced`: the gate is proven closed and the exact source or recovery
    target service is stopped;
-3. `selected` — the exact current descriptor and protected target SCM service
+3. `selected`: the exact current descriptor and protected target SCM service
    are installed; and
-4. `activated` — desired gate/service state and the exact selected target are
+4. `activated`: desired gate/service state and the exact selected target are
    re-proven.
 
 Only the phase may change, and only to the adjacent phase. Each transition is
@@ -237,7 +237,7 @@ handoff/anchor requires the complete Linux/Windows four-package set and selects
 by exact host OS/architecture. The verifier statically checks the installer's
 PE64 platform, Go build identity, sole compiled root, exact Windows
 installer-state compatibility frame, Authenticode policy, signed size, and
-digest without executing it. On Windows it additionally requires that policy
+digest without executing it. On Windows it also requires that policy
 to equal the verifier's compiled policy and verifies the installer's embedded
 signature, SHA-256 signer, code-signing certificate, online whole-chain
 revocation, and Mesh-role SPKI pin. The release-origin proof exercises Windows
