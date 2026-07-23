@@ -12,17 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the complete change history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -42,4 +42,6 @@ jobs:
         run: python3 scripts/api-docs-change-gate.py --base "$BASE_REF" --head "$HEAD_REF"
 
       - name: Verify the documentation routes and route parity
-        run: go test ./internal/httpapi
+        run: |
+          umask 077
+          go test ./internal/httpapi
