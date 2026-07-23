@@ -1,0 +1,8 @@
+# Local/test build override only. Production deployments use compose.yaml alone
+# and therefore require one registry repository plus one exact sha256 digest.
+services:
+  origin:
+    image: "${MESH_ORIGIN_BUILD_IMAGE:-mesh-release-origin:local}"
+    build:
+      context: ../..
+      dockerfile: packaging/origin/Dockerfile

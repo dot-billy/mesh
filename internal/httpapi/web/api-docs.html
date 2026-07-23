@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Interactive OpenAPI reference for the Mesh control-plane API.">
+  <title>API reference · Mesh</title>
+  <link rel="stylesheet" href="/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/api-docs.css">
+</head>
+<body>
+  <a class="skip-link" href="#operations">Skip to operations</a>
+  <header class="api-header">
+    <a class="api-brand" href="/" aria-label="Mesh control plane">
+      <span class="api-mark" aria-hidden="true">M</span>
+      <span>Mesh</span>
+    </a>
+    <nav aria-label="Documentation">
+      <a href="/docs.html"><i class="fa fa-book" aria-hidden="true"></i> Operator guide</a>
+      <a href="/openapi.json"><i class="fa fa-code" aria-hidden="true"></i> OpenAPI JSON</a>
+      <a class="primary-link" href="/"><i class="fa fa-arrow-left" aria-hidden="true"></i> Control plane</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="api-hero" aria-labelledby="api-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Developer reference</p>
+        <h1 id="api-title">Mesh control-plane API</h1>
+        <p id="api-description" class="lede">Loading the canonical OpenAPI contract…</p>
+        <div class="hero-actions">
+          <a class="button-link" href="#operations">Browse operations</a>
+          <a class="button-link secondary" href="/openapi.json" download>Open raw contract</a>
+        </div>
+      </div>
+      <dl class="contract-summary" aria-label="API contract summary">
+        <div><dt>Contract</dt><dd id="contract-version">—</dd></div>
+        <div><dt>Operations</dt><dd id="operation-count">—</dd></div>
+        <div><dt>Groups</dt><dd id="tag-count">—</dd></div>
+        <div><dt>Format</dt><dd id="contract-format">OpenAPI 3.1</dd></div>
+      </dl>
+    </section>
+
+    <section class="guidance-grid" aria-label="API access guidance">
+      <article class="guidance-card">
+        <span class="card-icon" aria-hidden="true"><i class="fa fa-shield"></i></span>
+        <div>
+          <p class="eyebrow">Browser sessions</p>
+          <h2>Use your existing Mesh login</h2>
+          <p>The interactive console sends same-origin requests with your current hardened session cookie. It never asks for or stores an administrator bearer credential.</p>
+        </div>
+      </article>
+      <article class="guidance-card">
+        <span class="card-icon amber" aria-hidden="true"><i class="fa fa-key"></i></span>
+        <div>
+          <p class="eyebrow">Unsafe requests</p>
+          <h2>CSRF is added automatically</h2>
+          <p>For POST, PUT, PATCH, and DELETE, the console reads the same-origin CSRF cookie and sends its value in <code>X-Mesh-CSRF</code>. The browser supplies the exact Origin.</p>
+        </div>
+      </article>
+      <article class="guidance-card">
+        <span class="card-icon rose" aria-hidden="true"><i class="fa fa-lock"></i></span>
+        <div>
+          <p class="eyebrow">Sensitive credentials</p>
+          <h2>Agent and recovery calls stay disabled</h2>
+          <p>Examples use placeholders only. Device credentials, enrollment tokens, recovery codes, and legacy bearer tokens should be used by their intended client—not pasted into this page.</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="api-workspace" aria-labelledby="operations-title">
+      <aside class="tag-sidebar" aria-label="Operation groups">
+        <div class="sidebar-sticky">
+          <p class="eyebrow">Filter by group</p>
+          <nav id="tag-navigation"></nav>
+        </div>
+      </aside>
+      <div id="operations" class="operations-column">
+        <div class="operations-heading">
+          <div>
+            <p class="eyebrow">Canonical contract</p>
+            <h2 id="operations-title">Operations</h2>
+            <p id="result-count" class="muted" aria-live="polite">Loading operations…</p>
+          </div>
+          <label class="search-control" for="operation-search">
+            <span class="sr-only">Search operations</span>
+            <i class="fa fa-search" aria-hidden="true"></i>
+            <input id="operation-search" type="search" autocomplete="off" placeholder="Search path, action, or permission">
+          </label>
+        </div>
+        <div id="contract-error" class="contract-error hidden" role="alert">
+          <strong>API contract unavailable</strong>
+          <p id="contract-error-message"></p>
+          <a href="/openapi.json">Open the raw contract</a>
+        </div>
+        <div id="operation-list" class="operation-list" aria-busy="true"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Generated from the contract served at <a href="/openapi.json"><code>/openapi.json</code></a>. Examples contain placeholders, not credentials.</p>
+  </footer>
+  <script src="/api-docs.js" defer></script>
+</body>
+</html>

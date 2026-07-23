@@ -1,0 +1,46 @@
+{
+  "schema": "mesh.nebula-darwin-runtime-build-lock.v1",
+  "base_observer_lock_sha256": "18935f949438c52803309d0b78730531a7947717bdd6e5f37b0c88ff0cb458d9",
+  "targets": [
+    {
+      "os": "darwin",
+      "arch": "amd64",
+      "entries": [
+        {
+          "name": "nebula",
+          "mode": 365,
+          "size": 26619216,
+          "sha256": "d98570c9a760559e5d29187c7980684c4592e74fcfa0e3a644ab15ce0bd5f0d3",
+          "main_path": "github.com/slackhq/nebula/cmd/nebula"
+        },
+        {
+          "name": "nebula-cert",
+          "mode": 365,
+          "size": 10466016,
+          "sha256": "df35f080956b13c65ff1d872bcc4ed3bc099e0278c3da6167966fed40dd671fb",
+          "main_path": "github.com/slackhq/nebula/cmd/nebula-cert"
+        }
+      ]
+    },
+    {
+      "os": "darwin",
+      "arch": "arm64",
+      "entries": [
+        {
+          "name": "nebula",
+          "mode": 365,
+          "size": 24923170,
+          "sha256": "5bf96be353fdda6d65f59d4dfc18ae25ee2bc2f5cc859d7790f0872c1eb20a13",
+          "main_path": "github.com/slackhq/nebula/cmd/nebula"
+        },
+        {
+          "name": "nebula-cert",
+          "mode": 365,
+          "size": 9848914,
+          "sha256": "785faf5d47b3d161d3ceab58fb62462d4a319156715482cb97ef454c95285e6f",
+          "main_path": "github.com/slackhq/nebula/cmd/nebula-cert"
+        }
+      ]
+    }
+  ]
+}

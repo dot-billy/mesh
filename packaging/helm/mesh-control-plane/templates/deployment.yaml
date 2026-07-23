@@ -1,0 +1,232 @@
+{{- $postgres := eq .Values.storage.backend "postgres" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mesh-control-plane.fullname" . }}
+  labels:
+    {{- include "mesh-control-plane.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  strategy:
+    {{- if $postgres }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+    {{- else }}
+    type: Recreate
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "mesh-control-plane.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mesh-control-plane.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "mesh-control-plane.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: materialize-private-files
+          image: {{ include "mesh-control-plane.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/mesh-kube-init"]
+          args:
+            - --credentials-source-dir=/input/credentials
+            - --tls-source-dir=/input/tls
+            - --output-root=/prepared
+            - --tls-server-name={{ .Values.publicHost }}
+            - --runtime-uid=65532
+            - --runtime-gid=65532
+            {{- if .Values.identity.enabled }}
+            - --identity-source-dir=/input/identity
+            {{- end }}
+            {{- if $postgres }}
+            - --postgres-source-dir=/input/postgres
+            {{- else }}
+            - --data-dir=/data
+            {{- end }}
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+          volumeMounts:
+            - name: credentials-source
+              mountPath: /input/credentials
+              readOnly: true
+            - name: tls-source
+              mountPath: /input/tls
+              readOnly: true
+            - name: prepared-private
+              mountPath: /prepared
+            {{- if .Values.identity.enabled }}
+            - name: identity-source
+              mountPath: /input/identity
+              readOnly: true
+            {{- end }}
+            {{- if $postgres }}
+            - name: postgres-source
+              mountPath: /input/postgres
+              readOnly: true
+            {{- else }}
+            - name: data
+              mountPath: /data
+            {{- end }}
+      containers:
+        - name: mesh-control-plane
+          image: {{ include "mesh-control-plane.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --listen=0.0.0.0:8443
+            - --public-url={{ .Values.publicURL }}
+            - --tls-cert=/run/mesh/private/server.crt
+            - --tls-key=/run/mesh/private/server.key
+            - --admin-token-file=/run/mesh/private/admin.token
+            - --master-key-file=/run/mesh/private/master.key
+            - --storage-backend={{ .Values.storage.backend }}
+            {{- if $postgres }}
+            - --postgres-dsn-file=/run/mesh/private/postgres.dsn
+            {{- else }}
+            - --data-dir=/var/lib/mesh
+            {{- end }}
+            {{- if .Values.identity.enabled }}
+            - --identity-config=/run/mesh/private/identity.json
+            {{- end }}
+            - --linux-install-bundle-url={{ .Values.linuxInstallBundleURL }}
+            - --linux-bootstrap-handoff-url={{ .Values.linuxBootstrapHandoffURL }}
+          env:
+            - name: NEBULA_CERT_BINARY
+              value: /usr/local/bin/nebula-cert
+            - name: MESH_HEALTHCHECK_URL
+              value: https://127.0.0.1:8443/readyz
+            - name: MESH_HEALTHCHECK_CA_FILE
+              value: /run/mesh/private/ca.crt
+            - name: MESH_HEALTHCHECK_SERVER_NAME
+              value: {{ .Values.publicHost | quote }}
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            exec:
+              command: ["/usr/local/bin/mesh-healthcheck"]
+            periodSeconds: 2
+            timeoutSeconds: 4
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: ["/usr/local/bin/mesh-healthcheck"]
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: prepared-private
+              mountPath: /run/mesh
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            {{- if not $postgres }}
+            - name: data
+              mountPath: /var/lib/mesh
+            {{- end }}
+      volumes:
+        - name: credentials-source
+          secret:
+            secretName: {{ .Values.credentials.secretName }}
+            defaultMode: 0400
+            items:
+              - key: {{ .Values.credentials.adminTokenKey }}
+                path: admin.token
+              - key: {{ .Values.credentials.masterKeyKey }}
+                path: master.key
+        - name: tls-source
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+            defaultMode: 0400
+            items:
+              - key: {{ .Values.tls.certificateKey }}
+                path: tls.crt
+              - key: {{ .Values.tls.privateKeyKey }}
+                path: tls.key
+              - key: {{ .Values.tls.caBundleKey }}
+                path: ca.crt
+        {{- if .Values.identity.enabled }}
+        - name: identity-source
+          secret:
+            secretName: {{ .Values.identity.secretName }}
+            defaultMode: 0400
+            items:
+              - key: {{ .Values.identity.policyKey }}
+                path: identity.json
+              - key: {{ .Values.identity.oidcClientSecretKey }}
+                path: oidc-client.secret
+        {{- end }}
+        {{- if $postgres }}
+        - name: postgres-source
+          secret:
+            secretName: {{ .Values.storage.postgres.secretName }}
+            defaultMode: 0400
+            items:
+              - key: {{ .Values.storage.postgres.dsnKey }}
+                path: postgres.dsn
+        {{- else }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ default (include "mesh-control-plane.fullname" .) .Values.storage.persistence.existingClaim }}
+        {{- end }}
+        - name: prepared-private
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

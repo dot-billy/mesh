@@ -1,0 +1,154 @@
+.login-method {
+  margin-top: 30px;
+}
+
+.login-method button {
+  width: 100%;
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+
+#login-form,
+#break-glass-login-form {
+  margin-top: 24px;
+}
+
+#break-glass-login-form .secondary {
+  color: var(--text);
+}
+
+.recovery-codes-panel {
+  margin-bottom: 16px;
+}
+
+.recovery-codes-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.recovery-codes-heading button {
+  flex: none;
+}
+
+.recovery-codes-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recovery-inventory-summary {
+  margin: 0;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.recovery-codes-error {
+  margin-inline: 22px;
+}
+
+.recovery-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 22px;
+  border-bottom: 1px solid #1d222d;
+}
+
+.recovery-code-id {
+  overflow: hidden;
+  color: #dfe4ed;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recovery-code-detail {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.recovery-code-state {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.recovery-code-state.usable {
+  color: var(--accent);
+}
+
+.recovery-code-row button {
+  padding: 7px 10px;
+  font-size: 11px;
+}
+
+.recovery-code-empty {
+  margin: 0;
+  padding: 22px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.recovery-code-command code {
+  user-select: all;
+}
+
+.recovery-custody-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 18px;
+  line-height: 1.45;
+}
+
+.recovery-custody-check input {
+  width: auto;
+  margin-top: 2px;
+}
+
+@media (max-width: 600px) {
+  .recovery-codes-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recovery-codes-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recovery-code-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .recovery-code-row button {
+    grid-column: 1 / -1;
+  }
+}

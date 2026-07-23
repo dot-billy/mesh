@@ -1,0 +1,85 @@
+name: mesh-control-plane
+
+services:
+  mesh:
+    image: "${MESH_IMAGE:-mesh-control-plane:local}"
+    build:
+      context: ../..
+      dockerfile: packaging/container/Dockerfile
+    user: "${MESH_RUNTIME_UID:?set MESH_RUNTIME_UID}:${MESH_RUNTIME_GID:?set MESH_RUNTIME_GID}"
+    init: true
+    read_only: true
+    restart: unless-stopped
+    stop_grace_period: 15s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    ports:
+      - "${MESH_HTTPS_BIND:-127.0.0.1}:${MESH_HTTPS_PORT:-8443}:8443"
+    environment:
+      MESH_HEALTHCHECK_URL: https://127.0.0.1:8443/readyz
+      MESH_HEALTHCHECK_CA_FILE: /run/tls/ca.crt
+      MESH_HEALTHCHECK_SERVER_NAME: "${MESH_PUBLIC_HOST:?set MESH_PUBLIC_HOST}"
+      NEBULA_CERT_BINARY: /usr/local/bin/nebula-cert
+    volumes:
+      - type: bind
+        source: "${MESH_DATA_DIR:?set MESH_DATA_DIR}"
+        target: /var/lib/mesh
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MESH_ADMIN_TOKEN_FILE:?set MESH_ADMIN_TOKEN_FILE}"
+        target: /run/secrets/admin.token
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MESH_MASTER_KEY_FILE:?set MESH_MASTER_KEY_FILE}"
+        target: /run/secrets/master.key
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MESH_TLS_CERT_FILE:?set MESH_TLS_CERT_FILE}"
+        target: /run/tls/server.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MESH_TLS_KEY_FILE:?set MESH_TLS_KEY_FILE}"
+        target: /run/tls/server.key
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MESH_TLS_CA_FILE:?set MESH_TLS_CA_FILE}"
+        target: /run/tls/ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
+    command:
+      - --listen=0.0.0.0:8443
+      - "--public-url=${MESH_PUBLIC_URL:?set MESH_PUBLIC_URL}"
+      - --tls-cert=/run/tls/server.crt
+      - --tls-key=/run/tls/server.key
+      - --data-dir=/var/lib/mesh
+      - --admin-token-file=/run/secrets/admin.token
+      - --master-key-file=/run/secrets/master.key
+      - "--linux-install-bundle-url=${MESH_LINUX_INSTALL_BUNDLE_URL:-}"
+      - "--linux-bootstrap-handoff-url=${MESH_LINUX_BOOTSTRAP_HANDOFF_URL:-}"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mesh-healthcheck"]
+      interval: 10s
+      timeout: 4s
+      start_period: 10s
+      retries: 6
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"

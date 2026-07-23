@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#070b12">
+  <meta
+    name="description"
+    content="Mesh is a security-first control plane for operating private Slack Nebula networks."
+  >
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'"
+  >
+  <title>Mesh — Private network operations</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="Mesh home">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span class="brand-copy">
+        <strong>Mesh</strong>
+        <small>Private network operations</small>
+      </span>
+    </a>
+
+    <button
+      class="nav-toggle"
+      type="button"
+      aria-expanded="false"
+      aria-controls="site-navigation"
+      aria-label="Open navigation"
+    >
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+
+    <nav id="site-navigation" class="site-navigation" aria-label="Primary navigation">
+      <a href="#capabilities">Capabilities</a>
+      <a href="#security">Security</a>
+      <a href="#operations">Operations</a>
+      <a href="./guide/">Operator guide</a>
+      <a class="nav-cta" href="./openapi.json">OpenAPI 3.1</a>
+    </nav>
+  </header>
+
+  <main id="main-content">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow"><span></span> Security-first control plane</p>
+        <h1>Build private networks you can actually operate.</h1>
+        <p class="hero-lede">
+          Mesh turns Slack Nebula certificate lifecycle, signed configuration,
+          least-privilege policy, and fleet evidence into one deliberate
+          operator workflow.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="./guide/">Read the operator guide</a>
+          <a class="button button-secondary" href="#capabilities">Explore capabilities</a>
+        </div>
+        <ul class="hero-proof" aria-label="Mesh foundations">
+          <li><span aria-hidden="true"></span> Signed configuration</li>
+          <li><span aria-hidden="true"></span> Native Nebula identity</li>
+          <li><span aria-hidden="true"></span> Role-based operations</li>
+        </ul>
+      </div>
+
+      <div class="hero-visual" aria-label="Mesh network operations workspace">
+        <div class="visual-glow"></div>
+        <figure class="product-frame">
+          <figcaption>
+            <span class="frame-controls" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>Network operations workspace</span>
+            <span class="frame-status"><i aria-hidden="true"></i> Control plane ready</span>
+          </figcaption>
+          <img
+            src="./assets/control-plane.png"
+            alt="Mesh network workspace showing topology, node status, and the next operational action"
+            width="1440"
+            height="1100"
+          >
+        </figure>
+        <aside class="evidence-card" aria-label="Operational evidence summary">
+          <span class="evidence-label">Authoritative evidence</span>
+          <strong>One fleet snapshot</strong>
+          <p>Lifecycle, rollout, placement, and runtime observations remain clearly separated.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="foundation-strip" aria-label="Core platform qualities">
+      <p>Purpose-built for controlled private networking</p>
+      <div>
+        <span>Dedicated trust domains</span>
+        <span>Fail-closed agents</span>
+        <span>Canary policy rollout</span>
+        <span>Auditable lifecycle</span>
+      </div>
+    </section>
+
+    <section id="capabilities" class="section capabilities">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow"><span></span> Control with context</p>
+          <h2>Every network operation has a safety boundary.</h2>
+        </div>
+        <p>
+          Mesh keeps trust, policy, topology, and runtime evidence in the same
+          workflow without pretending that a heartbeat proves application
+          reachability.
+        </p>
+      </div>
+
+      <div class="capability-grid">
+        <article class="capability-card capability-card-featured">
+          <span class="card-index">01</span>
+          <div>
+            <p class="card-kicker">Trust domains</p>
+            <h3>Private identity from first enrollment to final revocation.</h3>
+            <p>
+              Each network receives its own encrypted Nebula certificate
+              authority and configuration-signing identity. Node private keys
+              are generated on the target machine.
+            </p>
+          </div>
+          <div class="trust-flow" aria-label="Node trust lifecycle">
+            <span>Enroll</span>
+            <i aria-hidden="true"></i>
+            <span>Renew</span>
+            <i aria-hidden="true"></i>
+            <span>Rotate</span>
+            <i aria-hidden="true"></i>
+            <span>Revoke</span>
+          </div>
+        </article>
+
+        <article class="capability-card">
+          <span class="card-index">02</span>
+          <p class="card-kicker">Fleet posture</p>
+          <h3>See what the control plane can prove.</h3>
+          <p>
+            Track exact signed revisions, certificate generations, lifecycle
+            heartbeats, placement diversity, and bounded runtime observations.
+          </p>
+        </article>
+
+        <article class="capability-card">
+          <span class="card-index">03</span>
+          <p class="card-kicker">Least privilege</p>
+          <h3>Design policy around people and systems.</h3>
+          <p>
+            Target Nebula firewall rules by security group, named node, or peer
+            address and preview each node's effective policy before rollout.
+          </p>
+        </article>
+
+        <article class="capability-card">
+          <span class="card-index">04</span>
+          <p class="card-kicker">Controlled change</p>
+          <h3>Canary material policy changes.</h3>
+          <p>
+            Stage firewall changes to selected nodes, require exact convergence,
+            and pause, promote, or roll back with an auditable workflow.
+          </p>
+        </article>
+
+        <article class="capability-card">
+          <span class="card-index">05</span>
+          <p class="card-kicker">Connectivity</p>
+          <h3>Operate DNS, relays, and routed networks.</h3>
+          <p>
+            Manage lighthouse DNS, native relay selection, routed-subnet
+            ownership, and weighted route policies as signed network state.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="operations" class="section operations">
+      <div class="operations-visual">
+        <figure class="fleet-frame">
+          <figcaption>
+            <span>Fleet overview</span>
+            <span>Risk before action</span>
+          </figcaption>
+          <img
+            src="./assets/fleet-overview.png"
+            alt="Mesh fleet overview showing network health, rollout state, and attention items"
+            width="1440"
+            height="1100"
+            loading="lazy"
+          >
+        </figure>
+        <figure class="mobile-frame">
+          <img
+            src="./assets/fleet-mobile.png"
+            alt="Mesh mobile fleet overview with labeled navigation"
+            width="390"
+            height="844"
+            loading="lazy"
+          >
+        </figure>
+      </div>
+
+      <div class="operations-copy">
+        <p class="eyebrow"><span></span> Built for operators</p>
+        <h2>Start with risk. Move into the right trust domain.</h2>
+        <p>
+          The fleet view surfaces convergence and attention items first. Each
+          network then opens into a topology-first workspace with one explicit
+          next action and permission-aware controls.
+        </p>
+        <ol class="operation-list">
+          <li>
+            <span>01</span>
+            <div>
+              <strong>Read the fleet</strong>
+              <p>Review authoritative alerts, rollout posture, and network state.</p>
+            </div>
+          </li>
+          <li>
+            <span>02</span>
+            <div>
+              <strong>Enter one network</strong>
+              <p>Inspect topology, node lifecycle, and the next incomplete setup stage.</p>
+            </div>
+          </li>
+          <li>
+            <span>03</span>
+            <div>
+              <strong>Make one bounded change</strong>
+              <p>Preview, canary where supported, and wait for exact signed-state evidence.</p>
+            </div>
+          </li>
+          <li>
+            <span>04</span>
+            <div>
+              <strong>Verify real traffic</strong>
+              <p>Use packet and application checks before treating rollout as complete.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="security" class="section security">
+      <div class="security-heading">
+        <p class="eyebrow"><span></span> Security architecture</p>
+        <h2>Trust is explicit. Recovery is deliberate.</h2>
+        <p>
+          Mesh separates control-plane authority, node identity, browser access,
+          and release trust so each boundary can fail closed and be reviewed
+          independently.
+        </p>
+        <a class="text-link" href="./guide/#security">Read identity and security operations</a>
+      </div>
+
+      <div class="security-grid">
+        <article>
+          <span class="security-number">01</span>
+          <h3>Keys stay where they belong</h3>
+          <p>Nodes generate their Nebula private keys locally; the server receives only the public identity.</p>
+        </article>
+        <article>
+          <span class="security-number">02</span>
+          <h3>Configuration is signed</h3>
+          <p>Monotonic revisions arrive as complete immutable bundles and activate atomically.</p>
+        </article>
+        <article>
+          <span class="security-number">03</span>
+          <h3>Roles constrain operations</h3>
+          <p>Viewer, Operator, and Admin roles keep routine work separate from trust-domain authority.</p>
+        </article>
+        <article>
+          <span class="security-number">04</span>
+          <h3>Revocation has proof</h3>
+          <p>Credential cutoff, certificate blocklisting, signed rollout, and real packet verification are separate steps.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section deployment">
+      <div class="deployment-card">
+        <div>
+          <p class="eyebrow"><span></span> Deployment contracts</p>
+          <h2>Start contained. Scale only with evidence.</h2>
+          <p>
+            Run a single JSON-backed control plane for contained deployments,
+            or use the explicit PostgreSQL preview when validating multiple
+            application replicas. Production acceptance remains your
+            environment's responsibility.
+          </p>
+        </div>
+        <div class="deployment-options" aria-label="Deployment options">
+          <span><strong>Compose</strong><small>Single-process JSON</small></span>
+          <span><strong>Kubernetes</strong><small>Digest-pinned image contract</small></span>
+          <span><strong>PostgreSQL</strong><small>Multi-app preview</small></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="closing">
+      <p class="eyebrow"><span></span> Operate deliberately</p>
+      <h2>Make the private network understandable before you make it larger.</h2>
+      <p>
+        Start with the safe order of operations, review every irreversible
+        boundary, and use current evidence to decide when a rollout is complete.
+      </p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="./guide/">Open the operator guide</a>
+        <a class="button button-secondary" href="./public-guide.json">View canonical guide data</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a class="brand footer-brand" href="./" aria-label="Mesh home">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span class="brand-copy">
+        <strong>Mesh</strong>
+        <small>Security-first Nebula operations</small>
+      </span>
+    </a>
+    <p>
+      A working lifecycle foundation for private Slack Nebula networks.
+      Review the documented boundaries before production use.
+    </p>
+    <nav aria-label="Footer navigation">
+      <a href="./guide/">Operator guide</a>
+      <a href="./openapi.json">OpenAPI 3.1</a>
+      <a href="./public-guide.json">Guide source</a>
+    </nav>
+    <small>© <span data-current-year>2026</span> Mesh.</small>
+  </footer>
+</body>
+</html>

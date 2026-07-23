@@ -1,0 +1,646 @@
+diff --git a/runtime_observer_linux_test.go b/runtime_observer_linux_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..2e440c2daf77f367e78c9d24d19eb094d8a7df51
+--- /dev/null
++++ b/runtime_observer_linux_test.go
+@@ -0,0 +1,276 @@
++//go:build linux
++
++package nebula
++
++import (
++	"encoding/json"
++	"errors"
++	"io"
++	"net"
++	"net/netip"
++	"os"
++	"path/filepath"
++	"syscall"
++	"testing"
++	"time"
++)
++
++func TestRuntimeObserverServerRoundTripAndCleanShutdown(t *testing.T) {
++	server, options := newRuntimeObserverTestServer(t)
++	socketInfo, err := os.Lstat(options.socketPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	stat := socketInfo.Sys().(*syscall.Stat_t)
++	if socketInfo.Mode()&os.ModeSocket == 0 || socketInfo.Mode().Perm() != 0o600 || stat.Uid != uint32(os.Getuid()) || stat.Nlink != 1 {
++		t.Fatalf("unsafe socket metadata: mode=%v uid=%d nlink=%d", socketInfo.Mode(), stat.Uid, stat.Nlink)
++	}
++
++	connection, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: options.socketPath, Net: "unix"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	request := []byte(`{"schema":"nebula.runtime-observer.request.v1","operation":"snapshot","nonce":"` + runtimeObserverTestNonce + `"}` + "\n")
++	if _, err := connection.Write(request); err != nil {
++		t.Fatal(err)
++	}
++	response, err := io.ReadAll(connection)
++	if err != nil {
++		t.Fatal(err)
++	}
++	_ = connection.Close()
++	var snapshot runtimeObserverSnapshot
++	if err := json.Unmarshal(response, &snapshot); err != nil {
++		t.Fatalf("response %q: %v", response, err)
++	}
++	if snapshot.Schema != runtimeObserverSnapshotSchema || snapshot.Nonce != runtimeObserverTestNonce || snapshot.SampleSequence != 1 {
++		t.Fatalf("unexpected response %q: %#v", response, snapshot)
++	}
++
++	if err := server.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := os.Lstat(options.socketPath); !errors.Is(err, os.ErrNotExist) {
++		t.Fatalf("socket remains after shutdown: %v", err)
++	}
++	if err := server.Close(); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestRuntimeObserverServerRejectsWrongPeerAndMalformedInput(t *testing.T) {
++	t.Run("peer credential", func(t *testing.T) {
++		observer, options := newRuntimeObserverTestState(t)
++		options.expectedPeer = uint32(os.Getuid()) + 1
++		server, err := startRuntimeObserverServer(observer, options)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer server.Close()
++		connection, err := net.Dial("unix", options.socketPath)
++		if err != nil {
++			t.Fatal(err)
++		}
++		_ = connection.SetDeadline(time.Now().Add(time.Second))
++		_, _ = connection.Write([]byte("x\n"))
++		response, _ := io.ReadAll(connection)
++		_ = connection.Close()
++		if len(response) != 0 {
++			t.Fatalf("credential rejection leaked response %q", response)
++		}
++	})
++
++	t.Run("malformed and trailing", func(t *testing.T) {
++		server, options := newRuntimeObserverTestServer(t)
++		defer server.Close()
++		for _, request := range [][]byte{[]byte("x\n"), append([]byte(`{"schema":"nebula.runtime-observer.request.v1","operation":"snapshot","nonce":"`+runtimeObserverTestNonce+`"}`+"\n"), 'x')} {
++			connection, err := net.Dial("unix", options.socketPath)
++			if err != nil {
++				t.Fatal(err)
++			}
++			_ = connection.SetDeadline(time.Now().Add(time.Second))
++			_, _ = connection.Write(request)
++			response, _ := io.ReadAll(connection)
++			_ = connection.Close()
++			if string(response) != "{\"error\":\"invalid request\"}\n" {
++				t.Fatalf("request %q response %q", request, response)
++			}
++		}
++	})
++}
++
++func TestRuntimeObserverServerRefusesExistingPathAndWrongParentMode(t *testing.T) {
++	observer, options := newRuntimeObserverTestState(t)
++	if err := os.WriteFile(options.socketPath, []byte("do not replace"), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	if server, err := startRuntimeObserverServer(observer, options); err == nil {
++		server.Close()
++		t.Fatal("accepted pre-existing path")
++	}
++	contents, err := os.ReadFile(options.socketPath)
++	if err != nil || string(contents) != "do not replace" {
++		t.Fatalf("pre-existing path changed: %q, %v", contents, err)
++	}
++	if err := os.Remove(options.socketPath); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Chmod(filepath.Dir(options.socketPath), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if server, err := startRuntimeObserverServer(observer, options); err == nil {
++		server.Close()
++		t.Fatal("accepted wrong parent mode")
++	}
++}
++
++func TestRuntimeObserverServerDoesNotUnlinkReplacement(t *testing.T) {
++	server, options := newRuntimeObserverTestServer(t)
++	moved := options.socketPath + ".moved"
++	if err := os.Rename(options.socketPath, moved); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(options.socketPath, []byte("replacement"), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	if err := server.Close(); err != nil {
++		t.Fatal(err)
++	}
++	contents, err := os.ReadFile(options.socketPath)
++	if err != nil || string(contents) != "replacement" {
++		t.Fatalf("replacement was removed: %q, %v", contents, err)
++	}
++}
++
++func TestRuntimeObserverServerDoesNotAdoptChmodWindowReplacement(t *testing.T) {
++	observer, options := newRuntimeObserverTestState(t)
++	moved := options.socketPath + ".created"
++	var replacement *net.UnixListener
++	var hookErr error
++	options.afterSocketChmod = func() {
++		if hookErr = os.Rename(options.socketPath, moved); hookErr != nil {
++			return
++		}
++		replacement, hookErr = net.ListenUnix("unix", &net.UnixAddr{Name: options.socketPath, Net: "unix"})
++		if hookErr != nil {
++			return
++		}
++		replacement.SetUnlinkOnClose(false)
++		hookErr = os.Chmod(options.socketPath, options.socketMode)
++	}
++
++	server, startErr := startRuntimeObserverServer(observer, options)
++	if replacement != nil {
++		defer replacement.Close()
++		defer os.Remove(options.socketPath)
++	}
++	if hookErr != nil {
++		if server != nil {
++			_ = server.Close()
++		}
++		t.Fatal(hookErr)
++	}
++	if server != nil {
++		_ = server.Close()
++	}
++	if startErr == nil {
++		t.Error("accepted replacement exchanged after socket chmod")
++	}
++	info, err := os.Lstat(options.socketPath)
++	if err != nil {
++		t.Fatalf("chmod-window replacement did not survive cleanup: %v", err)
++	}
++	stat := info.Sys().(*syscall.Stat_t)
++	if info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != options.socketMode || stat.Uid != options.expectedOwner || stat.Nlink != 1 {
++		t.Fatalf("unexpected replacement metadata: mode=%v uid=%d nlink=%d", info.Mode(), stat.Uid, stat.Nlink)
++	}
++	connection, err := net.DialTimeout("unix", options.socketPath, time.Second)
++	if err != nil {
++		t.Fatalf("replacement socket is not live: %v", err)
++	}
++	_ = connection.Close()
++}
++
++func TestRuntimeObserverServerShutdownClosesSlowClients(t *testing.T) {
++	server, options := newRuntimeObserverTestServer(t)
++	first, err := net.Dial("unix", options.socketPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	second, err := net.Dial("unix", options.socketPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	finished := make(chan struct{})
++	go func() {
++		_ = server.Close()
++		close(finished)
++	}()
++	select {
++	case <-finished:
++	case <-time.After(time.Second):
++		t.Fatal("shutdown exceeded bound")
++	}
++	_ = first.Close()
++	_ = second.Close()
++}
++
++func TestRuntimeObserverServerTotalDeadlineCapsReadPhase(t *testing.T) {
++	observer, options := newRuntimeObserverTestState(t)
++	options.readTimeout = 2 * time.Second
++	options.writeTimeout = 2 * time.Second
++	options.totalTimeout = 75 * time.Millisecond
++	server, err := startRuntimeObserverServer(observer, options)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer server.Close()
++	connection, err := net.Dial("unix", options.socketPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer connection.Close()
++	_ = connection.SetReadDeadline(time.Now().Add(time.Second))
++	started := time.Now()
++	var response [1]byte
++	_, _ = connection.Read(response[:])
++	if elapsed := time.Since(started); elapsed > 300*time.Millisecond {
++		t.Fatalf("read phase exceeded total deadline: %s", elapsed)
++	}
++}
++
++func newRuntimeObserverTestServer(t *testing.T) (*runtimeObserverServer, runtimeObserverServerOptions) {
++	t.Helper()
++	observer, options := newRuntimeObserverTestState(t)
++	server, err := startRuntimeObserverServer(observer, options)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return server, options
++}
++
++func newRuntimeObserverTestState(t *testing.T) (*RuntimeObserver, runtimeObserverServerOptions) {
++	t.Helper()
++	directory, err := os.MkdirTemp("/tmp", "nebula-observer-test-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = os.RemoveAll(directory) })
++	if err := os.Chmod(directory, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	hostMap := &HostMap{Indexes: map[uint32]*HostInfo{}, Hosts: map[netip.Addr]*HostInfo{}}
++	handshakes := &HandshakeManager{indexes: map[uint32]*HandshakeHostInfo{}}
++	lightHouse := &LightHouse{}
++	configured := []netip.Addr{}
++	lightHouse.lighthouses.Store(&configured)
++	observer := newRuntimeObserverWithInstance(hostMap, handshakes, lightHouse, time.Now(), runtimeObserverTestNonce)
++	options := productionRuntimeObserverServerOptions()
++	options.socketPath = filepath.Join(directory, "observer.sock")
++	options.expectedOwner = uint32(os.Getuid())
++	options.expectedPeer = uint32(os.Getuid())
++	options.readTimeout = 250 * time.Millisecond
++	options.writeTimeout = 250 * time.Millisecond
++	options.totalTimeout = 500 * time.Millisecond
++	return observer, options
++}
+diff --git a/runtime_observer_test.go b/runtime_observer_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..f3e22b9a1d16fa1ac828eecb7662b5e34c912e2a
+--- /dev/null
++++ b/runtime_observer_test.go
+@@ -0,0 +1,358 @@
++package nebula
++
++import (
++	"bytes"
++	"encoding/json"
++	"go/ast"
++	"go/parser"
++	"go/token"
++	"net/netip"
++	"os"
++	"path/filepath"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++)
++
++const runtimeObserverTestNonce = "0123456789abcdef0123456789abcdef"
++
++func TestRuntimeObserverSnapshotAccountingAndBounds(t *testing.T) {
++	startedAt := time.Now().Add(-10 * time.Minute)
++	firstAddress := netip.MustParseAddr("10.42.0.1")
++	secondAddress := netip.MustParseAddr("10.42.0.9")
++	first := &HostInfo{vpnAddrs: []netip.Addr{firstAddress}}
++	second := &HostInfo{vpnAddrs: []netip.Addr{secondAddress}}
++	hostMap := &HostMap{
++		Indexes: map[uint32]*HostInfo{1: first, 2: second},
++		Hosts:   map[netip.Addr]*HostInfo{firstAddress: first, secondAddress: second},
++	}
++	handshakes := &HandshakeManager{indexes: map[uint32]*HandshakeHostInfo{3: {}}}
++	lightHouse := &LightHouse{}
++	configured := []netip.Addr{firstAddress}
++	lightHouse.lighthouses.Store(&configured)
++	observer := newRuntimeObserverWithInstance(hostMap, handshakes, lightHouse, startedAt, runtimeObserverTestNonce)
++
++	observer.recordHandshakeCompleted(first)
++	observer.recordHandshakeCompleted(second)
++	observer.recordHandshakeTimedOut()
++	nowElapsed := time.Since(startedAt)
++	first.runtimeObserverLastAuthenticatedRX.Store(uint64(nowElapsed-90*time.Second) + 1)
++	observer.recordLighthouseAuthenticatedRX(first, uint64(nowElapsed-90*time.Second)+1)
++	second.runtimeObserverLastAuthenticatedRX.Store(uint64(nowElapsed-4*time.Minute) + 1)
++
++	snapshot, err := observer.snapshot(runtimeObserverTestNonce)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if snapshot.Schema != runtimeObserverSnapshotSchema || snapshot.Nonce != runtimeObserverTestNonce || snapshot.ProcessInstanceID != runtimeObserverTestNonce {
++		t.Fatalf("unexpected identity fields: %#v", snapshot)
++	}
++	if snapshot.SampleSequence != 1 || snapshot.ProcessUptimeMS < uint64((9*time.Minute)/time.Millisecond) {
++		t.Fatalf("unexpected sequence or uptime: %#v", snapshot)
++	}
++	if snapshot.Handshakes.CompletedTotal != 2 || snapshot.Handshakes.TimedOutTotal != 1 || snapshot.Handshakes.Pending != 1 || snapshot.Handshakes.MostRecentCompletionAgeMS == nil {
++		t.Fatalf("unexpected handshake snapshot: %#v", snapshot.Handshakes)
++	}
++	if snapshot.Peers.Established != 2 || snapshot.Peers.AuthenticatedRXWithin2m != 1 || snapshot.Peers.AuthenticatedRXWithin5m != 2 ||
++		snapshot.Peers.OldestAuthenticatedRXAgeMS == nil || *snapshot.Peers.OldestAuthenticatedRXAgeMS < uint64((3*time.Minute)/time.Millisecond) {
++		t.Fatalf("unexpected peer snapshot: %#v", snapshot.Peers)
++	}
++	if snapshot.Lighthouses.Configured != 1 || snapshot.Lighthouses.Established != 1 || snapshot.Lighthouses.AuthenticatedRXWithin2m != 1 ||
++		snapshot.Lighthouses.MostRecentAuthenticatedRXAgeMS == nil || len(snapshot.Lighthouses.Entries) != 1 ||
++		snapshot.Lighthouses.Entries[0].VPNIP != firstAddress.String() {
++		t.Fatalf("unexpected lighthouse snapshot: %#v", snapshot.Lighthouses)
++	}
++	delete(hostMap.Indexes, 1)
++	delete(hostMap.Hosts, firstAddress)
++	evicted, err := observer.snapshot(runtimeObserverTestNonce)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if evicted.Lighthouses.Established != 0 || evicted.Lighthouses.AuthenticatedRXWithin2m != 0 ||
++		evicted.Lighthouses.MostRecentAuthenticatedRXAgeMS == nil || len(evicted.Lighthouses.Entries) != 0 ||
++		*evicted.Lighthouses.MostRecentAuthenticatedRXAgeMS < uint64((89*time.Second)/time.Millisecond) {
++		t.Fatalf("lighthouse receive history was lost with its host-map entry: %#v", evicted.Lighthouses)
++	}
++	if next, err := observer.snapshot(runtimeObserverTestNonce); err != nil || next.SampleSequence != 3 {
++		t.Fatalf("third snapshot = %#v, %v", next, err)
++	}
++}
++
++func TestRuntimeObserverSaturatesCounters(t *testing.T) {
++	var value atomic.Uint64
++	value.Store(runtimeObserverMaxJSONInteger - 1)
++	if got := saturatingIncrement(&value, runtimeObserverMaxJSONInteger); got != runtimeObserverMaxJSONInteger {
++		t.Fatalf("first increment = %d", got)
++	}
++	if got := saturatingIncrement(&value, runtimeObserverMaxJSONInteger); got != runtimeObserverMaxJSONInteger || value.Load() != runtimeObserverMaxJSONInteger {
++		t.Fatalf("saturated increment = %d, stored = %d", got, value.Load())
++	}
++	if got := addSaturated(runtimeObserverMaxAggregate-1, 2, runtimeObserverMaxAggregate); got != runtimeObserverMaxAggregate {
++		t.Fatalf("aggregate = %d", got)
++	}
++}
++
++func TestRuntimeObserverLighthouseAggregatesUniqueTunnels(t *testing.T) {
++	firstAddress := netip.MustParseAddr("10.42.0.1")
++	secondAddress := netip.MustParseAddr("10.42.0.2")
++	host := &HostInfo{vpnAddrs: []netip.Addr{firstAddress, secondAddress}}
++	hostMap := &HostMap{
++		Indexes: map[uint32]*HostInfo{1: host},
++		Hosts:   map[netip.Addr]*HostInfo{firstAddress: host, secondAddress: host},
++	}
++	handshakes := &HandshakeManager{indexes: map[uint32]*HandshakeHostInfo{}}
++	lightHouse := &LightHouse{}
++	configured := []netip.Addr{secondAddress, firstAddress}
++	lightHouse.lighthouses.Store(&configured)
++	observer := newRuntimeObserverWithInstance(hostMap, handshakes, lightHouse, time.Now(), runtimeObserverTestNonce)
++	observer.recordHandshakeCompleted(host)
++	observer.recordAuthenticatedRX(host)
++
++	snapshot, err := observer.snapshot(runtimeObserverTestNonce)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if snapshot.Lighthouses.Configured != 2 || snapshot.Lighthouses.Established != 1 ||
++		snapshot.Lighthouses.AuthenticatedRXWithin2m != 1 || len(snapshot.Lighthouses.Entries) != 1 ||
++		snapshot.Lighthouses.Entries[0].VPNIP != firstAddress.String() {
++		t.Fatalf("duplicate tunnel was over-counted: %#v", snapshot.Lighthouses)
++	}
++}
++
++func TestRuntimeObserverLighthouseAggregateIsCoherentDuringRXUpdate(t *testing.T) {
++	startedAt := time.Now().Add(-2 * time.Minute)
++	address := netip.MustParseAddr("10.42.0.1")
++	host := &HostInfo{vpnAddrs: []netip.Addr{address}}
++	hostMap := &HostMap{
++		Indexes: map[uint32]*HostInfo{1: host},
++		Hosts:   map[netip.Addr]*HostInfo{address: host},
++	}
++	handshakes := &HandshakeManager{indexes: map[uint32]*HandshakeHostInfo{}}
++	lightHouse := &LightHouse{}
++	configured := []netip.Addr{address}
++	lightHouse.lighthouses.Store(&configured)
++	observer := newRuntimeObserverWithInstance(hostMap, handshakes, lightHouse, startedAt, runtimeObserverTestNonce)
++
++	nowElapsed := time.Since(startedAt)
++	observer.recordLighthouseAuthenticatedRX(host, uint64(nowElapsed-90*time.Second)+1)
++	host.runtimeObserverLastAuthenticatedRX.Store(uint64(nowElapsed-time.Second) + 1)
++	snapshot, err := observer.snapshot(runtimeObserverTestNonce)
++	if err != nil {
++		t.Fatal(err)
++	}
++	retained := snapshot.Lighthouses.MostRecentAuthenticatedRXAgeMS
++	entry := snapshot.Lighthouses.Entries[0].LastAuthenticatedRXAgeMS
++	if retained == nil || entry == nil || *retained > *entry {
++		t.Fatalf("retained aggregate is older than its visible entry: retained=%v entry=%v", retained, entry)
++	}
++}
++
++func TestRuntimeObserverSnapshotIsRaceSafe(t *testing.T) {
++	address := netip.MustParseAddr("10.42.0.1")
++	host := &HostInfo{vpnAddrs: []netip.Addr{address}}
++	hostMap := &HostMap{Indexes: map[uint32]*HostInfo{1: host}, Hosts: map[netip.Addr]*HostInfo{address: host}}
++	handshakes := &HandshakeManager{indexes: map[uint32]*HandshakeHostInfo{}}
++	lightHouse := &LightHouse{}
++	configured := []netip.Addr{address}
++	lightHouse.lighthouses.Store(&configured)
++	observer := newRuntimeObserverWithInstance(hostMap, handshakes, lightHouse, time.Now(), runtimeObserverTestNonce)
++
++	var workers sync.WaitGroup
++	for index := 0; index < 4; index++ {
++		workers.Add(1)
++		go func() {
++			defer workers.Done()
++			for count := 0; count < 100; count++ {
++				observer.recordHandshakeCompleted(host)
++				observer.recordAuthenticatedRX(host)
++				observer.recordHandshakeTimedOut()
++				if _, err := observer.snapshot(runtimeObserverTestNonce); err != nil {
++					t.Errorf("snapshot: %v", err)
++					return
++				}
++			}
++		}()
++	}
++	workers.Wait()
++}
++
++func TestRuntimeObserverSharedProtocolFixtures(t *testing.T) {
++	directory := os.Getenv("MESH_NEBULA_OBSERVER_FIXTURES")
++	if directory == "" {
++		t.Skip("shared fixture directory is supplied by the Mesh smoke")
++	}
++	validRequest, err := os.ReadFile(filepath.Join(directory, "request-valid.jsonl"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if nonce, err := decodeRuntimeObserverRequest(validRequest); err != nil || nonce != runtimeObserverTestNonce {
++		t.Fatalf("valid request = %q, %v", nonce, err)
++	}
++	invalidRequests, err := filepath.Glob(filepath.Join(directory, "request-invalid-*.jsonl"))
++	if err != nil || len(invalidRequests) == 0 {
++		t.Fatalf("invalid fixture glob = %v, %v", invalidRequests, err)
++	}
++	for _, path := range invalidRequests {
++		message, err := os.ReadFile(path)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if _, err := decodeRuntimeObserverRequest(message); err == nil {
++			t.Errorf("accepted invalid fixture %s", filepath.Base(path))
++		}
++	}
++
++	validSnapshot, err := os.ReadFile(filepath.Join(directory, "snapshot-empty-valid.jsonl"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	var snapshot runtimeObserverSnapshot
++	if err := json.Unmarshal(bytes.TrimSuffix(validSnapshot, []byte{'\n'}), &snapshot); err != nil {
++		t.Fatal(err)
++	}
++	reencoded, err := json.Marshal(snapshot)
++	if err != nil {
++		t.Fatal(err)
++	}
++	reencoded = append(reencoded, '\n')
++	if !bytes.Equal(reencoded, validSnapshot) || snapshot.Schema != runtimeObserverSnapshotSchema || snapshot.Nonce != runtimeObserverTestNonce {
++		t.Fatalf("snapshot fixture is not the canonical v2 allowlist")
++	}
++}
++
++// This regression test audits the production control-flow boundary itself.
++// DecryptDanger failures and replay-window Update failures return before the
++// hook. CloseTunnel and the relay wrapper live in readOutsidePackets, which is
++// forbidden from calling the hook; a terminal relay's recursively processed
++// inner packet reaches decrypt/decryptToTun and is counted there exactly once.
++func TestRuntimeObserverRejectsBadAEADReplayCloseAndRelayAccounting(t *testing.T) {
++	fileSet := token.NewFileSet()
++	parsed, err := parser.ParseFile(fileSet, "outside.go", nil, 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	functions := map[string]*ast.FuncDecl{}
++	for _, declaration := range parsed.Decls {
++		if function, ok := declaration.(*ast.FuncDecl); ok {
++			functions[function.Name.Name] = function
++		}
++	}
++	for _, name := range []string{"decrypt", "decryptToTun"} {
++		function := functions[name]
++		if function == nil {
++			t.Fatalf("missing %s", name)
++		}
++		decryptIndex := statementIndexWithSelector(function.Body.List, "DecryptDanger")
++		updateIndex := statementIndexWithSelector(function.Body.List, "Update")
++		hookIndex := statementIndexWithSelector(function.Body.List, "recordAuthenticatedRX")
++		if decryptIndex < 0 || updateIndex <= decryptIndex || hookIndex <= updateIndex {
++			t.Fatalf("%s hook order decrypt=%d update=%d hook=%d", name, decryptIndex, updateIndex, hookIndex)
++		}
++		if !statementsContainRejectingIf(function.Body.List[decryptIndex+1 : updateIndex]) {
++			t.Fatalf("%s AEAD failure no longer returns before accounting", name)
++		}
++		updateStatement, ok := function.Body.List[updateIndex].(*ast.IfStmt)
++		if !ok || !statementsContainReturn(updateStatement.Body.List) {
++			t.Fatalf("%s replay commit is no longer a rejecting if statement", name)
++		}
++		if _, ok := function.Body.List[hookIndex].(*ast.ExprStmt); !ok {
++			t.Fatalf("%s hook is no longer an unconditional post-check statement", name)
++		}
++	}
++	readOutside := functions["readOutsidePackets"]
++	if readOutside == nil || !functionContainsSelector(readOutside, "CloseTunnel") || !functionContainsSelector(readOutside, "MessageRelay") {
++		t.Fatal("close/relay receive branches are missing")
++	}
++	if functionContainsSelector(readOutside, "recordAuthenticatedRX") {
++		t.Fatal("close or relay wrapper can advance authenticated RX")
++	}
++
++	totalHooks := 0
++	for _, function := range functions {
++		ast.Inspect(function, func(node ast.Node) bool {
++			if selector, ok := node.(*ast.SelectorExpr); ok && selector.Sel.Name == "recordAuthenticatedRX" {
++				totalHooks++
++			}
++			return true
++		})
++	}
++	if totalHooks != 2 {
++		t.Fatalf("outside.go hook count = %d, want 2", totalHooks)
++	}
++}
++
++func statementIndexWithSelector(statements []ast.Stmt, name string) int {
++	for index, statement := range statements {
++		found := false
++		ast.Inspect(statement, func(node ast.Node) bool {
++			if selector, ok := node.(*ast.SelectorExpr); ok && selector.Sel.Name == name {
++				found = true
++			}
++			return true
++		})
++		if found {
++			return index
++		}
++	}
++	return -1
++}
++
++func functionContainsSelector(function *ast.FuncDecl, name string) bool {
++	found := false
++	ast.Inspect(function, func(node ast.Node) bool {
++		if selector, ok := node.(*ast.SelectorExpr); ok && selector.Sel.Name == name {
++			found = true
++		}
++		return true
++	})
++	return found
++}
++
++func statementsContainRejectingIf(statements []ast.Stmt) bool {
++	for _, statement := range statements {
++		if condition, ok := statement.(*ast.IfStmt); ok && statementsContainReturn(condition.Body.List) {
++			return true
++		}
++	}
++	return false
++}
++
++func statementsContainReturn(statements []ast.Stmt) bool {
++	for _, statement := range statements {
++		found := false
++		ast.Inspect(statement, func(node ast.Node) bool {
++			if _, ok := node.(*ast.ReturnStmt); ok {
++				found = true
++			}
++			return true
++		})
++		if found {
++			return true
++		}
++	}
++	return false
++}
++
++func TestDecodeRuntimeObserverRequestRejectsAdversarialForms(t *testing.T) {
++	canonical := `{"schema":"nebula.runtime-observer.request.v1","operation":"snapshot","nonce":"` + runtimeObserverTestNonce + `"}` + "\n"
++	if nonce, err := decodeRuntimeObserverRequest([]byte(canonical)); err != nil || nonce != runtimeObserverTestNonce {
++		t.Fatalf("canonical request = %q, %v", nonce, err)
++	}
++	tests := map[string]string{
++		"missing newline": strings.TrimSuffix(canonical, "\n"),
++		"uppercase nonce": strings.Replace(canonical, runtimeObserverTestNonce, strings.ToUpper(runtimeObserverTestNonce), 1),
++		"duplicate":       strings.Replace(canonical, `}`, `,"nonce":"`+runtimeObserverTestNonce+`"}`, 1),
++		"reordered":       `{"operation":"snapshot","schema":"nebula.runtime-observer.request.v1","nonce":"` + runtimeObserverTestNonce + `"}` + "\n",
++		"unknown":         strings.Replace(canonical, `}`, `,"path":"/tmp/x"}`, 1),
++		"trailing":        canonical + "x",
++	}
++	for name, message := range tests {
++		t.Run(name, func(t *testing.T) {
++			if _, err := decodeRuntimeObserverRequest([]byte(message)); err == nil {
++				t.Fatalf("accepted %q", message)
++			}
++		})
++	}
++}

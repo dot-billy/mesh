@@ -1,0 +1,71 @@
+name: mesh-release-origin
+
+services:
+  origin:
+    image: "${MESH_ORIGIN_IMAGE_REPOSITORY:?set MESH_ORIGIN_IMAGE_REPOSITORY}@sha256:${MESH_ORIGIN_IMAGE_SHA256:?set MESH_ORIGIN_IMAGE_SHA256}"
+    user: "${MESH_ORIGIN_UID:?set MESH_ORIGIN_UID}:${MESH_ORIGIN_GID:?set MESH_ORIGIN_GID}"
+    init: true
+    read_only: true
+    restart: unless-stopped
+    stop_grace_period: 15s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    ports:
+      - "${MESH_ORIGIN_BIND:-127.0.0.1}:${MESH_ORIGIN_PORT:-8444}:8444"
+    environment:
+      MESH_HEALTHCHECK_URL: https://127.0.0.1:8444/readyz
+      MESH_HEALTHCHECK_CA_FILE: /run/tls/ca.crt
+      MESH_HEALTHCHECK_SERVER_NAME: "${MESH_ORIGIN_PUBLIC_HOST:?set MESH_ORIGIN_PUBLIC_HOST}"
+    volumes:
+      - type: bind
+        source: "${MESH_ORIGIN_GENERATION:?set MESH_ORIGIN_GENERATION}/repository"
+        target: /srv/repository
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MESH_ORIGIN_GENERATION:?set MESH_ORIGIN_GENERATION}/origin-index.json"
+        target: /run/origin/index.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MESH_ORIGIN_TLS_CERT:?set MESH_ORIGIN_TLS_CERT}"
+        target: /run/tls/server.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MESH_ORIGIN_TLS_KEY:?set MESH_ORIGIN_TLS_KEY}"
+        target: /run/tls/server.key
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MESH_ORIGIN_TLS_CA:?set MESH_ORIGIN_TLS_CA}"
+        target: /run/tls/ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
+    command:
+      - --listen=0.0.0.0:8444
+      - "--public-url=${MESH_ORIGIN_PUBLIC_URL:?set MESH_ORIGIN_PUBLIC_URL}"
+      - --tls-cert=/run/tls/server.crt
+      - --tls-key=/run/tls/server.key
+      - --root=/srv/repository
+      - --index=/run/origin/index.json
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mesh-healthcheck"]
+      interval: 10s
+      timeout: 4s
+      start_period: 10s
+      retries: 6
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"

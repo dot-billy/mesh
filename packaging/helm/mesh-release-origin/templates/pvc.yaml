@@ -1,0 +1,21 @@
+{{- if not .Values.content.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mesh-release-origin.fullname" . }}
+  labels:
+    {{- include "mesh-release-origin.labels" . | nindent 4 }}
+  {{- with .Values.content.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.content.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.content.size }}
+  {{- with .Values.content.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

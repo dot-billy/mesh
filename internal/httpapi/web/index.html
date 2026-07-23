@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Mesh · Nebula control plane</title>
+  <link rel="stylesheet" href="/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/managed.css">
+  <link rel="stylesheet" href="/oidc.css">
+  <link rel="stylesheet" href="/enterprise.css">
+</head>
+<body>
+  <a class="skip-link" href="#app-content">Skip to control plane</a>
+  <main>
+    <section id="login-view" class="login-shell hidden">
+      <div class="login-card">
+        <div class="login-brand">
+          <div class="mark" aria-hidden="true">M</div>
+          <div><strong>Mesh</strong><span>Network operations</span></div>
+        </div>
+        <div class="login-heading">
+          <p class="eyebrow">Secure access portal</p>
+          <h1>Private networking,<br>under control.</h1>
+          <p class="lede">Sign in to manage trusted identities, policy, routing, and fleet health from one operational workspace.</p>
+        </div>
+        <div class="login-access">
+          <div id="oidc-login-panel" class="login-method hidden">
+            <button id="oidc-login" type="button" aria-describedby="login-error"><i class="fa fa-shield" aria-hidden="true"></i> Sign in with single sign-on</button>
+          </div>
+          <div id="login-divider-oidc" class="login-divider hidden" aria-hidden="true"><span>or</span></div>
+          <form id="login-form" class="hidden">
+            <label for="admin-token">Admin token</label>
+            <input id="admin-token" name="token" type="password" autocomplete="current-password" aria-describedby="login-error" required>
+            <button type="submit">Open control plane</button>
+          </form>
+          <div id="login-divider-recovery" class="login-divider hidden" aria-hidden="true"><span>or</span></div>
+          <form id="break-glass-login-form" class="hidden">
+            <label for="break-glass-code">One-use recovery code</label>
+            <input id="break-glass-code" name="code" type="password" autocomplete="one-time-code" spellcheck="false" aria-describedby="login-error" required>
+            <button type="submit" class="secondary">Use recovery access</button>
+          </form>
+          <p id="login-error" class="form-error" role="alert" aria-live="assertive"></p>
+        </div>
+        <div class="login-assurance" aria-label="Platform assurances">
+          <span><i class="fa fa-lock" aria-hidden="true"></i> Encrypted trust domains</span>
+          <span><i class="fa fa-users" aria-hidden="true"></i> Role-based access</span>
+          <span><i class="fa fa-history" aria-hidden="true"></i> Auditable lifecycle</span>
+        </div>
+        <p class="login-help"><a href="/docs.html"><i class="fa fa-book" aria-hidden="true"></i> Read the public documentation</a><a href="/api-docs.html"><i class="fa fa-code" aria-hidden="true"></i> API reference</a></p>
+      </div>
+    </section>
+
+    <section id="app-view" class="app-shell hidden">
+      <aside>
+        <div class="brand"><span class="mark small">M</span><span class="brand-copy"><strong>Mesh</strong><small>Network operations</small></span></div>
+        <nav aria-label="Primary">
+          <button class="nav-item active" data-view="networks"><i class="fa fa-sitemap" aria-hidden="true"></i> Networks</button>
+          <button class="nav-item" data-view="activity"><i class="fa fa-clock-o" aria-hidden="true"></i> Activity</button>
+          <a class="nav-item docs-nav" href="/docs.html"><i class="fa fa-book" aria-hidden="true"></i> Documentation</a>
+          <a class="nav-item docs-nav" href="/api-docs.html"><i class="fa fa-code" aria-hidden="true"></i> API reference</a>
+        </nav>
+        <div class="aside-footer">
+          <span id="access-role" class="access-role">Authenticated access</span>
+          <span class="control-plane-state"><i class="health-dot" aria-hidden="true"></i> Authenticated health telemetry</span>
+          <span class="control-plane-detail">Control plane connected</span>
+          <button id="logout" class="text-button"><i class="fa fa-sign-out" aria-hidden="true"></i> Sign out</button>
+        </div>
+      </aside>
+
+      <div id="app-content" class="content" tabindex="-1">
+        <header id="app-page-header">
+          <div>
+            <p class="eyebrow">Operations center</p>
+            <h2 id="page-title">Networks</h2>
+          </div>
+          <button id="new-network"><i class="fa fa-plus" aria-hidden="true"></i> New network</button>
+        </header>
+
+        <div id="flash" class="flash hidden" role="status"></div>
+        <section id="networks-view">
+          <section id="fleet-health" class="fleet-health" aria-labelledby="fleet-health-title">
+            <div class="fleet-health-heading">
+              <div>
+                <p class="eyebrow">Fleet posture</p>
+                <h3 id="fleet-health-title">Network health and rollout</h3>
+                <p id="fleet-health-freshness" class="fleet-health-copy">No health or inventory is inferred until an authoritative snapshot is verified.</p>
+              </div>
+              <span id="fleet-health-badge" class="health-badge critical" role="status" aria-live="polite">Unavailable</span>
+            </div>
+            <dl class="fleet-health-stats" aria-label="Fleet health totals">
+              <div><dt>Healthy networks</dt><dd id="fleet-healthy-networks">—</dd></div>
+              <div><dt>Warnings</dt><dd id="fleet-warning-networks">—</dd></div>
+              <div><dt>Critical</dt><dd id="fleet-critical-networks">—</dd></div>
+              <div><dt>Critical nodes</dt><dd id="fleet-critical-nodes">—</dd></div>
+              <div><dt>In setup</dt><dd id="fleet-setup-nodes">—</dd></div>
+            </dl>
+            <div class="fleet-rollout" aria-labelledby="fleet-rollout-label">
+              <div><strong id="fleet-rollout-label">Fleet rollout</strong><span id="fleet-rollout-value">Authoritative rollout unavailable</span></div>
+              <progress id="fleet-rollout-progress" max="1" value="0">Unavailable</progress>
+            </div>
+            <p class="fleet-health-copy">Snapshot generated <time id="fleet-generated-at">unavailable</time>.</p>
+            <details id="fleet-warning-panel" class="fleet-warning-panel" aria-labelledby="fleet-warning-title">
+              <summary><span id="fleet-warning-title">Needs attention</span><span id="fleet-warning-count" class="fleet-warning-count">0 alerts</span><i class="fa fa-angle-down" aria-hidden="true"></i></summary>
+              <ul id="fleet-warning-list"><li class="health-warning critical"><span class="warning-severity">critical</span><span>Authoritative fleet health has not loaded. No inventory or health is inferred.</span></li></ul>
+            </details>
+            <p id="fleet-healthy-copy" class="fleet-healthy-copy hidden">No active fleet warnings.</p>
+          </section>
+          <div id="network-empty" class="empty hidden">
+            <div class="empty-icon"><i class="fa fa-sitemap" aria-hidden="true"></i></div>
+            <h3>Create your first private network</h3>
+            <p>Mesh generates the certificate authority and keeps its private key encrypted. Add a lighthouse next, then enroll members.</p>
+            <button class="open-network-modal">Create a network</button>
+          </div>
+          <div id="network-grid" class="network-grid"></div>
+        </section>
+        <section id="activity-view" class="hidden">
+          <div id="recovery-codes-panel" class="panel recovery-codes-panel hidden">
+            <div class="panel-heading recovery-codes-heading">
+              <div><h3>Recovery codes</h3><p>Browser-generated, one-use access for an identity-provider outage. Mesh stores only a hash.</p></div>
+              <div class="recovery-codes-actions"><span id="recovery-inventory-status" class="health-badge critical" role="status">Unavailable</span><button id="create-recovery-code" type="button">Create recovery code</button></div>
+            </div>
+            <p id="recovery-inventory-summary" class="recovery-inventory-summary">No recovery inventory is inferred until the authenticated read completes.</p>
+            <p id="recovery-codes-error" class="form-error recovery-codes-error" role="alert" aria-live="assertive"></p>
+            <div id="recovery-codes-list" class="recovery-codes-list"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-heading"><div><h3>Security activity</h3><p>Append-only lifecycle events from this control plane.</p></div></div>
+            <div id="activity-list" class="activity-list"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="recovery-code-dialog" aria-labelledby="recovery-code-dialog-title" aria-describedby="recovery-code-dialog-copy">
+    <div class="dialog-card">
+      <div class="dialog-heading"><div><p class="eyebrow">One-time custody</p><h3 id="recovery-code-dialog-title">Store this recovery code now</h3></div></div>
+      <p id="recovery-code-dialog-copy" class="dialog-copy">This plaintext exists only in this browser tab. Mesh cannot show it again.</p>
+      <div class="command recovery-code-command"><code id="recovery-code-plaintext"></code><button id="copy-recovery-code" class="copy-button" type="button">Copy</button></div>
+      <p id="recovery-code-registration-state" class="field-hint" role="status" aria-live="polite"></p>
+      <p id="recovery-code-error" class="form-error" role="alert" aria-live="assertive"></p>
+      <label class="recovery-custody-check" for="recovery-code-stored"><input id="recovery-code-stored" type="checkbox"> <span>I stored this code in an approved secure location.</span></label>
+      <div class="dialog-actions"><button id="retry-recovery-registration" type="button" class="secondary hidden">Retry registration</button><button id="download-recovery-code" type="button" class="secondary">Save text file</button><button id="finish-recovery-code" type="button" disabled>Done</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="network-dialog">
+    <form id="network-form" class="dialog-card">
+      <div class="dialog-heading"><div><p class="eyebrow">Step 1 of 3</p><h3>Create a network</h3></div><button type="button" class="icon-button close-dialog" aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button></div>
+      <p class="dialog-copy">Choose an isolated IPv4 range. Mesh creates a dedicated Nebula certificate authority for it.</p>
+      <label for="network-name">Name</label>
+      <input id="network-name" name="name" placeholder="production" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,62}" required>
+      <label for="network-cidr">Network range</label>
+      <input id="network-cidr" name="cidr" value="10.42.0.0/24" required>
+      <div class="field-hint">Use an unused private range between /16 and /28.</div>
+      <p class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">Cancel</button><button type="submit">Create network</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="retire-network-dialog" aria-labelledby="retire-network-title" aria-describedby="retire-network-copy">
+    <form id="retire-network-form" class="dialog-card retire-network-card">
+      <input type="hidden" name="network_id">
+      <input type="hidden" name="expected_config_revision">
+      <div class="dialog-heading">
+        <div><p class="eyebrow danger-eyebrow">Irreversible</p><h3 id="retire-network-title">Retire <span id="retire-network-name"></span></h3></div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close network retirement"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <div id="retire-network-copy" class="notice danger-notice">
+        This immediately removes encrypted CA and signing material, all nodes and credentials, and the network from inventory. Managed agents become unauthorized immediately and a correctly configured fail-closed agent stops Nebula no later than its local maximum config-staleness deadline (five minutes by default). Stop fail-open or unmanaged Nebula manually before continuing.
+      </div>
+      <p class="dialog-copy">The retired network name and overlapping CIDR remain permanently reserved so an old trust and address domain cannot be confused with a new network.</p>
+      <dl class="retirement-context">
+        <div><dt>Network range</dt><dd><code id="retire-network-cidr"></code></dd></div>
+        <div><dt>Current revision</dt><dd id="retire-network-revision"></dd></div>
+        <div><dt>Nodes removed</dt><dd id="retire-network-node-count"></dd></div>
+      </dl>
+      <label for="retire-confirmation">Type <strong id="retire-confirmation-name"></strong> to confirm</label>
+      <input id="retire-confirmation" name="confirmation_name" autocomplete="off" spellcheck="false" required>
+      <p class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">Cancel</button><button type="submit" class="danger-button">Retire permanently</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="node-dialog" aria-labelledby="node-dialog-title" aria-describedby="node-dialog-copy">
+    <form id="node-form" class="dialog-card">
+      <input type="hidden" name="network_id">
+      <div class="dialog-heading"><div><p id="node-dialog-eyebrow" class="eyebrow">Add a machine</p><h3 id="node-dialog-title">New node</h3></div><button type="button" class="icon-button close-dialog" aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button></div>
+      <p id="node-dialog-copy" class="dialog-copy">Create a one-time enrollment for a lighthouse or member.</p>
+      <div class="two-fields"><div><label for="node-name">Name</label><input id="node-name" name="name" placeholder="lighthouse-01" required></div><div><label for="node-role">Role</label><select id="node-role" name="role"><option value="member">Member</option><option value="lighthouse">Lighthouse</option></select></div></div>
+		<div class="two-fields"><div><label for="node-site">Site</label><input id="node-site" name="site" placeholder="aws-use1" pattern="[a-z0-9][a-z0-9._-]{0,62}" required></div><div><label for="node-failure-domain">Failure domain</label><input id="node-failure-domain" name="failure_domain" placeholder="aws-use1a" pattern="[a-z0-9][a-z0-9._-]{0,62}" required></div></div>
+		<div class="field-hint">Placement labels drive readiness only. Use a site for locality and a failure domain for infrastructure expected to fail together; neither grants firewall access.</div>
+      <div id="endpoint-field" class="hidden"><label for="node-endpoint">Public endpoint</label><input id="node-endpoint" name="public_endpoint" placeholder="vpn.example.com:4242"><div class="field-hint">Public DNS name or IP plus the external UDP port. Readiness checks DNS from this control plane; confirm UDP from an external member.</div></div>
+      <label for="node-groups">Security groups</label>
+      <input id="node-groups" name="groups" placeholder="servers, production">
+      <div class="field-hint">Comma-separated. Every node also receives the built-in <code>all</code> group.</div>
+      <label for="node-routed-subnets">Routed subnets <span class="optional-label">optional</span></label>
+      <input id="node-routed-subnets" name="routed_subnets" placeholder="192.168.50.0/24, 172.16.20.0/24" autocomplete="off">
+      <div class="field-hint">Only list non-overlay IPv4 ranges this machine directly forwards. Mesh rejects overlap with every live overlay and routed range and embeds ownership in this node's certificate. After enrollment, use the staged route-transfer workflow to move ownership safely. The gateway's inbound firewall rules apply explicitly to each listed range.</div>
+      <p class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button id="node-cancel" type="button" class="secondary close-dialog">Cancel</button><button type="submit">Create enrollment</button></div>
+    </form>
+  </dialog>
+
+	<dialog id="topology-dialog">
+		<form id="topology-form" class="dialog-card">
+			<input type="hidden" name="node_id">
+			<div class="dialog-heading"><div><p class="eyebrow">Placement metadata</p><h3>Place <span id="topology-node-name"></span></h3></div><button type="button" class="icon-button close-dialog" aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button></div>
+			<p class="dialog-copy">Placement affects readiness grouping only. It does not change the node certificate, signed Nebula configuration, or firewall access.</p>
+			<div class="two-fields"><div><label for="topology-site">Site</label><input id="topology-site" name="site" pattern="[a-z0-9][a-z0-9._-]{0,62}" required></div><div><label for="topology-failure-domain">Failure domain</label><input id="topology-failure-domain" name="failure_domain" pattern="[a-z0-9][a-z0-9._-]{0,62}" required></div></div>
+			<div class="field-hint">Examples: <code>nyc-office</code> / <code>nyc-power-a</code>, or <code>aws-use1</code> / <code>aws-use1a</code>.</div>
+			<p class="form-error" role="alert"></p>
+			<div class="dialog-actions"><button type="button" class="secondary close-dialog">Cancel</button><button type="submit">Save placement</button></div>
+		</form>
+	</dialog>
+
+  <dialog id="readiness-dialog" class="wide-dialog" aria-labelledby="readiness-dialog-title" aria-describedby="readiness-dialog-copy">
+    <div class="dialog-card wide readiness-dialog-card">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Deployment evidence</p>
+          <h3 id="readiness-dialog-title">Readiness for <span id="readiness-network-name"></span></h3>
+        </div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close deployment readiness"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <div class="readiness-heading">
+        <p id="readiness-dialog-copy" class="dialog-copy">Mesh checks what this control plane can prove and labels external network evidence separately. Checks refresh automatically every 10 seconds while this dialog is open and the page is visible.</p>
+        <span id="readiness-overall" class="health-badge critical" role="status" aria-live="polite">Unavailable</span>
+      </div>
+      <p id="readiness-generated" class="field-hint">No readiness result is inferred until the checks complete.</p>
+      <p id="readiness-error" class="form-error readiness-error" role="alert" aria-live="assertive"></p>
+      <ol id="readiness-check-list" class="readiness-check-list" aria-label="Deployment readiness checks"></ol>
+		<section id="readiness-site-section" class="readiness-site-section hidden" aria-labelledby="readiness-site-title">
+			<h4 id="readiness-site-title">Declared site groups</h4>
+			<ul id="readiness-site-list" class="readiness-site-list"></ul>
+		</section>
+      <section id="readiness-lighthouse-section" class="readiness-lighthouse-section hidden" aria-labelledby="readiness-lighthouse-title">
+        <h4 id="readiness-lighthouse-title">Lighthouse endpoint evidence</h4>
+        <ul id="readiness-lighthouse-list" class="readiness-lighthouse-list"></ul>
+      </section>
+      <div class="dialog-actions readiness-actions">
+        <button type="button" class="secondary close-dialog">Close</button>
+        <button id="readiness-add-lighthouse" type="button" class="secondary hidden">Add lighthouse</button>
+        <button id="refresh-readiness" type="button">Run checks now</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dns-dialog" aria-labelledby="dns-dialog-title" aria-describedby="dns-dialog-copy">
+    <form id="dns-form" class="dialog-card" novalidate>
+      <input type="hidden" name="network_id">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Certificate-name resolution</p>
+          <h3 id="dns-dialog-title">Network DNS for <span id="dns-network-name"></span></h3>
+        </div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close network DNS settings"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <p id="dns-dialog-copy" class="dialog-copy">Each active lighthouse can answer Nebula certificate names on its own overlay IP. Mesh never binds this responder to an underlay or wildcard address.</p>
+      <div class="dns-context" aria-label="DNS deployment context">
+        <span>Current revision <strong id="dns-current-revision">0</strong></span>
+        <span id="dns-firewall-state">Firewall access unknown</span>
+      </div>
+      <label class="dns-toggle" for="dns-enabled">
+        <input id="dns-enabled" name="enabled" type="checkbox">
+        <span><strong>Enable managed lighthouse DNS</strong><small>Deploy the responder to every active lighthouse.</small></span>
+      </label>
+      <label for="dns-listen-port">DNS UDP port</label>
+      <input id="dns-listen-port" name="listen_port" type="number" inputmode="numeric" min="1" max="65535" step="1" value="53" required>
+      <div class="field-hint">Port 53 is conventional. It must differ from this network's Nebula UDP listener. While DNS is enabled, Mesh requires an inbound UDP rule covering every managed node.</div>
+	  <label class="dns-toggle" for="dns-native-resolver">
+		<input id="dns-native-resolver" name="native_resolver" type="checkbox">
+		<span><strong>Configure Linux split DNS</strong><small>Let the managed agent resolve this network's names without changing ordinary DNS traffic.</small></span>
+	  </label>
+	  <label for="dns-search-domain">Search domain</label>
+	  <input id="dns-search-domain" name="search_domain" type="text" maxlength="253" value="mesh" spellcheck="false" autocomplete="off" placeholder="corp.mesh">
+	  <div class="field-hint">A node named <code>api</code> becomes <code>api.corp.mesh</code>. The current packaged Linux agent applies and removes this per-interface setting; <code>.local</code> is not allowed.</div>
+      <section class="dns-resolvers" aria-labelledby="dns-resolvers-title">
+        <h4 id="dns-resolvers-title">Resolver addresses</h4>
+		<p class="field-hint">These are the authenticated Nebula upstreams. With Linux split DNS enabled, the managed agent configures them automatically; otherwise configure a host resolver separately.</p>
+        <ul id="dns-resolver-list"></ul>
+      </section>
+      <p id="dns-error" class="form-error" role="alert" aria-live="assertive"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary close-dialog">Cancel</button>
+        <button id="save-dns" type="submit">Save and deploy</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="relay-dialog" aria-labelledby="relay-dialog-title" aria-describedby="relay-dialog-copy">
+    <form id="relay-form" class="dialog-card" novalidate>
+      <input type="hidden" name="network_id">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Difficult-path connectivity</p>
+          <h3 id="relay-dialog-title">Network relays for <span id="relay-network-name"></span></h3>
+        </div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close network relay settings"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <p id="relay-dialog-copy" class="dialog-copy">Selected machines accept Slack Nebula relay traffic when peers cannot establish a direct tunnel. Relay support is experimental upstream.</p>
+      <div class="dns-context" aria-label="Relay deployment context">
+        <span>Current revision <strong id="relay-current-revision">0</strong></span>
+        <span id="relay-active-state">Active relays unknown</span>
+      </div>
+      <label class="dns-toggle" for="relay-enabled">
+        <input id="relay-enabled" name="enabled" type="checkbox">
+        <span><strong>Enable managed Nebula relays</strong><small>Deploy relay-server configuration to the selected managed nodes and advertise active selections to the rest of the network.</small></span>
+      </label>
+      <fieldset id="relay-candidates" class="relay-candidates">
+        <legend>Relay machines <span id="relay-selection-count">0 of 8 selected</span></legend>
+        <p class="field-hint">Choose 1–8 pending or active machines. Pending selections begin relaying only after enrollment. A relay must be directly reachable by both peers; Mesh configures Nebula but cannot prove Internet-edge reachability.</p>
+        <div id="relay-candidate-list"></div>
+      </fieldset>
+      <section class="dns-resolvers" aria-labelledby="active-relays-title">
+        <h4 id="active-relays-title">Active relay addresses</h4>
+        <ul id="relay-active-list"></ul>
+      </section>
+      <p id="relay-error" class="form-error" role="alert" aria-live="assertive"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary close-dialog">Cancel</button>
+        <button id="save-relays" type="submit">Save and deploy</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="ca-rotation-dialog" aria-labelledby="ca-rotation-dialog-title" aria-describedby="ca-rotation-dialog-copy">
+    <div class="dialog-card wide ca-rotation-card">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Certificate authority lifecycle</p>
+          <h3 id="ca-rotation-dialog-title">CA rotation for <span id="ca-rotation-network-name"></span></h3>
+        </div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close CA rotation"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <p id="ca-rotation-dialog-copy" class="dialog-copy">Mesh distributes overlapping trust, waits for every active node, reissues certificates under the replacement CA, and removes the old root only after convergence.</p>
+      <div class="policy-context" aria-label="CA rotation status">
+        <span>Phase <strong id="ca-rotation-phase">Unavailable</strong></span>
+        <span>Revision <strong id="ca-rotation-revision">—</strong></span>
+        <span>Converged <strong id="ca-rotation-convergence">—</strong></span>
+        <span>Recovery replays <strong id="ca-rotation-recoveries">—</strong></span>
+      </div>
+      <section class="ca-rotation-explainer" aria-labelledby="ca-rotation-next-title">
+        <h4 id="ca-rotation-next-title">Next safe action</h4>
+        <p id="ca-rotation-next-copy">Authoritative rotation state has not loaded.</p>
+      </section>
+      <dl class="ca-rotation-digests">
+        <div><dt>Current trust bundle</dt><dd><code id="ca-rotation-current-digest">—</code></dd></div>
+        <div><dt>Replacement CA</dt><dd><code id="ca-rotation-target-digest">Not prepared</code></dd></div>
+      </dl>
+      <section aria-labelledby="ca-rotation-nodes-title">
+        <h4 id="ca-rotation-nodes-title">Active-node convergence</h4>
+        <ul id="ca-rotation-node-list" class="readiness-check-list"></ul>
+      </section>
+      <p id="ca-rotation-error" class="form-error" role="alert" aria-live="assertive"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary close-dialog">Close</button>
+        <button id="ca-rotation-abort" type="button" class="secondary hidden">Abort preparation</button>
+        <button id="ca-rotation-primary" type="button" class="hidden">Prepare replacement CA</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="route-transfer-dialog" aria-labelledby="route-transfer-dialog-title" aria-describedby="route-transfer-dialog-copy">
+    <div class="dialog-card wide ca-rotation-card">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Routed-subnet lifecycle</p>
+          <h3 id="route-transfer-dialog-title">Transfer routes in <span id="route-transfer-network-name"></span></h3>
+        </div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close routed-subnet transfer"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <p id="route-transfer-dialog-copy" class="dialog-copy">Move exact unsafe routes to a replacement gateway without publishing the new owner until its certificate and signed configuration are proven active.</p>
+      <div class="policy-context" aria-label="Route transfer status">
+        <span>Phase <strong id="route-transfer-phase">Loading</strong></span>
+        <span>Revision <strong id="route-transfer-revision">—</strong></span>
+        <span>Source <strong id="route-transfer-source-status">—</strong></span>
+        <span>Target <strong id="route-transfer-target-status">—</strong></span>
+      </div>
+      <section class="ca-rotation-explainer" aria-labelledby="route-transfer-next-title">
+        <h4 id="route-transfer-next-title">Next safe action</h4>
+        <p id="route-transfer-next-copy">Authoritative transfer state has not loaded.</p>
+      </section>
+      <form id="route-transfer-form" class="route-transfer-form hidden" novalidate>
+        <div class="route-transfer-gateways">
+          <div>
+            <label for="route-transfer-source">Current gateway</label>
+            <select id="route-transfer-source" name="source_node_id" required></select>
+          </div>
+          <div>
+            <label for="route-transfer-target">Replacement gateway</label>
+            <select id="route-transfer-target" name="target_node_id" required></select>
+          </div>
+        </div>
+        <fieldset id="route-transfer-routes" class="relay-candidates">
+          <legend>Exact routes to move</legend>
+          <p class="field-hint">The current gateway remains published until the replacement reports its expanded Nebula certificate and signed config.</p>
+          <div id="route-transfer-route-list"></div>
+        </fieldset>
+      </form>
+      <ul id="route-transfer-node-list" class="readiness-check-list" aria-label="Route transfer convergence"></ul>
+      <p id="route-transfer-error" class="form-error" role="alert" aria-live="assertive"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary close-dialog">Close</button>
+        <button id="route-transfer-cancel" type="button" class="secondary hidden">Cancel transfer</button>
+        <button id="route-transfer-primary" type="button" class="hidden">Start safe transfer</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="route-profile-dialog" aria-labelledby="route-profile-dialog-title" aria-describedby="route-profile-dialog-copy">
+    <div class="dialog-card wide ca-rotation-card">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Gateway authorization</p>
+          <h3 id="route-profile-dialog-title">Edit routes for <span id="route-profile-node-name"></span></h3>
+        </div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close routed-subnet profile editor"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <p id="route-profile-dialog-copy" class="dialog-copy">Replace this gateway’s complete routed-subnet set safely. Additions are installed in its Nebula certificate before peers publish them; removals stop routing first and then leave the certificate.</p>
+      <div class="policy-context" aria-label="Route profile edit status">
+        <span>Phase <strong id="route-profile-phase">Loading</strong></span>
+        <span>Revision <strong id="route-profile-revision">—</strong></span>
+        <span>Certificate <strong id="route-profile-certificate-status">—</strong></span>
+      </div>
+      <section class="ca-rotation-explainer" aria-labelledby="route-profile-next-title">
+        <h4 id="route-profile-next-title">Next safe action</h4>
+        <p id="route-profile-next-copy">Authoritative route-profile state has not loaded.</p>
+      </section>
+      <form id="route-profile-form" class="route-transfer-form hidden" novalidate>
+        <label for="route-profile-subnets">Complete routed-subnet set</label>
+        <textarea id="route-profile-subnets" name="routed_subnets" rows="5" maxlength="512" spellcheck="false" placeholder="192.168.50.0/24"></textarea>
+        <p class="field-hint">Enter up to eight canonical IPv4 CIDRs, separated by commas or new lines. Leave empty to remove every routed subnet.</p>
+      </form>
+      <dl class="ca-rotation-digests">
+        <div><dt>Additions</dt><dd><code id="route-profile-additions">—</code></dd></div>
+        <div><dt>Removals</dt><dd><code id="route-profile-removals">—</code></dd></div>
+      </dl>
+      <ul id="route-profile-node-list" class="readiness-check-list" aria-label="Route profile convergence"></ul>
+      <p id="route-profile-error" class="form-error" role="alert" aria-live="assertive"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary close-dialog">Close</button>
+        <button id="route-profile-cancel" type="button" class="secondary hidden">Cancel edit</button>
+        <button id="route-profile-primary" type="button" class="hidden">Start safe edit</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="route-policies-dialog" aria-labelledby="route-policies-dialog-title" aria-describedby="route-policies-dialog-copy">
+    <div class="dialog-card wide ca-rotation-card">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Weighted resilient routing</p>
+          <h3 id="route-policies-dialog-title">Route policies for <span id="route-policies-network-name"></span></h3>
+        </div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close route policy editor"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <p id="route-policies-dialog-copy" class="dialog-copy">Nebula hashes transport-port pairs across the relative gateway weights. If the selected gateway is unreachable, it tries another configured gateway; this fallback preserves connectivity but is not health-aware weight recalculation.</p>
+      <div class="policy-context" aria-label="Route policy deployment context">
+        <span>Current revision <strong id="route-policies-revision">—</strong></span>
+        <span>System route installation <strong>Required</strong></span>
+      </div>
+      <p id="route-policies-empty" class="field-hint hidden">No active routed prefix exists yet. Add the first prefix with a node’s <strong>Edit routes</strong> action; use that same certificate-first workflow to join another active gateway to an exact prefix.</p>
+      <div id="route-policies-editor" class="hidden">
+        <label for="route-policies-prefix">Routed prefix</label>
+        <select id="route-policies-prefix"></select>
+        <fieldset class="relay-candidates">
+          <legend>Authoritative gateways and relative weights</legend>
+          <p class="field-hint">Membership comes from proven Nebula certificate profiles and cannot be changed here. A 3:1 pair targets approximately 75% and 25% of distinct port-pair hashes.</p>
+          <div id="route-policies-gateways" class="route-policy-gateways"></div>
+        </fieldset>
+        <div class="two-fields">
+          <div><label for="route-policies-mtu">Route MTU</label><input id="route-policies-mtu" type="number" min="0" max="65535" step="1"><div class="field-hint">0 inherits the tunnel MTU; otherwise use 500–65535. Route MTU is enforced by Nebula on supported operating systems.</div></div>
+          <div><label for="route-policies-metric">Host-route metric</label><input id="route-policies-metric" type="number" min="0" max="2147483647" step="1"><div class="field-hint">0 uses Nebula’s default. Lower host metrics are generally preferred by the operating system.</div></div>
+        </div>
+        <p id="route-policies-receipt" class="field-hint"></p>
+      </div>
+      <p id="route-policies-error" class="form-error" role="alert" aria-live="assertive"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary close-dialog">Close</button>
+        <button id="save-route-policy" type="button" disabled>Save and deploy</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="policy-dialog" aria-labelledby="policy-dialog-title" aria-describedby="policy-dialog-copy">
+    <form id="policy-form" class="dialog-card policy-dialog-card" novalidate>
+      <input type="hidden" name="network_id">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Least-privilege access</p>
+          <h3 id="policy-dialog-title">Firewall policy for <span id="policy-network-name"></span></h3>
+        </div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close firewall policy editor"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <p id="policy-dialog-copy" class="dialog-copy">Rules are default-deny. Preview a change, apply it to selected canaries, and promote only after those agents prove the exact signed configuration is running.</p>
+      <div class="policy-context" aria-label="Policy deployment context">
+        <span><strong id="policy-node-count">0</strong> active nodes affected</span>
+        <span>Policy <strong id="policy-mode">Managed</strong></span>
+        <span>Current revision <strong id="policy-current-revision">0</strong></span>
+        <span>Preview revision <strong id="policy-next-revision">—</strong></span>
+      </div>
+
+      <section id="policy-rollout-panel" class="policy-rollout-panel" aria-labelledby="policy-rollout-title">
+        <div class="policy-rollout-heading">
+          <div>
+            <h4 id="policy-rollout-title">Staged rollout</h4>
+            <p id="policy-rollout-copy">Loading authoritative rollout state…</p>
+          </div>
+          <div class="policy-rollout-status" aria-label="Firewall rollout status">
+            <span>Phase <strong id="policy-rollout-phase">Loading</strong></span>
+            <span>Canaries <strong id="policy-rollout-convergence">—</strong></span>
+          </div>
+        </div>
+        <p id="policy-rollout-guards" class="field-hint">Automatic rollback guards are loading…</p>
+        <p id="policy-rollout-notice" class="policy-rollout-notice hidden" role="alert"></p>
+        <fieldset id="policy-canary-selection" class="policy-canary-selection">
+          <legend>Select canary nodes</legend>
+          <p>Choose 1–16 active nodes with a recovery path you can observe. Other nodes retain the current policy until promotion.</p>
+          <div id="policy-canary-list" class="policy-canary-list"></div>
+          <span id="policy-canary-count" class="field-hint">0 selected</span>
+        </fieldset>
+        <ul id="policy-rollout-node-list" class="readiness-check-list hidden" aria-label="Firewall canary convergence"></ul>
+        <div id="policy-rollout-actions" class="policy-rollout-actions hidden">
+          <button id="rollback-policy" type="button" class="secondary">Roll back canaries</button>
+          <button id="pause-policy" type="button" class="secondary">Pause rollout</button>
+          <button id="resume-policy" type="button">Resume rollout</button>
+          <button id="promote-policy" type="button">Promote to every node</button>
+        </div>
+      </section>
+
+      <div id="policy-warnings" class="policy-warnings hidden" role="status" aria-live="polite">
+        <strong>Review access and reachability</strong>
+        <ul id="policy-warning-list"></ul>
+      </div>
+
+      <fieldset class="policy-direction">
+        <legend>Inbound rules</legend>
+        <div class="policy-direction-heading">
+          <div>
+            <p>Traffic that these nodes accept from peers.</p>
+          </div>
+          <button id="add-inbound-rule" type="button" class="secondary policy-add-rule"><i class="fa fa-plus" aria-hidden="true"></i> Add inbound rule</button>
+        </div>
+        <div id="policy-inbound-rules" class="policy-rule-list"></div>
+        <p id="policy-inbound-empty" class="policy-empty">No inbound traffic is allowed.</p>
+      </fieldset>
+
+      <fieldset class="policy-direction">
+        <legend>Outbound rules</legend>
+        <div class="policy-direction-heading">
+          <div>
+            <p>Traffic that these nodes may send to peers.</p>
+          </div>
+          <button id="add-outbound-rule" type="button" class="secondary policy-add-rule"><i class="fa fa-plus" aria-hidden="true"></i> Add outbound rule</button>
+        </div>
+        <div id="policy-outbound-rules" class="policy-rule-list"></div>
+        <p id="policy-outbound-empty" class="policy-empty">No outbound traffic is allowed.</p>
+      </fieldset>
+
+      <div id="policy-preview" class="policy-preview hidden" aria-live="polite">
+        <strong id="policy-preview-title">Preview ready</strong>
+        <p id="policy-preview-summary"></p>
+        <div id="policy-effective-preview" class="policy-effective-preview"></div>
+        <details id="policy-rendered" class="policy-rendered">
+          <summary>Rendered Nebula firewall</summary>
+          <pre><code id="policy-rendered-firewall"></code></pre>
+        </details>
+      </div>
+      <p id="policy-error" class="form-error policy-error" role="alert" tabindex="-1"></p>
+      <div class="dialog-actions policy-actions">
+        <button type="button" class="secondary close-dialog">Cancel</button>
+        <button id="preview-policy" type="button" class="secondary">Preview changes</button>
+        <button id="save-policy" type="submit" disabled>Start canary rollout</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="policy-rule-template">
+    <fieldset class="policy-rule">
+      <legend class="visually-hidden policy-rule-legend">Firewall rule</legend>
+      <div class="policy-field policy-protocol-field">
+        <label>Protocol</label>
+        <select data-policy-field="proto">
+          <option value="any">Any</option>
+          <option value="tcp">TCP</option>
+          <option value="udp">UDP</option>
+          <option value="icmp">ICMP</option>
+        </select>
+      </div>
+      <div class="policy-field policy-port-kind-field">
+        <label>Ports</label>
+        <select data-policy-field="port-kind">
+          <option value="any">Any</option>
+          <option value="single">Single</option>
+          <option value="range">Range</option>
+        </select>
+      </div>
+      <div class="policy-field policy-port-start-field hidden">
+        <label>Port</label>
+        <input data-policy-field="port-start" type="number" inputmode="numeric" min="1" max="65535" step="1" placeholder="443">
+      </div>
+      <div class="policy-field policy-port-end-field hidden">
+        <label>End port</label>
+        <input data-policy-field="port-end" type="number" inputmode="numeric" min="1" max="65535" step="1" placeholder="8443">
+      </div>
+      <div class="policy-field policy-selector-kind-field">
+        <label>Peer selector</label>
+        <select data-policy-field="selector-kind">
+          <option value="any">Any peer</option>
+          <option value="group">Security group</option>
+          <option value="node">Named node</option>
+          <option value="host">IPv4 host or CIDR</option>
+        </select>
+      </div>
+      <div class="policy-field policy-selector-value-field hidden">
+        <label>Selector value</label>
+        <input data-policy-field="selector-value" autocomplete="off">
+        <span class="field-hint policy-selector-hint"></span>
+      </div>
+      <div class="policy-field policy-selector-node-field hidden">
+        <label>Peer node</label>
+        <select data-policy-field="selector-node"></select>
+        <span class="field-hint">Resolved to the node’s current overlay IP.</span>
+      </div>
+      <div class="policy-field policy-target-kind-field">
+        <label>Applies on</label>
+        <select data-policy-field="target-kind">
+          <option value="all">Every node</option>
+          <option value="group">Node group</option>
+          <option value="node">One node</option>
+        </select>
+      </div>
+      <div class="policy-field policy-target-group-field hidden">
+        <label>Local node group</label>
+        <input data-policy-field="target-group" autocomplete="off" placeholder="servers">
+        <span class="field-hint">Rule is installed only on nodes carrying this group.</span>
+      </div>
+      <div class="policy-field policy-target-node-field hidden">
+        <label>Local node</label>
+        <select data-policy-field="target-node"></select>
+        <span class="field-hint">Rule is installed only on this node.</span>
+      </div>
+      <button type="button" class="icon-button policy-remove-rule" aria-label="Remove firewall rule"><i class="fa fa-times" aria-hidden="true"></i></button>
+    </fieldset>
+  </template>
+
+  <dialog id="node-security-dialog" class="wide-dialog" aria-labelledby="node-security-title">
+    <div class="dialog-card wide node-security-card">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">Node trust and reachability</p><h3 id="node-security-title">Security &amp; access for <span id="node-security-name"></span></h3></div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close node security and access"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <p class="dialog-copy">See the exact firewall compiled for this node and safely change certificate-bound group membership.</p>
+      <div class="node-security-summary" aria-label="Node security status">
+        <div><span>Overlay address</span><strong id="node-security-ip">—</strong></div>
+        <div><span>Signed config</span><strong id="node-security-config">—</strong></div>
+        <div><span>Certificate</span><strong id="node-security-certificate">—</strong></div>
+        <div><span>Runtime</span><strong id="node-security-runtime">—</strong></div>
+      </div>
+
+      <section class="node-security-section" aria-labelledby="node-groups-title">
+        <div class="node-security-section-heading"><div><h4 id="node-groups-title">Certificate groups</h4><p>Groups authorize peer rules and can target rules installed on this node.</p></div></div>
+        <div id="node-security-current-groups" class="security-group-chips"></div>
+        <form id="node-groups-form" novalidate>
+          <label for="node-security-groups">Group memberships</label>
+          <input id="node-security-groups" autocomplete="off" placeholder="operators, servers">
+          <p class="field-hint"><code>all</code> is always included. Use comma-separated names containing letters, numbers, underscores, or hyphens.</p>
+          <div class="notice warning-notice node-group-warning">Saving signs a same-key replacement certificate, blocklists the current certificate through expiry, invalidates outstanding recovery tokens, and deploys one new signed configuration revision.</div>
+          <label for="node-security-confirmation">Type <strong id="node-security-confirmation-name"></strong> to confirm</label>
+          <input id="node-security-confirmation" autocomplete="off" spellcheck="false">
+          <p id="node-security-groups-error" class="form-error" role="alert"></p>
+          <div class="dialog-actions"><button id="save-node-groups" type="submit">Replace certificate &amp; save groups</button></div>
+        </form>
+      </section>
+
+      <section class="node-security-section" aria-labelledby="node-effective-policy-title">
+        <div class="node-security-section-heading">
+          <div><h4 id="node-effective-policy-title">Effective firewall</h4><p>The final rules after node/group targets and named peers are resolved.</p></div>
+          <button id="edit-node-policy" type="button" class="secondary">Edit policy for this node</button>
+        </div>
+        <div id="node-effective-policy" class="node-effective-policy"><p class="field-hint">Loading effective policy…</p></div>
+      </section>
+
+      <section class="node-security-section" aria-labelledby="node-security-audit-title">
+        <div class="node-security-section-heading"><div><h4 id="node-security-audit-title">Recent audit history</h4><p>Security changes recorded for this node.</p></div></div>
+        <ol id="node-security-audit" class="node-security-audit"><li>Loading audit history…</li></ol>
+      </section>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">Close</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="enroll-dialog" class="wide-dialog">
+    <div class="dialog-card wide">
+      <div class="dialog-heading"><div><p class="eyebrow">One-time credential</p><h3>Enroll <span id="enroll-node-name"></span></h3></div><button type="button" class="icon-button close-dialog" aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button></div>
+      <div class="notice">This token is displayed once and expires in 30 minutes. The node creates its private key locally; Mesh never receives it.</div>
+      <div class="command-steps">
+        <section id="install-step" class="command-step">
+          <span class="command-step-number" aria-hidden="true">1</span>
+          <h4>Install authenticated binaries</h4>
+          <p id="bootstrap-handoff-guidance" class="field-hint hidden">Bootstrap courier handoff (location only): <a id="bootstrap-handoff-link" target="_blank" rel="noopener noreferrer"></a>. Before trusting any root, verifier, or installer, use your independently transferred bootstrap anchor (preferred) or compare this handoff's exact SHA-256 with the value from your operator's independent channel. This dashboard, the origin, and TLS cannot supply that authority.</p>
+          <p id="bootstrap-handoff-unavailable" class="field-hint">No bootstrap handoff courier is configured. Obtain the handoff plus an independently transferred bootstrap anchor (preferred), or its exact SHA-256, through your operator workflow; this dashboard cannot supply bootstrap trust.</p>
+          <p class="command-label">Download <code>mesh-install</code> through an independently authenticated channel. This Mesh server and the displayed release URL provide location only; neither supplies bootstrap trust. Then run:</p>
+          <div id="install-command-row" class="command"><code id="install-command"></code><button id="copy-install-command" type="button" class="copy-button">Copy</button></div>
+          <p id="install-unavailable" class="install-unavailable-copy hidden">Online installation is not configured on this server. Independently authenticate the bootstrap binary, then use the supported offline snapshot workflow before continuing.</p>
+        </section>
+        <section class="command-step">
+          <span class="command-step-number" aria-hidden="true">2</span>
+          <h4>Enroll this node</h4>
+          <p class="command-label">Run on the new machine. Before generating keys or consuming the token, Mesh checks that this host's non-default routes do not collide with the overlay (Linux) and that its resolver can reach every required lighthouse DNS name. This does not claim public UDP reachability. The prompt keeps the token out of shell arguments and the privileged process environment:</p>
+          <div class="command"><code id="enroll-command"></code><button id="copy-enroll-command" type="button" class="copy-button">Copy</button></div>
+        </section>
+        <section class="command-step">
+          <span class="command-step-number" aria-hidden="true">3</span>
+          <h4>Activate lifecycle management</h4>
+          <p class="command-label">Activate only after enrollment succeeds. The lifecycle agent gates Nebula startup on fresh signed state:</p>
+          <div class="command"><code id="activate-command"></code><button id="copy-activate-command" type="button" class="copy-button">Copy</button></div>
+        </section>
+      </div>
+      <details><summary>Enrollment token</summary><code id="enroll-token" class="token"></code></details>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">Done</button><button id="enroll-next" type="button" class="hidden">Continue</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="recovery-dialog" class="wide-dialog">
+    <div class="dialog-card wide">
+      <div class="dialog-heading"><div><p class="eyebrow">One-time credential reset</p><h3>Recover <span id="recovery-node-name"></span></h3></div><button type="button" class="icon-button close-dialog" aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button></div>
+      <div class="notice warning-notice">This token is displayed once and expires in 30 minutes. Issuing it does not invalidate the node's current agent credential. That credential is replaced only after this recovery succeeds.</div>
+      <p class="command-label">Run on the enrolled node. This stops the lifecycle agent, proves Nebula is quarantined, stages only signed recovered state, then restarts the lifecycle agent on success:</p>
+      <div class="command"><code id="recovery-command"></code><button id="copy-recovery-command" type="button" class="copy-button">Copy</button></div>
+      <p class="field-hint command-hint">For a transient or ambiguous pending exchange, or an authenticated pending-bearer conflict, rerun the same <code>recover-agent</code> invocation with <code>--resume</code> and no token; the private state journal supplies the exact pending values. If the command says the pending recovery token was rejected or expired, use <strong>Recover agent</strong> again to issue a replacement token, then rerun the normal prompted command with that new token. The client safely probes the old pending bearer before replacing its journal. If the reset is durably committed but activation failed, start <code>mesh-agent.service</code> to retry fail-closed sync or renewal. Nebula remains quarantined throughout every path.</p>
+      <details open><summary>Agent recovery token · expires <span id="recovery-expires-at"></span></summary><code id="recovery-token" class="token"></code></details>
+      <div class="dialog-actions"><button type="button" class="close-dialog">Done</button></div>
+    </div>
+  </dialog>
+
+  <script src="/health.js" defer></script>
+  <script src="/setup-guide.js" defer></script>
+  <script src="/runtime-telemetry.js" defer></script>
+  <script src="/readiness.js" defer></script>
+  <script src="/install-guide.js" defer></script>
+  <script src="/dns-settings.js" defer></script>
+  <script src="/relay-settings.js" defer></script>
+  <script src="/ca-rotation.js" defer></script>
+  <script src="/route-transfer.js" defer></script>
+  <script src="/route-profile.js" defer></script>
+  <script src="/route-policies.js" defer></script>
+  <script src="/firewall-rollout.js" defer></script>
+  <script src="/certificate-rotation.js" defer></script>
+  <script src="/node-revocation.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

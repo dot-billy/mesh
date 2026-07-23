@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="A practical guide for network operators, administrators, and read-only reviewers using the Mesh control plane.">
+  <title>Mesh documentation · Mesh</title>
+  <link rel="stylesheet" href="/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/docs.css">
+</head>
+<body>
+  <a class="skip-link" href="#documentation">Skip to documentation</a>
+  <header class="docs-header">
+    <a class="docs-brand" href="/" aria-label="Return to Mesh">
+      <span class="docs-mark" aria-hidden="true">M</span>
+      <span>Mesh</span>
+    </a>
+    <nav aria-label="Documentation sections">
+          <a href="#concepts">Networks and node roles</a>
+          <a href="#enrollment">Enrollment and lifecycle</a>
+          <a href="#firewall">Firewall rules and groups</a>
+          <a href="#connectivity">DNS, relays, and routed networks</a>
+          <a href="#security">Identity and security operations</a>
+          <a href="#operations">Readiness, backup, and retirement</a>
+          <a href="#troubleshooting">Troubleshooting checklist</a>
+    </nav>
+    <div class="docs-header-actions">
+      <a class="docs-api-link" href="/api-docs.html">API reference</a>
+      <a class="docs-app-link" href="/">Open control plane</a>
+    </div>
+  </header>
+
+  <main id="documentation">
+    <section class="docs-hero">
+      <p class="eyebrow">Public documentation</p>
+      <h1>Operate private Nebula networks with clear, safe workflows.</h1>
+      <p>A practical guide for network operators, administrators, and read-only reviewers using the Mesh control plane.</p>
+      <div class="docs-hero-actions">
+        <a class="primary-action" href="#quick-start">Start with the rollout checklist</a>
+        <a class="secondary-action" href="#troubleshooting">Troubleshoot a node</a>
+      </div>
+    </section>
+
+    <section id="quick-start" class="docs-quick-start" aria-labelledby="quick-start-title">
+      <div class="docs-section-heading">
+        <p class="eyebrow">Recommended path</p>
+        <h2 id="quick-start-title">Build a healthy network</h2>
+        <p>Follow this order for a new environment. Each stage creates evidence needed by the next.</p>
+      </div>
+      <div class="quick-step-grid">
+          <article class="quick-step">
+            <span class="quick-step-number">1</span>
+            <h3>Create the network</h3>
+            <p>Choose a private IPv4 range that does not overlap any site, cloud, container, or existing overlay range. Mesh creates and encrypts a dedicated Nebula certificate authority.</p>
+          </article>
+          <article class="quick-step">
+            <span class="quick-step-number">2</span>
+            <h3>Deploy two lighthouses</h3>
+            <p>Place lighthouses in different failure domains, give each a stable public UDP endpoint, enroll them, and wait until both are operational.</p>
+          </article>
+          <article class="quick-step">
+            <span class="quick-step-number">3</span>
+            <h3>Enroll members</h3>
+            <p>Create one enrollment per machine. Deliver the bootstrap trust anchor independently, run the supported installer on the target host, and never paste enrollment secrets into tickets or chat.</p>
+          </article>
+          <article class="quick-step">
+            <span class="quick-step-number">4</span>
+            <h3>Verify before rollout</h3>
+            <p>Run deployment readiness, confirm heartbeat freshness and active probes, test real overlay traffic, then add firewall, DNS, relay, and routed-subnet policy in small canaries.</p>
+          </article>
+      </div>
+    </section>
+
+      <section id="concepts" class="docs-section" aria-labelledby="concepts-title">
+        <div class="docs-section-heading">
+          <p class="eyebrow">Operator guide</p>
+          <h2 id="concepts-title">Networks and node roles</h2>
+          <p>Mesh manages a Nebula trust domain, its signed configuration, and the lifecycle of every enrolled machine.</p>
+        </div>
+        <div class="docs-topic-grid">
+          <article class="docs-topic">
+            <h3>Network</h3>
+            <p>A network owns one overlay CIDR, certificate authority, configuration-signing identity, firewall policy, DNS policy, relay policy, and route policy. Retiring a network destroys its active authority and is irreversible.</p>
+            <ul class="docs-list">
+              <li>Use a unique RFC1918 range between /16 and /28.</li>
+              <li>Treat the network name and CIDR as long-lived identity.</li>
+              <li>Create separate networks when machines must not share trust.</li>
+            </ul>
+          </article>
+          <article class="docs-topic">
+            <h3>Lighthouse</h3>
+            <p>A lighthouse provides Nebula discovery and can also provide managed DNS or relay service when those features are enabled.</p>
+            <ul class="docs-list">
+              <li>Use at least two operational lighthouses.</li>
+              <li>Place them in separate infrastructure failure domains.</li>
+              <li>Expose the configured UDP port through every cloud and host firewall.</li>
+            </ul>
+          </article>
+          <article class="docs-topic">
+            <h3>Member</h3>
+            <p>A member is an ordinary endpoint or server in the overlay. Members can belong to security groups and may optionally advertise routed subnets.</p>
+            <ul class="docs-list">
+              <li>Groups control policy targeting; site and failure-domain labels control readiness placement.</li>
+              <li>A gateway is a member with routed-subnet ownership.</li>
+              <li>Node names should remain stable and meaningful to operators.</li>
+            </ul>
+          </article>
+          <article class="docs-topic docs-topic-wide">
+            <h3>Use the operations workspace</h3>
+            <p>The authenticated control plane separates fleet posture from network-level work so operators can identify risk first, then act in the correct trust domain.</p>
+            <ul class="docs-list">
+              <li>Networks opens the fleet overview, rollout convergence, and the network directory. Expand Needs attention to review the complete authoritative alert list without letting long incident detail obscure the rest of the fleet.</li>
+              <li>Open a network row to enter its topology-first workspace. The next-action panel guides incomplete setup, while Manage nodes exposes lifecycle detail without crowding the primary view.</li>
+              <li>Use Settings inside the selected network for readiness, DNS, relays, firewall, routing, certificate-authority, and retirement workflows. Available actions remain limited by the signed-in Viewer, Operator, or Admin role.</li>
+              <li>Activity contains append-only security events and, when enabled and permitted, recovery-code administration.</li>
+              <li>On smaller screens, the primary destinations remain available in the labeled bottom navigation. Keyboard users can use the skip link to move directly to the control-plane content.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+      <section id="enrollment" class="docs-section" aria-labelledby="enrollment-title">
+        <div class="docs-section-heading">
+          <p class="eyebrow">Operator guide</p>
+          <h2 id="enrollment-title">Enrollment and lifecycle</h2>
+          <p>Enrollment is intentionally one-time. The target generates its private key locally and Mesh returns signed, versioned runtime configuration.</p>
+        </div>
+        <div class="docs-topic-grid">
+          <article class="docs-topic">
+            <h3>Enroll a machine</h3>
+            <p>Create the node in Mesh, copy the one-time enrollment command to the intended machine, and activate the managed agent and Nebula service.</p>
+            <ol class="docs-steps">
+              <li>Create a node with the correct role, site, failure domain, endpoint, groups, and routed subnets.</li>
+              <li>Transfer the independent bootstrap trust anchor through an operator-approved channel.</li>
+              <li>Run the displayed install and enrollment command on the target host.</li>
+              <li>Confirm the agent and Nebula service are active.</li>
+              <li>Verify the node is operational and can exchange real overlay packets.</li>
+            </ol>
+            <aside class="docs-note warning">
+              <strong>Protect enrollment material</strong>
+              <p>An enrollment token is a short-lived secret for exactly one node. Reissue it if delivery is uncertain; the previous token becomes invalid.</p>
+            </aside>
+          </article>
+          <article class="docs-topic">
+            <h3>Replace or recover a node</h3>
+            <p>Use agent recovery when the host identity is intact but its control credential is lost. Use identity replacement when the private key or host identity may be compromised.</p>
+            <ul class="docs-list">
+              <li>Recovery rotates the agent credential and keeps the existing certificate identity.</li>
+              <li>Identity replacement revokes the old node and creates a new one-time enrollment with a new overlay address.</li>
+              <li>Certificate rotation issues a new certificate for the existing node identity.</li>
+              <li>Archive only after revocation and certificate-safety checks permit it.</li>
+            </ul>
+          </article>
+          <article class="docs-topic docs-topic-wide">
+            <h3>Revoke a node</h3>
+            <p>Use Revoke for a permanent trust cutoff when an active machine is retired, lost, or no longer authorized. Only an administrator with node-security permission can perform this irreversible operation.</p>
+            <ul class="docs-list">
+              <li>Mesh invalidates the node&#x27;s enrollment, agent, and recovery credentials.</li>
+              <li>Every still-valid certificate issued to the node is added to the signed Nebula blocklist through its recorded expiry.</li>
+              <li>Relay and firewall-canary assignments are removed safely, routed-subnet ownership is released, and the network advances exactly one signed configuration revision.</li>
+              <li>Keep every peer on supported Nebula 1.10.3 or newer; older vulnerable releases do not meet Mesh&#x27;s blocklist security boundary.</li>
+            </ul>
+            <ol class="docs-steps">
+              <li>Cancel a never-enrolled pending node instead. Use Rotate certificate for a routine same-key replacement, or Replace identity when the private key is lost or may be compromised.</li>
+              <li>Finish or cancel any route transition involving the node; Mesh refuses revocation while that node participates in a route transfer or route-profile change.</li>
+              <li>Open the network, locate the active node, choose Revoke, review the permanent impact, and confirm the selected node. Mesh binds the request to the exact node, current signed revision, and one idempotency key.</li>
+              <li>Wait for the node to show Revoked and for operational managed peers to apply the new configuration revision. If the response was interrupted, use Verify revocation to replay the exact request without performing a second trust cutoff.</li>
+              <li>From an updated managed peer, verify that the revoked machine can no longer establish a Nebula handshake or exchange application traffic. A heartbeat or inventory status alone is not packet-level proof.</li>
+              <li>After the latest certificate expiry plus the five-minute safety margin, use Archive record to remove expired issuance and blocklist history. Archival does not undo revocation; reuse requires a fresh node ID and one-time enrollment.</li>
+            </ol>
+            <aside class="docs-note warning">
+              <strong>Revocation cannot be undone</strong>
+              <p>Do not use revocation as a temporary disable switch. A stale, unmanaged, or fail-open peer that has not applied the signed blocklist may continue trusting the old certificate; update or isolate that peer before treating the cutoff as complete.</p>
+            </aside>
+          </article>
+          <article class="docs-topic">
+            <h3>Health and heartbeat meaning</h3>
+            <p>A fresh authenticated heartbeat proves lifecycle contact with the managed agent. It does not by itself prove that arbitrary peers can exchange application traffic.</p>
+            <ul class="docs-list">
+              <li>Operational means desired signed state, certificate generation, agent status, and Nebula runtime have converged.</li>
+              <li>Active probes provide stronger evidence but still cover only the configured probe relationship.</li>
+              <li>Use real packet and application checks for production acceptance.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+      <section id="firewall" class="docs-section" aria-labelledby="firewall-title">
+        <div class="docs-section-heading">
+          <p class="eyebrow">Operator guide</p>
+          <h2 id="firewall-title">Firewall rules and groups</h2>
+          <p>Mesh compiles Nebula firewall policy from explicit node and group selectors, then distributes the signed result to managed nodes.</p>
+        </div>
+        <div class="docs-topic-grid">
+          <article class="docs-topic">
+            <h3>Design policy</h3>
+            <p>Start with the smallest required flows. Prefer group selectors for stable roles and node selectors for narrow exceptions.</p>
+            <ul class="docs-list">
+              <li>Every node belongs to the built-in all group.</li>
+              <li>Use named groups such as app, database, admin, or monitoring for reusable policy.</li>
+              <li>Preview effective policy before deployment to confirm target-node, target-group, and peer-node expansion.</li>
+              <li>Keep management access separate from application traffic.</li>
+            </ul>
+          </article>
+          <article class="docs-topic">
+            <h3>Roll out safely</h3>
+            <p>Use a canary rollout for material firewall changes. Mesh can pause, resume, promote, or roll back the in-flight policy.</p>
+            <ol class="docs-steps">
+              <li>Preview and review the effective policy.</li>
+              <li>Select representative canary nodes.</li>
+              <li>Start the rollout and test both traffic that should pass and traffic that should fail.</li>
+              <li>Pause if investigation is needed, or roll back if behavior is incorrect.</li>
+              <li>Promote only after canaries and health evidence are current.</li>
+            </ol>
+          </article>
+          <article class="docs-topic">
+            <h3>Change node groups</h3>
+            <p>Group changes rotate the node certificate so group membership is cryptographically bound to the new identity claims.</p>
+            <aside class="docs-note important">
+              <strong>Expect certificate convergence</strong>
+              <p>Do not treat the group change as complete until the node reports the desired certificate generation and remains reachable under the new policy.</p>
+            </aside>
+          </article>
+        </div>
+      </section>
+      <section id="connectivity" class="docs-section" aria-labelledby="connectivity-title">
+        <div class="docs-section-heading">
+          <p class="eyebrow">Operator guide</p>
+          <h2 id="connectivity-title">DNS, relays, and routed networks</h2>
+          <p>These features change how traffic finds or reaches peers. Introduce them independently and verify real packets after each revision.</p>
+        </div>
+        <div class="docs-topic-grid">
+          <article class="docs-topic">
+            <h3>Managed overlay DNS</h3>
+            <p>Mesh can publish node records through selected operational lighthouses. Members receive the signed resolver list as part of network configuration.</p>
+            <ul class="docs-list">
+              <li>Keep the standard DNS port unless the environment requires an approved alternative.</li>
+              <li>Permit DNS traffic in the Nebula firewall.</li>
+              <li>Query every selected resolver directly before depending on names.</li>
+              <li>Linux native split DNS is an optional host integration; canary it and confirm the overlay interface exists before wider rollout.</li>
+            </ul>
+            <aside class="docs-note warning">
+              <strong>Resolver failure is fail-closed</strong>
+              <p>A managed native-resolver apply failure can quarantine the runtime until signed configuration is corrected. Test on one non-critical node first.</p>
+            </aside>
+          </article>
+          <article class="docs-topic">
+            <h3>Nebula relays</h3>
+            <p>Mesh supports Nebula&#x27;s native relay capability. Selected operational lighthouses act as relay servers, while clients continue to prefer a direct peer path and use a relay when direct UDP connectivity is unavailable.</p>
+            <ul class="docs-list">
+              <li>Enable relays under network settings and select one or more active lighthouses.</li>
+              <li>Allow client UDP traffic to the relay lighthouse endpoint.</li>
+              <li>Relayed packet contents remain encrypted end to end; the relay can observe routing and connection metadata.</li>
+              <li>Test relay behavior by blocking only the direct peer path, not the lighthouse path.</li>
+              <li>Treat upstream relay support as an advanced feature and retain redundant direct connectivity where possible.</li>
+            </ul>
+          </article>
+          <article class="docs-topic">
+            <h3>Routed subnets</h3>
+            <p>A routed-subnet owner forwards traffic between the Nebula overlay and a non-Nebula network behind that node.</p>
+            <ul class="docs-list">
+              <li>Enable operating-system forwarding and downstream return routing.</li>
+              <li>Declare the complete routed-subnet set on the gateway node.</li>
+              <li>Use the route-transfer workflow to move ownership without conflicting advertisements.</li>
+              <li>Use weighted route policies for deliberate ECMP distribution across multiple owners.</li>
+              <li>Test forward and reverse traffic from a real host behind the gateway.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+      <section id="security" class="docs-section" aria-labelledby="security-title">
+        <div class="docs-section-heading">
+          <p class="eyebrow">Operator guide</p>
+          <h2 id="security-title">Identity and security operations</h2>
+          <p>Authentication decides who can use the control plane. Signed network state and certificate lifecycle decide what enrolled machines can do.</p>
+        </div>
+        <div class="docs-topic-grid">
+          <article class="docs-topic">
+            <h3>Roles</h3>
+            <p>OIDC groups map to one of three Mesh roles.</p>
+            <ul class="docs-list">
+              <li>Viewer: read network, health, readiness, runtime telemetry, and audit information.</li>
+              <li>Operator: viewer access plus routine network and node changes.</li>
+              <li>Admin: operator access plus certificate authority, node-security, recovery, session, and retirement operations.</li>
+            </ul>
+          </article>
+          <article class="docs-topic">
+            <h3>Rotate the network CA</h3>
+            <p>CA rotation is a staged trust transition. Keep the workflow open and allow every active node to converge before advancing.</p>
+            <ol class="docs-steps">
+              <li>Prepare dual trust.</li>
+              <li>Wait for every active node to apply the dual-trust revision.</li>
+              <li>Activate the replacement CA and wait for replacement certificates.</li>
+              <li>Finalize replacement-only trust after old-root dependencies are gone.</li>
+              <li>Complete the rotation and verify final packet connectivity.</li>
+            </ol>
+            <aside class="docs-note warning">
+              <strong>Never skip convergence gates</strong>
+              <p>Offline or stale nodes cannot satisfy a safe trust transition. Restore or explicitly revoke them before finalizing.</p>
+            </aside>
+          </article>
+          <article class="docs-topic">
+            <h3>Sessions and recovery access</h3>
+            <p>Admins can inspect and revoke browser sessions. If the deployment enables one-use recovery codes, create and custody them before an identity-provider outage.</p>
+            <ul class="docs-list">
+              <li>Revoke unfamiliar or unneeded sessions immediately.</li>
+              <li>Store recovery codes outside the Mesh host and identity provider.</li>
+              <li>A displayed recovery code cannot be retrieved again.</li>
+              <li>Keep normal OIDC access protected with the organization&#x27;s MFA policy.</li>
+            </ul>
+          </article>
+          <article class="docs-topic docs-topic-wide">
+            <h3>Use the API reference</h3>
+            <p>Mesh serves its canonical OpenAPI 3.1 contract at /openapi.json and a searchable interactive reference at /api-docs.html. Each operation documents its RBAC permission, availability, parameters, JSON request and response schemas, error responses, placeholder-only examples, and a curl command.</p>
+            <ul class="docs-list">
+              <li>Sign in normally before using interactive calls. The page uses the current same-origin browser session and never asks for or stores a legacy administrator bearer credential.</li>
+              <li>For state-changing cookie-authenticated calls, the page reads the Mesh CSRF cookie, sends X-Mesh-CSRF, and relies on the browser&#x27;s exact Origin. A missing or mismatched cookie, header, origin, or JSON content type returns 403.</li>
+              <li>Agent, enrollment, recovery, and other credential-bearing calls are intentionally not executable in the browser reference. Run their placeholder curl examples only from the intended client with an approved secret-delivery path.</li>
+              <li>Read the current resource and revision before a mutation, preview policies where supported, review the exact request, confirm that it changes live state, then verify the returned state and health evidence.</li>
+              <li>Treat 401 as missing or invalid authentication, 403 as permission or browser-request proof failure, 409 as stale revision or invalid lifecycle state, and 429 or 503 as a bounded service condition to retry later.</li>
+            </ul>
+            <aside class="docs-note warning">
+              <strong>Interactive requests change the live control plane</strong>
+              <p>The API reference is not a sandbox. Eligible POST, PUT, PATCH, and DELETE operations require an explicit confirmation and are sent to the same Mesh origin that served the page.</p>
+            </aside>
+          </article>
+        </div>
+      </section>
+      <section id="operations" class="docs-section" aria-labelledby="operations-title">
+        <div class="docs-section-heading">
+          <p class="eyebrow">Operator guide</p>
+          <h2 id="operations-title">Readiness, backup, and retirement</h2>
+          <p>Operational evidence is deliberately explicit. A green process check is not a substitute for current signed-state, placement, and packet evidence.</p>
+        </div>
+        <div class="docs-topic-grid">
+          <article class="docs-topic">
+            <h3>Deployment readiness</h3>
+            <p>Readiness checks topology, lighthouse diversity, placement labels, endpoint syntax, overlap evidence, DNS evidence, and lifecycle state from one bounded snapshot.</p>
+            <ul class="docs-list">
+              <li>Assign a site and failure domain to every active node.</li>
+              <li>Use at least two lighthouses in different failure domains.</li>
+              <li>Resolve and test every public lighthouse endpoint externally.</li>
+              <li>Treat verification_required as missing evidence that must be resolved or documented, not as success.</li>
+            </ul>
+          </article>
+          <article class="docs-topic">
+            <h3>Backup and restore</h3>
+            <p>The JSON storage backend uses an authenticated offline backup. The server must be stopped so the utility can take both state locks and verify bound credentials.</p>
+            <ol class="docs-steps">
+              <li>Generate and independently custody a 256-bit backup key.</li>
+              <li>Stop every Mesh writer.</li>
+              <li>Create and verify a fresh archive with the exact current utility version.</li>
+              <li>Record the authenticated backup ID in an external monotonic catalog.</li>
+              <li>Restore only into a nonexistent target directory and validate before starting a server.</li>
+            </ol>
+            <aside class="docs-note important">
+              <strong>Backups are versioned operations</strong>
+              <p>Build and package mesh-backup from the same approved source version as the server. A stale operator binary must not be used against a newer store schema.</p>
+            </aside>
+          </article>
+          <article class="docs-topic">
+            <h3>Retire a network</h3>
+            <p>Retirement permanently removes encrypted CA and signing material, nodes, credentials, enrollments, and runtime telemetry for the trust domain.</p>
+            <ul class="docs-list">
+              <li>Confirm the exact current configuration revision and case-sensitive network name.</li>
+              <li>Stop unmanaged or fail-open Nebula processes before retirement.</li>
+              <li>Expect every managed agent credential to become unauthorized immediately.</li>
+              <li>The retired name and overlapping CIDR remain reserved to prevent trust-domain confusion.</li>
+            </ul>
+            <aside class="docs-note warning">
+              <strong>Retirement cannot be undone</strong>
+              <p>Use verified backups for disaster recovery. Do not use retirement as a temporary disable switch.</p>
+            </aside>
+          </article>
+          <article class="docs-topic">
+            <h3>Open-source license</h3>
+            <p>Mesh&#x27;s original source is published under the MIT License. Vendored and bundled third-party components retain their upstream license and attribution requirements.</p>
+            <ul class="docs-list">
+              <li>Review LICENSE and THIRD_PARTY_NOTICES.md before redistribution.</li>
+              <li>The MIT License provides the software as is, without warranty.</li>
+              <li>Open-source availability does not change documented production-readiness, platform-support, or security-evidence limits.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+      <section id="troubleshooting" class="docs-section" aria-labelledby="troubleshooting-title">
+        <div class="docs-section-heading">
+          <p class="eyebrow">Operator guide</p>
+          <h2 id="troubleshooting-title">Troubleshooting checklist</h2>
+          <p>Start with the exact failing layer. Avoid changing firewall, routing, DNS, and certificates at the same time.</p>
+        </div>
+        <div class="docs-topic-grid">
+          <article class="docs-topic">
+            <h3>Node is offline or stale</h3>
+            <ul class="docs-list">
+              <li>Confirm mesh-agent and mesh-nebula are active on the host.</li>
+              <li>Check the last authenticated heartbeat and applied configuration revision.</li>
+              <li>Verify the host clock, public HTTPS trust, and access to the control plane.</li>
+              <li>Confirm the node certificate and agent credential have not expired or been revoked.</li>
+              <li>Use agent recovery only when identity replacement is not required.</li>
+            </ul>
+          </article>
+          <article class="docs-topic">
+            <h3>Peers cannot connect</h3>
+            <ul class="docs-list">
+              <li>Test the lighthouse public UDP endpoint from outside its network.</li>
+              <li>Check cloud, host, and Nebula firewall policy independently.</li>
+              <li>Establish outgoing traffic once to populate dynamic peer mappings.</li>
+              <li>Compare direct and relay behavior without blocking lighthouse traffic.</li>
+              <li>Use packet captures and Nebula logs without exposing private keys or bearer credentials.</li>
+            </ul>
+          </article>
+          <article class="docs-topic">
+            <h3>DNS or routed traffic fails</h3>
+            <ul class="docs-list">
+              <li>Query each managed DNS resolver directly by overlay IP.</li>
+              <li>Confirm the native resolver points at an existing overlay interface.</li>
+              <li>Check route ownership, forwarding, downstream return routes, and effective MTU.</li>
+              <li>Test both directions with a real non-Nebula host behind the gateway.</li>
+              <li>Roll back the last isolated policy change before combining fixes.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+  </main>
+
+  <footer class="docs-footer">
+    <div><span class="docs-mark small" aria-hidden="true">M</span><strong>Mesh documentation</strong></div>
+    <p>Last reviewed 2026-07-23. Validate current health and policy in your own control plane before making production changes.</p>
+  </footer>
+</body>
+</html>

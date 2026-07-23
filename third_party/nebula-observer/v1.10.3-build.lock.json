@@ -1,0 +1,101 @@
+{
+  "schema": "mesh.nebula-observer-build-lock.v1",
+  "module": "github.com/slackhq/nebula",
+  "version": "v1.10.3",
+  "commit": "f573e8a26695278f9d71587390fbfe0d0933aa21",
+  "module_sum": "h1:EstYj8ODEcv6T0R9X5BVq1zgWZnyU5gtPzk99QF1PMU=",
+  "go_mod_sum": "h1:IL5TUQm4x9IFx2kCKPYm1gP47pwd5b8QGnnBH2RHnvs=",
+  "upstream_lock_sha256": "9f0515702d74a0911263a160754948220e41b5da7048f48adf67355b3816dd7c",
+  "source_tree_sha256": "1d1aefeda0b2d9708dfb9bd39d25393351bace2b5e1a91a2021315fe8b410478",
+  "patched_tree_sha256": "c35f432bd15d40346b12ec19a33b7a9e6844514f228b4dc5e3853f9033b2f5c6",
+  "series_sha256": "51faecb7a93c2990f5599fd2de333797224bfc3a1cedf77109b718cfb9c0008d",
+  "patch_set_sha256": "5e8a928b2c5c9cc95666642881a853b557b5b1fa8972acdee9c1c74641fcfb5e",
+  "toolchain": "go1.26.5",
+  "build_flags": [
+    "-trimpath",
+    "-buildvcs=false",
+    "-ldflags=-buildid= -X main.Build=1.10.3"
+  ],
+  "security_dependencies": [
+    {
+      "path": "golang.org/x/crypto",
+      "version": "v0.53.0",
+      "sum": "h1:QZ4Muo8THX6CizN2vPPd5fBGHyogrdK9fG4wLPFUsto="
+    },
+    {
+      "path": "golang.org/x/net",
+      "version": "v0.56.0",
+      "sum": "h1:Rw8j/hFzGvJUZwNBXnAtf5sVDVt+65SK2C7IxCxZt5o="
+    },
+    {
+      "path": "golang.org/x/sys",
+      "version": "v0.46.0",
+      "sum": "h1:noSf2Fq6F8DBgS+LysIkx7rIExoNHJsxOAtPp4rthXw="
+    },
+    {
+      "path": "golang.org/x/term",
+      "version": "v0.44.0",
+      "sum": "h1:0rLvDRCtNj0gZkyIXhCyOb2OAzEhLVqc4B+hrsBhrmc="
+    }
+  ],
+  "patches": [
+    {
+      "name": "0001-runtime-observer-state-and-authenticated-packet-hooks.patch",
+      "sha256": "9e392751954c976b562c1b51d4ed33bd6a924365b010a1714d9063bd6c0a9068"
+    },
+    {
+      "name": "0002-linux-root-private-runtime-observer-socket.patch",
+      "sha256": "85cba18cfb02bd5495731ef4b710887560486f21880b9d727276e47b0333c016"
+    },
+    {
+      "name": "0003-runtime-observer-adversarial-and-transport-tests.patch",
+      "sha256": "d250c74bce09666a62504ee6821598c977ad06d5456cec5497f2c8083df1b24b"
+    },
+    {
+      "name": "0004-upgrade-security-sensitive-go-dependencies.patch",
+      "sha256": "4619b72754865d56cf22ff9fde941dcb7f361693d8a79a57ebba2420adf39a29"
+    }
+  ],
+  "targets": [
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "entries": [
+        {
+          "name": "nebula",
+          "mode": 365,
+          "size": 26563686,
+          "sha256": "cbfaba62c4515fccd93d143988d4220433231ec22024845493210a2746703eac",
+          "main_path": "github.com/slackhq/nebula/cmd/nebula"
+        },
+        {
+          "name": "nebula-cert",
+          "mode": 365,
+          "size": 10312288,
+          "sha256": "f60f9172da5455ea8da4d8aa7a775d7f56b57eeec36b02019d2f32548adefd01",
+          "main_path": "github.com/slackhq/nebula/cmd/nebula-cert"
+        }
+      ]
+    },
+    {
+      "os": "linux",
+      "arch": "arm64",
+      "entries": [
+        {
+          "name": "nebula",
+          "mode": 365,
+          "size": 24713966,
+          "sha256": "08555abc1e8713f8f36f001d016b4a6e107fc2629def1447c3e1908b5b288c03",
+          "main_path": "github.com/slackhq/nebula/cmd/nebula"
+        },
+        {
+          "name": "nebula-cert",
+          "mode": 365,
+          "size": 9675067,
+          "sha256": "c33dc17f494cc58bfd8bf37106b7c84d905e20753ef79f584a71d0dc99e78f82",
+          "main_path": "github.com/slackhq/nebula/cmd/nebula-cert"
+        }
+      ]
+    }
+  ]
+}

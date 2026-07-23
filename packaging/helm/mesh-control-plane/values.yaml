@@ -1,0 +1,79 @@
+replicaCount: 1
+revisionHistoryLimit: 2
+
+image:
+  repository: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+publicURL: ""
+publicHost: ""
+linuxInstallBundleURL: ""
+linuxBootstrapHandoffURL: ""
+
+credentials:
+  secretName: ""
+  adminTokenKey: admin.token
+  masterKeyKey: master.key
+
+tls:
+  secretName: ""
+  certificateKey: tls.crt
+  privateKeyKey: tls.key
+  caBundleKey: ca.crt
+
+identity:
+  enabled: false
+  secretName: ""
+  policyKey: identity.json
+  oidcClientSecretKey: oidc-client.secret
+
+storage:
+  backend: json
+  persistence:
+    existingClaim: ""
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 2Gi
+    annotations: {}
+  postgres:
+    secretName: ""
+    dsnKey: postgres.dsn
+
+service:
+  type: ClusterIP
+  port: 443
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  tlsSecretName: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+networkPolicy:
+  enabled: false
+  ingressFrom: []

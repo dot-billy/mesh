@@ -1,0 +1,10 @@
+title = "Mesh final-image secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The exact oauth2 v0.36.0 Go checksum is public integrity metadata"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^peZ/1z27fi9hUOFCAZaHyrpWG5lwe0RJEEEeH0ThlIs=$'''] # gitleaks:allow -- exact public oauth2 v0.36.0 Go checksum

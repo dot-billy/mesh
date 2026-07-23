@@ -1,0 +1,61 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/pages.yml"
+      - "site/**"
+      - "scripts/build-pages-site.py"
+      - "scripts/pages_site_test.py"
+      - "docs/public-guide.json"
+      - "docs/openapi.json"
+      - "internal/httpapi/web/docs.html"
+      - "internal/httpapi/web/docs.css"
+      - "internal/httpapi/web/font-awesome/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify and build the Pages artifact
+        run: |
+          python3 scripts/pages_site_test.py
+          python3 scripts/build-pages-site.py
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .pages-dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

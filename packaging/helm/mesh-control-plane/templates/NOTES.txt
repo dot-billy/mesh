@@ -1,0 +1,7 @@
+Mesh is configured for native TLS at {{ .Values.publicURL }}.
+
+Wait for the verified durable-store readiness probe:
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "mesh-control-plane.fullname" . }}
+
+The administrator token remains in the pre-existing Secret named
+{{ .Values.credentials.secretName | quote }}. Do not print it into shell history.

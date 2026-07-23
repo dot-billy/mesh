@@ -1,0 +1,45 @@
+name: Public and API documentation
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the complete change history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify generated public and API documentation
+        run: make docs-check
+
+      - name: Require public documentation review for product changes
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_REF: ${{ github.sha }}
+        run: python3 scripts/public-docs-change-gate.py --base "$BASE_REF" --head "$HEAD_REF"
+
+      - name: Require API contract review for API changes
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_REF: ${{ github.sha }}
+        run: python3 scripts/api-docs-change-gate.py --base "$BASE_REF" --head "$HEAD_REF"
+
+      - name: Verify the documentation routes and route parity
+        run: go test ./internal/httpapi

@@ -1,0 +1,56 @@
+{
+  "schema": "mesh-identity-v2",
+  "mode": "hybrid",
+  "legacy_browser_login": false,
+  "oidc": {
+    "issuer": "https://id.example.com/tenant",
+    "client_id": "mesh-control-plane",
+    "client_secret_file": "/run/secrets/mesh-oidc-client-secret",
+    "scopes": [
+      "openid",
+      "profile",
+      "email"
+    ],
+    "groups_claim": "groups",
+    "allowed_signing_algorithms": [
+      "RS256"
+    ],
+    "admins": [
+      {
+        "kind": "group",
+        "value": "mesh-admins"
+      }
+    ],
+    "role_bindings": [
+      {
+        "role": "operator",
+        "selector": {
+          "kind": "group",
+          "value": "mesh-operators"
+        }
+      },
+      {
+        "role": "viewer",
+        "selector": {
+          "kind": "group",
+          "value": "mesh-viewers"
+        }
+      }
+    ],
+    "required_amr_all": [
+      "pwd",
+      "otp"
+    ],
+    "max_authentication_age": "15m"
+  },
+  "sessions": {
+    "idle_ttl": "15m",
+    "absolute_ttl": "1h",
+    "login_attempt_ttl": "5m",
+    "touch_interval": "1m"
+  },
+  "break_glass": {
+    "enabled": true,
+    "minimum_usable_codes": 2
+  }
+}
