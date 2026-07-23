@@ -76,11 +76,12 @@
       "topics": [
         {
           "title": "Enroll a machine",
-          "body": "Create the node in Mesh, copy the one-time enrollment command to the intended machine, and activate the managed agent and Nebula service.",
+          "body": "Create the node in Mesh, install one authenticated Mesh runtime release on the intended machine, run the one-time enrollment command, and activate the managed agent and Nebula service.",
           "steps": [
             "Create a node with the correct role, site, failure domain, endpoint, groups, and routed subnets.",
             "Transfer the independent bootstrap trust anchor through an operator-approved channel.",
-            "Run the displayed install and enrollment command on the target host.",
+            "Authenticate the platform bootstrap installer, then install either the exact signed online release selected for the host OS and architecture or the complete signed offline snapshot.",
+            "Run the displayed enrollment command with nebula, nebula-cert, and meshctl from that one installed release.",
             "Confirm the agent and Nebula service are active.",
             "Verify the node is operational and can exchange real overlay packets."
           ],
@@ -89,6 +90,17 @@
             "title": "Protect enrollment material",
             "body": "An enrollment token is a short-lived secret for exactly one node. Reissue it if delivery is uncertain; the previous token becomes invalid."
           }
+        },
+        {
+          "title": "Runtime prerequisite and trusted installation",
+          "body": "Production enrollment fails closed unless nebula and nebula-cert are both executable, report the same supported version, and resolve beside meshctl in one authenticated installed release. Mesh checks this prerequisite before reading the enrollment token, creating local enrollment state, generating a node key, or contacting the control plane.",
+          "bullets": [
+            "Use mesh-install on Linux or the platform installer where that installer is supported. Online installation selects the exact OS and architecture artifact authorized by threshold-signed release metadata and verifies its signed size and SHA-256 before installation.",
+            "Do not fetch GitHub's moving latest Nebula release during enrollment. That would bypass Mesh release-root authorization, compatibility policy, package evidence, anti-rollback state, and recovery.",
+            "For an offline or air-gapped host, independently authenticate the bootstrap verifier and installer, then install the complete root-private signed snapshot before enrollment.",
+            "A missing, old, mismatched, split-directory, or unexecutable runtime pair leaves the token unread and enrollment untouched. Follow the mesh-install guidance in the error, then rerun the same enrollment command.",
+            "Development builds can exercise the version-pair check without claiming production package provenance. Production acceptance still requires the supported installer and its platform proof gates."
+          ]
         },
         {
           "title": "Replace or recover a node",

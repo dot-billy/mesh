@@ -61,10 +61,7 @@ func TestEnrollmentPreflightRejectsUnsafeOutputBeforeHTTP(t *testing.T) {
 	defer server.Close()
 
 	private := t.TempDir()
-	fakeNebula := filepath.Join(private, "nebula")
-	if err := os.WriteFile(fakeNebula, []byte("#!/bin/sh\necho 'Version: 1.10.3'\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	fakeNebula, fakeNebulaCert := writeFakeNebulaPair(t, private, "1.10.3", "1.10.3")
 	shared := filepath.Join(private, "shared")
 	if err := os.Mkdir(shared, 0o700); err != nil {
 		t.Fatal(err)
@@ -78,7 +75,7 @@ func TestEnrollmentPreflightRejectsUnsafeOutputBeforeHTTP(t *testing.T) {
 		"--state", filepath.Join(private, "state", "agent.json"),
 		"--output", filepath.Join(shared, "nebula"),
 		"--nebula", fakeNebula,
-		"--nebula-cert", filepath.Join(private, "unused-nebula-cert"),
+		"--nebula-cert", fakeNebulaCert,
 	})
 	if err == nil || !strings.Contains(err.Error(), "preflight managed Nebula output") {
 		t.Fatalf("unsafe output error = %v", err)
@@ -101,10 +98,7 @@ func TestEnrollmentResumeRechecksUnsafeOutputBeforeHTTP(t *testing.T) {
 	defer server.Close()
 
 	private := t.TempDir()
-	fakeNebula := filepath.Join(private, "nebula")
-	if err := os.WriteFile(fakeNebula, []byte("#!/bin/sh\necho 'Version: 1.10.3'\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	fakeNebula, fakeNebulaCert := writeFakeNebulaPair(t, private, "1.10.3", "1.10.3")
 	outputParent := filepath.Join(private, "output-parent")
 	if err := os.Mkdir(outputParent, 0o700); err != nil {
 		t.Fatal(err)
@@ -137,7 +131,7 @@ func TestEnrollmentResumeRechecksUnsafeOutputBeforeHTTP(t *testing.T) {
 		"--state", statePath,
 		"--output", output,
 		"--nebula", fakeNebula,
-		"--nebula-cert", filepath.Join(private, "unused-nebula-cert"),
+		"--nebula-cert", fakeNebulaCert,
 	})
 	if err == nil || !strings.Contains(err.Error(), "preflight pending managed Nebula output") {
 		t.Fatalf("unsafe resume error = %v", err)

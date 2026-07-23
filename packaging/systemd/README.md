@@ -91,6 +91,14 @@ placing the one-time bearer in argv or the environment:
 )
 ```
 
+Enrollment resolves and executes both installed runtime tools before it reads
+stdin, creates enrollment state, generates a key, or calls the control plane.
+They must report the same supported version and resolve beside `meshctl` in one
+authenticated installed release. A missing, mismatched, old, or split
+runtime pair fails with exact `mesh-install install-online` and offline
+snapshot guidance. Enrollment never downloads GitHub's moving latest Nebula
+release and never inherits privileged installation authority.
+
 Then perform the only supported boot-enablement transition:
 
 ```sh

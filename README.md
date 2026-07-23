@@ -9,6 +9,7 @@ The current build is a working lifecycle foundation. JSON remains the default si
 - Conservative routed-subnet ownership declared when a node is created: canonical IPv4 prefixes are reserved across the complete live control graph, embedded as exact Nebula certificate unsafe networks at enrollment, and propagated only after the owner activates. Crash-durable transfer and active-owner route-profile workflows move or edit exact prefixes with certificate-first additions and route-first removals. Multiple active enrolled gateways may safely own one exact same-network prefix; a strict route-policy API and dashboard render one deterministic weighted-ECMP route with bounded per-gateway weights, MTU, and metric controls.
 - Explicit per-node site and failure-domain placement, kept separate from Nebula authorization groups, with editable dashboard metadata and diversity-aware readiness. Existing nodes migrate conservatively to `unassigned` instead of receiving invented placement.
 - Thirty-minute one-time enrollment. The node generates its Nebula keypair and 256-bit agent credential locally; only the public key and credential hash reach the server.
+- A fail-closed runtime prerequisite before enrollment reads a token or touches node state. Both `nebula` and `nebula-cert` must resolve and execute immediately, report one supported semantic version, and, in a production build, sit beside `meshctl` in the same authenticated installed release. Missing or split runtimes direct the operator to the signed online or offline installer instead of downloading an upstream moving `latest`.
 - A token-scoped, no-store enrollment preflight. Before generating keys, writing the crash journal, or consuming the token, `meshctl` retrieves only the target role, Mesh CIDR, bounded lighthouse endpoint set, and token expiry; on Linux it rejects an intersecting non-default route and on every platform it requires every lighthouse DNS name to resolve from the future host. This point-in-time check does not dial or claim public UDP reachability.
 - Crash-safe enrollment recovery through a private, fsynced node-side journal.
 - Administrator-authorized recovery of an expired or unusable agent credential without replacing the node's Nebula identity, with a pinned signed recovery receipt and crash-safe exact retries.
@@ -47,7 +48,8 @@ Production publication of a signed origin image plus independent public-key cust
 Requirements:
 
 - Go 1.26 or newer
-- `nebula` and `nebula-cert` 1.10.3 or newer on every managed node
+- One independently authenticated Mesh runtime release per managed node, containing the matched `meshctl`, `nebula`, and `nebula-cert` executables selected for that host OS and architecture
+- Nebula 1.10.3 or newer within that authenticated release
 
 Nebula 1.10.3 is the minimum because it contains the fix for the [P256 certificate blocklist bypass](https://github.com/slackhq/nebula/security/advisories/GHSA-69x3-g4r3-p962).
 
@@ -102,7 +104,9 @@ export MESH_ADMIN_TOKEN="$(cat data/admin.token)"
   --endpoint vpn.example.com:4242
 ```
 
-Run enrollment on the target node. Keep agent state outside the managed bundle directory:
+Run enrollment on the target node only after the signed online installer or
+signed offline snapshot has installed the complete runtime. Keep agent state
+outside the managed bundle directory:
 
 ```bash
 (
@@ -117,6 +121,14 @@ Run enrollment on the target node. Keep agent state outside the managed bundle d
 ```
 
 Enrollment validates the complete bundle with both `nebula-cert verify` and `nebula -test`. It leaves the live config at `/var/lib/mesh-agent/nebula/current/config.yml`.
+Before reading the token, creating either target directory, generating a key,
+or making an HTTP request, `meshctl` resolves both executables, checks both
+reported versions, and requires an exact match at 1.10.3 or newer. A production
+`meshctl` additionally requires both executables to resolve beside itself in
+one authenticated installed release. If the prerequisite fails, authenticate
+`mesh-install` independently and run either `install-online EXACT_BUNDLE_URL`
+or `install ABSOLUTE_SNAPSHOT_DIR`; do not substitute GitHub's moving latest
+Nebula release. Air-gapped hosts use the same signed offline snapshot path.
 
 For authoritative runtime acknowledgment, point the Nebula systemd unit at that exact config and run:
 

@@ -127,6 +127,18 @@ func EnforceMinimumNebulaVersion(output string) error {
 	return nil
 }
 
+// ReportedNebulaVersion returns the canonical semantic version reported by a
+// Nebula executable. Callers that depend on both nebula and nebula-cert use
+// this value to prove that the two executables report one exact runtime
+// version before any credential-bearing operation begins.
+func ReportedNebulaVersion(output string) (string, error) {
+	version, err := parseSemanticVersion(output)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%d.%d.%d", version[0], version[1], version[2]), nil
+}
+
 func parseSemanticVersion(output string) ([3]int, error) {
 	match := semanticVersionPattern.FindStringSubmatch(output)
 	if len(match) != 6 {

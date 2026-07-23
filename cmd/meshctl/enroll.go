@@ -50,6 +50,13 @@ func enrollWithIO(args []string, input io.Reader, getenv func(string) string) er
 	if flags.NArg() != 0 {
 		return errors.New("enroll does not accept positional arguments")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	runner := nodeagent.ExecCommandRunner{}
+	runtimePair, err := prepareEnrollmentRuntime(ctx, *nebula, *nebulaCert, runner)
+	if err != nil {
+		return err
+	}
 	if getenv == nil {
 		getenv = os.Getenv
 	}
@@ -74,17 +81,9 @@ func enrollWithIO(args []string, input io.Reader, getenv func(string) string) er
 	}
 	defer outputLock.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	runner := nodeagent.ExecCommandRunner{}
-	versionOutput, err := runner.Output(ctx, *nebula, "-version")
-	if err != nil {
-		return fmt.Errorf("inspect Nebula before enrollment: %w", err)
+	validator := nodeagent.BundleValidator{
+		NebulaBinary: runtimePair.nebulaBinary, NebulaCertBinary: runtimePair.nebulaCertBinary, Runner: runner,
 	}
-	if err := nodeagent.EnforceMinimumNebulaVersion(string(versionOutput)); err != nil {
-		return err
-	}
-	validator := nodeagent.BundleValidator{NebulaBinary: *nebula, NebulaCertBinary: *nebulaCert, Runner: runner}
 	httpClient := secureHTTPClient()
 
 	journal, journalErr := store.LoadProvisionalEnrollment()
@@ -137,7 +136,7 @@ func enrollWithIO(args []string, input io.Reader, getenv func(string) string) er
 		} else {
 			fmt.Printf("Pre-enrollment route and DNS checks passed for %s and %d lighthouse name(s).\n", plan.NetworkCIDR, checked.DNSNames)
 		}
-		keypair, err := generateNebulaKeypair(ctx, *nebulaCert)
+		keypair, err := generateNebulaKeypair(ctx, runtimePair.nebulaCertBinary)
 		if err != nil {
 			return err
 		}
