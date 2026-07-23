@@ -2119,6 +2119,7 @@ if guide != {
     "schema": "mesh-ui-guided-author-result-v2",
     "elapsed_milliseconds": guide.get("elapsed_milliseconds"),
     "pending_readiness_verified": True,
+    "online_install_available": True,
     "install_command": expected_install,
     "enroll_command": expected_enroll,
     "activate_command": "sudo /usr/local/bin/mesh-install activate",

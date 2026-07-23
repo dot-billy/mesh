@@ -10,6 +10,41 @@ import ui_guided_author
 
 
 class UIAuthorSecurityTests(unittest.TestCase):
+    def test_click_waits_for_an_unobstructed_native_target(self):
+        class FakeDriver(ui_guided_author.WebDriver):
+            def __init__(self):
+                super().__init__("http://127.0.0.1:1")
+                self.session = "test-session"
+                self.readiness = [False, True, True]
+                self.native_clicks = 0
+
+            def execute(self, script, args=None):
+                self.assert_click_argument(args)
+                return self.readiness.pop(0)
+
+            def request(self, method, path, payload=None):
+                self.native_clicks += 1
+                if self.native_clicks == 1:
+                    raise ui_guided_author.WebDriverCommandError(
+                        "intercepted",
+                        "element click intercepted",
+                    )
+                return None
+
+            def assert_click_argument(self, args):
+                if args != [{ui_guided_author.ELEMENT_KEY: "button-id"}]:
+                    raise AssertionError("click readiness did not use the exact WebDriver element")
+
+        driver = FakeDriver()
+        driver.click("button-id")
+        self.assertEqual(driver.native_clicks, 2)
+        self.assertEqual(driver.readiness, [])
+
+    def test_click_rejects_noncanonical_element_identifier(self):
+        driver = ui_guided_author.WebDriver("http://127.0.0.1:1")
+        with self.assertRaises(ui_guided_author.ProofError):
+            driver.click("../element")
+
     def test_network_dns_port_is_bounded_and_distinct_from_nebula(self):
         self.assertEqual(ui_guided_author.canonical_dns_proof_port(53, True), 53)
         self.assertEqual(ui_guided_author.canonical_dns_proof_port(5353, True), 5353)

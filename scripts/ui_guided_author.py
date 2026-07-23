@@ -40,6 +40,12 @@ class ProofError(RuntimeError):
     pass
 
 
+class WebDriverCommandError(ProofError):
+    def __init__(self, message: str, remote_error: str):
+        super().__init__(message)
+        self.remote_error = remote_error
+
+
 def canonical_lighthouse_endpoint(value: str) -> str:
     if not isinstance(value, str) or not value or len(value) > 261 or value.count(":") != 1:
         raise ProofError("lighthouse endpoint is not canonical")
@@ -269,8 +275,13 @@ class WebDriver:
                 remote = json.loads(raw_error).get("value", {}).get("error", "unknown")
             except Exception:
                 remote = "unknown"
+            if not isinstance(remote, str) or re.fullmatch(r"[a-z ]{1,64}", remote) is None:
+                remote = "unknown"
             safe_path = re.sub(r"/session/[^/]+", "/session/<id>", path)
-            raise ProofError(f"WebDriver {method} {safe_path} failed with HTTP {error.code} ({remote})") from error
+            raise WebDriverCommandError(
+                f"WebDriver {method} {safe_path} failed with HTTP {error.code} ({remote})",
+                remote,
+            ) from error
         except (urllib.error.URLError, TimeoutError) as error:
             safe_path = re.sub(r"/session/[^/]+", "/session/<id>", path)
             raise ProofError(f"WebDriver {method} {safe_path} did not complete") from error
@@ -301,6 +312,11 @@ class WebDriver:
         if not isinstance(value, dict) or not ID_PATTERN.fullmatch(str(value.get("sessionId", ""))):
             raise ProofError("WebDriver did not create a canonical session")
         self.session = str(value["sessionId"])
+        self.request(
+            "POST",
+            self.prefix + "/window/rect",
+            {"x": 0, "y": 0, "width": 1440, "height": 1200},
+        )
 
     def close(self) -> None:
         if not self.session:
@@ -333,8 +349,45 @@ class WebDriver:
             raise ProofError("WebDriver returned a non-boolean visibility value")
         return value
 
-    def click(self, element: str) -> None:
-        self.request("POST", self.prefix + f"/element/{element}/click", {})
+    def click(self, element: str, timeout_seconds: float = 5.0) -> None:
+        if not ID_PATTERN.fullmatch(element):
+            raise ProofError("WebDriver element identifier is not canonical")
+        deadline = time.monotonic() + timeout_seconds
+        last_error: Exception | None = None
+        target = {ELEMENT_KEY: element}
+        while time.monotonic() < deadline:
+            clickable = self.execute(
+                """
+const element = arguments[0];
+element.scrollIntoView({block: 'center', inline: 'center'});
+const rect = element.getBoundingClientRect();
+const style = getComputedStyle(element);
+if (
+  rect.width <= 0 || rect.height <= 0 ||
+  style.display === 'none' || style.visibility === 'hidden' ||
+  style.pointerEvents === 'none' || element.disabled
+) return false;
+const hit = document.elementFromPoint(
+  Math.min(innerWidth - 1, Math.max(0, rect.left + rect.width / 2)),
+  Math.min(innerHeight - 1, Math.max(0, rect.top + rect.height / 2))
+);
+return hit === element || element.contains(hit) ||
+  (hit?.closest('label')?.contains(element) ?? false);
+""",
+                [target],
+            )
+            if clickable is not True:
+                time.sleep(0.05)
+                continue
+            try:
+                self.request("POST", self.prefix + f"/element/{element}/click", {})
+                return
+            except WebDriverCommandError as error:
+                if error.remote_error not in {"element click intercepted", "element not interactable"}:
+                    raise
+                last_error = error
+            time.sleep(0.05)
+        raise ProofError("timed out waiting for a browser control to become clickable") from last_error
 
     def clear(self, element: str) -> None:
         self.request("POST", self.prefix + f"/element/{element}/clear", {})
