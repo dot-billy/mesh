@@ -1,0 +1,187 @@
+name: Mesh desktop
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "desktop/**"
+      - "docs/openapi.json"
+      - "internal/httpapi/openapi.go"
+      - "packaging/desktop/**"
+      - "LICENSE"
+      - "THIRD_PARTY_NOTICES.md"
+  push:
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "desktop/**"
+      - "docs/openapi.json"
+      - "internal/httpapi/openapi.go"
+      - "packaging/desktop/**"
+      - "LICENSE"
+      - "THIRD_PARTY_NOTICES.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.44.8"
+  FLUTTER_LINUX_SHA256: "672089e001571a9fbb209a495c583580c0c6c73ef98999264ba07fa93ace332d"
+  FLUTTER_WINDOWS_SHA256: "095c108a08e0377d8a6501fed65aeb288908a070ed3f135e525dc6431c7686e4"
+
+jobs:
+  linux:
+    name: Linux desktop
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Install Linux desktop build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            appstream \
+            binutils \
+            ca-certificates \
+            clang \
+            cmake \
+            curl \
+            desktop-file-utils \
+            dpkg-dev \
+            fakeroot \
+            libgtk-3-dev \
+            libsecret-1-dev \
+            libstdc++-12-dev \
+            ninja-build \
+            pkg-config \
+            xz-utils
+
+      - name: Validate Linux package metadata
+        run: |
+          set -euo pipefail
+          desktop-file-validate packaging/desktop/linux/io.rw0.mesh.desktop.desktop
+          appstreamcli validate --strict --no-net packaging/desktop/linux/io.rw0.mesh.desktop.metainfo.xml
+
+      - name: Install the pinned Flutter SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/flutter-linux.tar.xz"
+          curl --fail --location --silent --show-error \
+            "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
+            --output "$archive"
+          echo "${FLUTTER_LINUX_SHA256}  ${archive}" | sha256sum --check -
+          tar --extract --file "$archive" --directory "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Verify, test, and build Linux
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          flutter config --enable-linux-desktop
+          dart pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze
+          flutter test
+          flutter build linux --release
+
+      - name: Add notices to the portable Linux bundle
+        run: |
+          set -euo pipefail
+          install -m 0644 LICENSE desktop/build/linux/x64/release/bundle/LICENSE
+          install -m 0644 THIRD_PARTY_NOTICES.md desktop/build/linux/x64/release/bundle/THIRD_PARTY_NOTICES.md
+
+      - name: Build and validate the unsigned Debian package
+        run: packaging/desktop/linux/build-deb.sh desktop/build/linux/x64/release/bundle
+
+      - name: Verify the Debian checksum
+        run: |
+          set -euo pipefail
+          cd artifacts/desktop
+          sha256sum --check mesh-desktop_*.deb.sha256
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: mesh-desktop-linux-x64-unsigned
+          path: |
+            desktop/build/linux/x64/release/bundle/
+            artifacts/desktop/*.deb
+            artifacts/desktop/*.deb.sha256
+          if-no-files-found: error
+
+  windows:
+    name: Windows desktop
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Install the pinned Flutter SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $archive = Join-Path $env:RUNNER_TEMP "flutter-windows.zip"
+          $uri = "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_$env:FLUTTER_VERSION-stable.zip"
+          Invoke-WebRequest -Uri $uri -OutFile $archive
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $env:FLUTTER_WINDOWS_SHA256) {
+            throw "Flutter archive SHA-256 mismatch: $actual"
+          }
+          Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP
+          (Join-Path $env:RUNNER_TEMP "flutter\bin") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify, test, and build Windows
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          flutter config --enable-windows-desktop
+          dart pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze
+          flutter test
+          flutter build windows --release
+
+      - name: Add notices to the portable Windows bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Copy-Item -LiteralPath LICENSE -Destination desktop/build/windows/x64/runner/Release/LICENSE -Force
+          Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination desktop/build/windows/x64/runner/Release/THIRD_PARTY_NOTICES.md -Force
+
+      - name: Build and validate the unsigned MSIX package
+        shell: pwsh
+        run: |
+          packaging/desktop/windows/build-msix.ps1 `
+            -BundlePath desktop/build/windows/x64/runner/Release `
+            -IdentityName io.rw0.mesh.desktop.ci `
+            -Publisher "CN=Mesh CI" `
+            -PublisherDisplayName "Mesh CI"
+
+      - name: Verify the MSIX checksum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packages = @(Get-ChildItem artifacts/desktop/mesh-desktop_*.msix)
+          if ($packages.Count -ne 1) {
+            throw "Expected exactly one MSIX package, found $($packages.Count)"
+          }
+          $expected = ((Get-Content -Raw "$($packages[0].FullName).sha256").Trim() -split '\s+')[0]
+          $actual = (Get-FileHash -Algorithm SHA256 $packages[0].FullName).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "MSIX checksum mismatch: $actual"
+          }
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: mesh-desktop-windows-x64-unsigned
+          path: |
+            desktop/build/windows/x64/runner/Release/
+            artifacts/desktop/*.msix
+            artifacts/desktop/*.msix.sha256
+          if-no-files-found: error

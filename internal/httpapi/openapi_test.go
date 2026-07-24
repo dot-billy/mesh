@@ -30,8 +30,8 @@ func TestOpenAPIExactlyCoversRegisteredApplicationRoutes(t *testing.T) {
 		}
 	}
 	sort.Strings(contract)
-	if len(contract) != 67 {
-		t.Fatalf("OpenAPI operation count = %d, want 67", len(contract))
+	if len(contract) != 70 {
+		t.Fatalf("OpenAPI operation count = %d, want 70", len(contract))
 	}
 	if strings.Join(registered, "\n") != strings.Join(contract, "\n") {
 		t.Fatalf(
@@ -124,6 +124,23 @@ func TestOpenAPIAuthenticationAndCSRFGuidance(t *testing.T) {
 		if _, exists := schemes[name]; !exists {
 			t.Fatalf("security scheme %q is missing", name)
 		}
+	}
+}
+
+func TestOpenAPIDesktopPollingDocumentsRetryAfter(t *testing.T) {
+	document := decodedOpenAPI(t)
+	paths := document["paths"].(map[string]any)
+	operation := paths["/api/v1/auth/desktop/complete"].(map[string]any)["post"].(map[string]any)
+	response := operation["responses"].(map[string]any)["429"].(map[string]any)
+	headers := response["headers"].(map[string]any)
+	retryAfter := headers["Retry-After"].(map[string]any)
+	if required, ok := retryAfter["required"].(bool); !ok || !required {
+		t.Fatalf("desktop polling Retry-After required = %#v", retryAfter["required"])
+	}
+	schema := retryAfter["schema"].(map[string]any)
+	if schema["type"] != "integer" || schema["minimum"] != float64(1) ||
+		schema["maximum"] != float64(3600) || schema["example"] != float64(5) {
+		t.Fatalf("desktop polling Retry-After schema = %#v", schema)
 	}
 }
 

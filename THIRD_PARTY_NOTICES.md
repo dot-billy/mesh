@@ -23,6 +23,39 @@ The dashboard bundles Font Awesome files under
 - Full copyright and license text:
   [`internal/httpapi/web/font-awesome/LICENSE.txt`](internal/httpapi/web/font-awesome/LICENSE.txt)
 
+## Flutter desktop client
+
+Linux and Windows desktop bundles are built with Flutter 3.44.8 from the
+official SDK archives pinned and SHA-256-verified in
+`.github/workflows/desktop.yml`. Flutter framework and engine code is
+BSD-3-Clause licensed and also incorporates separately licensed third-party
+components.
+
+The desktop lockfile resolves these directly used packages and platform
+implementations:
+
+- `flutter_secure_storage` 10.3.1,
+  `flutter_secure_storage_linux` 3.0.1,
+  `flutter_secure_storage_windows` 4.2.2, and
+  `flutter_secure_storage_platform_interface` 2.0.1 — BSD-3-Clause.
+- `url_launcher` 6.3.2, `url_launcher_linux` 3.2.2,
+  `url_launcher_windows` 3.1.5, and
+  `url_launcher_platform_interface` 2.3.2 — BSD-3-Clause.
+- `material_color_utilities` 0.13.0 — Apache License 2.0.
+- Supporting Dart, Flutter, FFI, path-provider, Win32, and XDG packages retain
+  the license terms shipped in their package metadata.
+
+Flutter generates the complete consolidated runtime notices at
+`data/flutter_assets/NOTICES.Z` in every desktop release bundle. That file
+contains the full license texts collected from the resolved packages, Flutter
+engine, fonts, shaders, and other runtime components. Packaging validation
+requires it to remain present and nonempty. Redistributors must preserve that
+embedded notice.
+
+Linux packages dynamically link to GTK 3 and libsecret. Those system libraries
+are declared as package dependencies and are not copied into the Mesh Debian
+artifact.
+
 ## Other dependencies and packaged artifacts
 
 Go module dependencies are declared in `go.mod` and authenticated by `go.sum`;

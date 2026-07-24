@@ -231,7 +231,8 @@ func New(service *control.Service, options Options) (*Server, error) {
 		service: service, identityConfig: normalized, policyFingerprint: sessionPolicyFingerprint, sessions: options.SessionStore,
 		identityAudit: identityAudit, breakGlass: breakGlass, runtimeTelemetry: options.RuntimeTelemetryStore, linuxInstallBundleURL: linuxInstallBundleURL,
 		linuxBootstrapHandoffURL: linuxBootstrapHandoffURL,
-		oidc:                     options.OIDCAuthenticator, adminHash: sha256.Sum256([]byte(options.AdminToken)), secure: options.SecureCookies, logger: options.Logger, now: now,
+		oidc:                     options.OIDCAuthenticator,
+		adminHash:                sha256.Sum256([]byte(options.AdminToken)), secure: options.SecureCookies, logger: options.Logger, now: now,
 		readinessCheck: options.ReadinessCheck,
 		sessionCookie:  sessionCookie, csrfCookie: csrfCookie, oidcCookie: oidcCookie,
 		loginSlots: make(chan struct{}, 8), agentSlots: make(chan struct{}, 32), agentRate: newTokenBucket(50, 100),
@@ -289,6 +290,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("HEAD /readyz", s.ready)
 	mux.HandleFunc("GET /openapi.json", serveOpenAPI)
 	mux.HandleFunc("GET /api/v1/auth/methods", s.authMethods)
+	mux.Handle("POST /api/v1/auth/desktop/start", s.oidcLimited(s.oidcStartSlots, s.oidcStartRate, s.oidcStartClients, http.HandlerFunc(s.desktopAuthorizationStart)))
+	mux.Handle("POST /api/v1/auth/desktop/complete", s.oidcLimited(s.oidcCallbackSlots, s.oidcCallbackRate, s.oidcCallbackClients, http.HandlerFunc(s.desktopAuthorizationComplete)))
+	mux.Handle("POST /api/v1/auth/desktop/{requestID}/decision", s.admin(http.HandlerFunc(s.desktopAuthorizationDecision)))
 	if s.oidc != nil {
 		mux.Handle("POST /api/v1/auth/oidc/start", s.oidcLimited(s.oidcStartSlots, s.oidcStartRate, s.oidcStartClients, http.HandlerFunc(s.oidcStart)))
 		mux.Handle("GET /api/v1/auth/oidc/callback", s.oidcLimited(s.oidcCallbackSlots, s.oidcCallbackRate, s.oidcCallbackClients, http.HandlerFunc(s.oidcCallback)))

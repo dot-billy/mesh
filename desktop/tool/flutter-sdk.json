@@ -1,0 +1,14 @@
+{
+  "version": "3.44.8",
+  "framework_commit": "058e0af2c2b57e369d905a03ac9748b0ebf543c6",
+  "archives": {
+    "linux_x64": {
+      "file": "flutter_linux_3.44.8-stable.tar.xz",
+      "sha256": "672089e001571a9fbb209a495c583580c0c6c73ef98999264ba07fa93ace332d"
+    },
+    "windows_x64": {
+      "file": "flutter_windows_3.44.8-stable.zip",
+      "sha256": "095c108a08e0377d8a6501fed65aeb288908a070ed3f135e525dc6431c7686e4"
+    }
+  }
+}

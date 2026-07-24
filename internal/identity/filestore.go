@@ -20,13 +20,14 @@ import (
 )
 
 const (
-	legacyIdentityStateSchema = "identity-state-v1"
-	identityStateSchema       = "identity-state-v2"
-	maxIdentityStateSize      = 8 << 20
-	maxLoginAttempts          = 1024
-	maxSessions               = 4096
-	maxBreakGlassCodes        = 256
-	maxIdentityAuditEvents    = 8192
+	legacyIdentityStateSchema      = "identity-state-v1"
+	identityStateSchema            = "identity-state-v2"
+	maxIdentityStateSize           = 8 << 20
+	maxLoginAttempts               = 1024
+	maxSessions                    = 4096
+	maxBreakGlassCodes             = 256
+	maxDesktopAuthorizationRecords = maxDesktopAuthorizations
+	maxIdentityAuditEvents         = 8192
 )
 
 var ErrUncertainCommit = errors.New("identity state commit durability is uncertain")
@@ -47,11 +48,12 @@ type persistedOIDCPayload struct {
 }
 
 type identityState struct {
-	Schema          string                  `json:"schema"`
-	LoginAttempts   []persistedLoginAttempt `json:"login_attempts"`
-	Sessions        []Session               `json:"sessions"`
-	BreakGlassCodes []BreakGlassCode        `json:"break_glass_codes"`
-	Audit           []IdentityAuditEvent    `json:"audit"`
+	Schema                string                       `json:"schema"`
+	LoginAttempts         []persistedLoginAttempt      `json:"login_attempts"`
+	Sessions              []Session                    `json:"sessions"`
+	BreakGlassCodes       []BreakGlassCode             `json:"break_glass_codes"`
+	DesktopAuthorizations []desktopAuthorizationRecord `json:"desktop_authorizations"`
+	Audit                 []IdentityAuditEvent         `json:"audit"`
 }
 
 // legacyIdentityStateV1 intentionally has no Audit field so a v1 document
@@ -116,7 +118,7 @@ func OpenFileStore(path string, sealer Sealer) (*FileStore, error) {
 			store.closeResources()
 			return nil, err
 		}
-		loaded = identityState{Schema: identityStateSchema, LoginAttempts: []persistedLoginAttempt{}, Sessions: []Session{}, BreakGlassCodes: []BreakGlassCode{}, Audit: []IdentityAuditEvent{}}
+		loaded = identityState{Schema: identityStateSchema, LoginAttempts: []persistedLoginAttempt{}, Sessions: []Session{}, BreakGlassCodes: []BreakGlassCode{}, DesktopAuthorizations: []desktopAuthorizationRecord{}, Audit: []IdentityAuditEvent{}}
 		if err := store.persist(loaded); err != nil {
 			store.closeResources()
 			return nil, err
@@ -872,9 +874,13 @@ func (s *identityOperations) CleanupExpired(ctx context.Context, now time.Time) 
 	now = now.UTC()
 	var result CleanupResult
 	err := s.update(ctx, func(state *identityState) error {
-		beforeAttempts, beforeSessions, beforeCodes := len(state.LoginAttempts), len(state.Sessions), len(state.BreakGlassCodes)
+		beforeAttempts, beforeSessions, beforeCodes, beforeDesktop := len(state.LoginAttempts), len(state.Sessions), len(state.BreakGlassCodes), len(state.DesktopAuthorizations)
 		pruneExpired(state, now)
-		result = CleanupResult{LoginAttempts: beforeAttempts - len(state.LoginAttempts), Sessions: beforeSessions - len(state.Sessions), BreakGlassCodes: beforeCodes - len(state.BreakGlassCodes)}
+		result = CleanupResult{
+			LoginAttempts: beforeAttempts - len(state.LoginAttempts), Sessions: beforeSessions - len(state.Sessions),
+			BreakGlassCodes:       beforeCodes - len(state.BreakGlassCodes),
+			DesktopAuthorizations: beforeDesktop - len(state.DesktopAuthorizations),
+		}
 		return nil
 	})
 	return result, err
@@ -1095,7 +1101,7 @@ func (s *identityOperations) validateState(state identityState) error {
 	if state.LoginAttempts == nil || state.Sessions == nil || state.BreakGlassCodes == nil {
 		return errors.New("identity state record arrays must be present and non-null")
 	}
-	if len(state.LoginAttempts) > maxLoginAttempts || len(state.Sessions) > maxSessions || len(state.BreakGlassCodes) > maxBreakGlassCodes || len(state.Audit) > maxIdentityAuditEvents {
+	if len(state.LoginAttempts) > maxLoginAttempts || len(state.Sessions) > maxSessions || len(state.BreakGlassCodes) > maxBreakGlassCodes || len(state.DesktopAuthorizations) > maxDesktopAuthorizationRecords || len(state.Audit) > maxIdentityAuditEvents {
 		return errors.New("identity state exceeds a record-count limit")
 	}
 	identities := make(map[string]string)
@@ -1169,6 +1175,21 @@ func (s *identityOperations) validateState(state identityState) error {
 			(code.RevokedAt != nil && (!isCanonicalTime(*code.RevokedAt) || code.RevokedAt.Before(code.CreatedAt))) ||
 			(code.UsedAt != nil && code.RevokedAt != nil) {
 			return fmt.Errorf("%s has invalid lifecycle metadata", owner)
+		}
+	}
+	for index, record := range state.DesktopAuthorizations {
+		owner := fmt.Sprintf("desktop authorization %d", index)
+		if err := claimIdentity(owner, record.ID); err != nil {
+			return err
+		}
+		if !ValidDesktopAuthorizationRequestID(record.ID) {
+			return fmt.Errorf("%s has a noncanonical ID", owner)
+		}
+		if err := claimCredential(owner, record.PollSecretHash); err != nil {
+			return err
+		}
+		if err := validateDesktopAuthorizationRecord(record); err != nil {
+			return fmt.Errorf("%s: %w", owner, err)
 		}
 	}
 	auditIDs := make(map[string]struct{}, len(state.Audit))
@@ -1359,6 +1380,10 @@ func cloneIdentityState(input identityState) identityState {
 	for index := range input.BreakGlassCodes {
 		out.BreakGlassCodes[index] = cloneBreakGlassCode(input.BreakGlassCodes[index])
 	}
+	out.DesktopAuthorizations = make([]desktopAuthorizationRecord, len(input.DesktopAuthorizations))
+	for index := range input.DesktopAuthorizations {
+		out.DesktopAuthorizations[index] = cloneDesktopAuthorizationRecord(input.DesktopAuthorizations[index])
+	}
 	out.Audit = make([]IdentityAuditEvent, len(input.Audit))
 	for index := range input.Audit {
 		out.Audit[index] = cloneIdentityAuditEvent(input.Audit[index])
@@ -1446,6 +1471,7 @@ func pruneExpired(state *identityState, now time.Time) {
 		return now.Before(value.IdleExpiresAt) && now.Before(value.AbsoluteExpiresAt)
 	})
 	state.BreakGlassCodes = keepBreakGlassCodes(state.BreakGlassCodes, func(value BreakGlassCode) bool { return now.Before(value.ExpiresAt) })
+	pruneDesktopAuthorizations(state, now, true)
 }
 
 func keepLoginAttempts(values []persistedLoginAttempt, keep func(persistedLoginAttempt) bool) []persistedLoginAttempt {

@@ -24,6 +24,7 @@
           <p class="eyebrow">Secure access portal</p>
           <h1>Private networking,<br>under control.</h1>
           <p class="lede">Sign in to manage trusted identities, policy, routing, and fleet health from one operational workspace.</p>
+          <p id="desktop-authorization-login-hint" class="notice hidden">Sign in to review a request from Mesh Desktop. Approve it only if you started sign-in from the native app.</p>
         </div>
         <div class="login-access">
           <div id="oidc-login-panel" class="login-method hidden">
@@ -143,6 +144,24 @@
       <p id="recovery-code-error" class="form-error" role="alert" aria-live="assertive"></p>
       <label class="recovery-custody-check" for="recovery-code-stored"><input id="recovery-code-stored" type="checkbox"> <span>I stored this code in an approved secure location.</span></label>
       <div class="dialog-actions"><button id="retry-recovery-registration" type="button" class="secondary hidden">Retry registration</button><button id="download-recovery-code" type="button" class="secondary">Save text file</button><button id="finish-recovery-code" type="button" disabled>Done</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="desktop-authorization-dialog" aria-labelledby="desktop-authorization-title" aria-describedby="desktop-authorization-copy">
+    <div class="dialog-card">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Native app sign-in</p>
+          <h3 id="desktop-authorization-title">Allow Mesh Desktop?</h3>
+        </div>
+      </div>
+      <p id="desktop-authorization-copy" class="dialog-copy">Mesh Desktop is asking to use your current <strong id="desktop-authorization-role">authenticated</strong> account on this control plane. Approve only if you started sign-in from the native app.</p>
+      <div class="notice warning-notice">Approval gives the desktop app the same role and permissions as this browser session. No password or browser session cookie is shared with the app.</div>
+      <p id="desktop-authorization-error" class="form-error" role="alert" aria-live="assertive"></p>
+      <div class="dialog-actions">
+        <button id="desktop-authorization-deny" type="button" class="secondary">Deny</button>
+        <button id="desktop-authorization-approve" type="button">Allow Mesh Desktop</button>
+      </div>
     </div>
   </dialog>
 
@@ -750,6 +769,7 @@
   <script src="/firewall-rollout.js" defer></script>
   <script src="/certificate-rotation.js" defer></script>
   <script src="/node-revocation.js" defer></script>
+  <script src="/desktop-authorization.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

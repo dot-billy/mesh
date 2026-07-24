@@ -14,6 +14,7 @@ const routePoliciesModel = globalThis.MeshRoutePolicies;
 const firewallRolloutModel = globalThis.MeshFirewallRollout;
 const certificateRotationModel = globalThis.MeshCertificateRotation;
 const nodeRevocationModel = globalThis.MeshNodeRevocation;
+const desktopAuthorizationModel = globalThis.MeshDesktopAuthorization;
 const READINESS_REFRESH_INTERVAL_MS = 10000;
 const NODE_ARCHIVE_CERTIFICATE_SAFETY_MARGIN_MS = 5 * 60 * 1000;
 const CERTIFICATE_ROTATION_STORAGE_PREFIX = 'mesh-certificate-rotation:';
@@ -34,6 +35,9 @@ if (!routePoliciesModel) throw new Error('Network route policies model is unavai
 if (!firewallRolloutModel) throw new Error('Network firewall rollout model is unavailable');
 if (!certificateRotationModel) throw new Error('Certificate rotation model is unavailable');
 if (!nodeRevocationModel) throw new Error('Node revocation model is unavailable');
+if (!desktopAuthorizationModel) throw new Error('Desktop authorization model is unavailable');
+
+const desktopAuthorizationLaunch = desktopAuthorizationModel.captureLaunch(location.href, history);
 
 const state = {
   networks: [],
@@ -82,6 +86,11 @@ const state = {
   },
   authMethods: { oidc: false, legacy_browser_login: false, break_glass: false },
   currentSession: null,
+  desktopAuthorization: {
+    requestID: desktopAuthorizationLaunch.requestID,
+    invalid: desktopAuthorizationLaunch.invalid,
+    flow: null,
+  },
   recoveryDraft: null,
 };
 let authenticated = false;
@@ -272,6 +281,7 @@ async function showLogin(callbackFailed) {
   renderNetworksSafely();
   $('#app-view').classList.add('hidden');
   $('#login-view').classList.remove('hidden');
+  $('#desktop-authorization-login-hint').classList.toggle('hidden', !state.desktopAuthorization.requestID);
   try {
     const methods = await api('/api/v1/auth/methods');
     if (typeof methods.oidc !== 'boolean' || typeof methods.legacy_browser_login !== 'boolean' || typeof methods.break_glass !== 'boolean') throw new Error('Invalid authentication configuration');
@@ -288,6 +298,7 @@ async function showLogin(callbackFailed) {
     $('#login-error').textContent = 'Sign-in is temporarily unavailable.';
   }
   if (callbackFailed) $('#login-error').textContent = 'Single sign-on could not be completed. Please try again.';
+  else if (state.desktopAuthorization.invalid) $('#login-error').textContent = 'The Mesh Desktop authorization link is invalid.';
 }
 
 function consumeOIDCCallbackError() {
@@ -304,6 +315,66 @@ async function showApp() {
   $('#login-view').classList.add('hidden');
   $('#app-view').classList.remove('hidden');
   await Promise.all([loadAuthenticationContext(), loadInstallGuide(), loadNetworks()]);
+  presentDesktopAuthorization();
+}
+
+function presentDesktopAuthorization() {
+  if (state.desktopAuthorization.invalid) {
+    state.desktopAuthorization.invalid = false;
+    flash('The Mesh Desktop authorization link is invalid.');
+    return;
+  }
+  if (!state.desktopAuthorization.requestID || !authenticated) return;
+  try {
+    state.desktopAuthorization.flow = desktopAuthorizationModel.createApprovalFlow({
+      requestID: state.desktopAuthorization.requestID,
+      authenticated: true,
+      decide: (path, decision) => api(path, { method: 'POST', body: JSON.stringify({ decision }) }),
+    });
+  } catch {
+    state.desktopAuthorization.requestID = '';
+    flash('The Mesh Desktop authorization request could not be verified.');
+    return;
+  }
+  const role = state.currentSession?.role;
+  $('#desktop-authorization-role').textContent = typeof role === 'string' ? role : 'authenticated';
+  $('#desktop-authorization-error').textContent = '';
+  $('#desktop-authorization-dialog').showModal();
+  $('#desktop-authorization-approve').focus();
+}
+
+async function submitDesktopAuthorization(decision) {
+  const dialog = $('#desktop-authorization-dialog');
+  const approve = $('#desktop-authorization-approve');
+  const deny = $('#desktop-authorization-deny');
+  if (!state.desktopAuthorization.flow || approve.disabled || deny.disabled) return;
+  approve.disabled = true;
+  deny.disabled = true;
+  dialog.setAttribute('aria-busy', 'true');
+  $('#desktop-authorization-error').textContent = '';
+  try {
+    const result = await state.desktopAuthorization.flow.submit(decision);
+    state.desktopAuthorization.requestID = '';
+    state.desktopAuthorization.flow = null;
+    dialog.close();
+    if (result.state === 'expired') {
+      flash('This Mesh Desktop authorization request expired or is no longer available.');
+    } else {
+      flash(result.state === 'approved' ? 'Mesh Desktop access approved.' : 'Mesh Desktop access denied.');
+    }
+  } catch (error) {
+    if (error.status === 401) {
+      state.desktopAuthorization.flow = null;
+      dialog.close();
+      await showLogin(false);
+      return;
+    }
+    $('#desktop-authorization-error').textContent = 'The authorization decision could not be saved. Try again.';
+  } finally {
+    approve.disabled = false;
+    deny.disabled = false;
+    dialog.removeAttribute('aria-busy');
+  }
 }
 
 async function loadAuthenticationContext() {
@@ -366,7 +437,8 @@ $('#oidc-login').addEventListener('click', async (event) => {
   button.setAttribute('aria-busy', 'true');
   $('#login-error').textContent = '';
   try {
-    const result = await api('/api/v1/auth/oidc/start', { method: 'POST', body: JSON.stringify({ return_path: `${location.pathname}${location.search}` }) });
+    const returnPath = desktopAuthorizationModel.oidcReturnPath(location.href, state.desktopAuthorization.requestID);
+    const result = await api('/api/v1/auth/oidc/start', { method: 'POST', body: JSON.stringify({ return_path: returnPath }) });
     if (typeof result.authorization_url !== 'string' || !result.authorization_url) throw new Error('Invalid sign-in response');
     location.assign(result.authorization_url);
   } catch {
@@ -375,6 +447,10 @@ $('#oidc-login').addEventListener('click', async (event) => {
     button.removeAttribute('aria-busy');
   }
 });
+
+$('#desktop-authorization-approve').addEventListener('click', () => submitDesktopAuthorization('approve'));
+$('#desktop-authorization-deny').addEventListener('click', () => submitDesktopAuthorization('deny'));
+$('#desktop-authorization-dialog').addEventListener('cancel', (event) => event.preventDefault());
 
 $('#logout').addEventListener('click', async () => {
   authenticated = false;

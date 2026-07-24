@@ -851,6 +851,121 @@
         ],
         "type": "object"
       },
+      "DesktopAuthorizationCompleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "poll_secret": {
+            "maxLength": 43,
+            "minLength": 43,
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 51,
+            "minLength": 51,
+            "pattern": "^desktop_[A-Za-z0-9_-]{43}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "poll_secret",
+          "request_id"
+        ],
+        "type": "object"
+      },
+      "DesktopAuthorizationCompletionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "interval_seconds": {
+            "format": "int64",
+            "maximum": 30,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionResponse"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "denied",
+              "expired",
+              "authorized"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "expires_at",
+          "interval_seconds",
+          "state"
+        ],
+        "type": "object"
+      },
+      "DesktopAuthorizationDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "deny"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "type": "object"
+      },
+      "DesktopAuthorizationStartRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "DesktopAuthorizationStartResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "interval_seconds": {
+            "format": "int64",
+            "maximum": 30,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "poll_secret": {
+            "maxLength": 43,
+            "minLength": 43,
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 51,
+            "minLength": 51,
+            "pattern": "^desktop_[A-Za-z0-9_-]{43}$",
+            "type": "string"
+          },
+          "verification_url": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expires_at",
+          "interval_seconds",
+          "poll_secret",
+          "request_id",
+          "verification_url"
+        ],
+        "type": "object"
+      },
       "EffectiveFirewallPolicyDocument": {
         "additionalProperties": false,
         "properties": {
@@ -5490,7 +5605,7 @@
     }
   },
   "info": {
-    "description": "The canonical contract for Mesh browser, administrator, installer, and managed-agent endpoints. Browser sessions use the mesh_session cookie (or __Host-mesh_session over HTTPS). Unsafe cookie-authenticated requests must send the readable mesh_csrf or __Host-mesh_csrf cookie value in X-Mesh-CSRF and must originate from the configured exact public origin. Configured legacy administrator bearer authentication is CSRF-exempt. Managed-agent bearer credentials are device-scoped. Examples contain placeholders only; never paste production credentials into documentation tools.",
+    "description": "The canonical contract for Mesh browser, desktop, administrator, installer, and managed-agent endpoints. Browser sessions use the mesh_session cookie (or __Host-mesh_session over HTTPS). Unsafe cookie-authenticated requests must send the readable mesh_csrf or __Host-mesh_csrf cookie value in X-Mesh-CSRF and must originate from the configured exact public origin. A desktop sign-in response returns its high-entropy poll secret once and uses Cache-Control: no-store. Keep the secret in the native client. Never place it in the verification URL, logs, or documentation tools. Configured legacy administrator bearer authentication is CSRF-exempt. Managed-agent bearer credentials are device-scoped. Examples contain placeholders only; never paste production credentials into documentation tools.",
     "title": "Mesh control-plane API",
     "version": "1.0.0"
   },
@@ -6471,6 +6586,261 @@
             "label": "curl",
             "lang": "Shell",
             "source": "curl --fail-with-body \\\n  -X POST \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"code\":\"\\u003cone-time-break-glass-code\\u003e\"}' \\\n  'https://mesh.example.com/api/v1/auth/break-glass'"
+          }
+        ],
+        "x-interactive": false
+      }
+    },
+    "/api/v1/auth/desktop/complete": {
+      "post": {
+        "deprecated": false,
+        "description": "Uses the request ID and one-time poll secret to read the request state. Pending, denied, and expired responses contain no credentials. The first completion after approval creates a normal Mesh session and returns its session and CSRF cookies.",
+        "operationId": "completeDesktopAuthorization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "poll_secret": "\u003cdesktop-poll-secret\u003e",
+                "request_id": "desktop_example"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/DesktopAuthorizationCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "expires_at": "2026-07-23T12:05:00Z",
+                  "interval_seconds": 5,
+                  "state": "pending"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopAuthorizationCompletionResponse"
+                }
+              }
+            },
+            "description": "Current desktop authorization state and, once, an authorized session."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "the desktop client polled before the server-provided interval"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The desktop client polled before the server-provided interval.",
+            "headers": {
+              "Retry-After": {
+                "description": "Positive delta-seconds before the client may poll again.",
+                "required": true,
+                "schema": {
+                  "example": 5,
+                  "maximum": 3600,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [],
+        "summary": "Poll desktop authorization",
+        "tags": [
+          "Authentication"
+        ],
+        "x-availability": "always",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"poll_secret\":\"\\u003cdesktop-poll-secret\\u003e\",\"request_id\":\"desktop_example\"}' \\\n  'https://mesh.example.com/api/v1/auth/desktop/complete'"
+          }
+        ],
+        "x-interactive": false
+      }
+    },
+    "/api/v1/auth/desktop/start": {
+      "post": {
+        "deprecated": false,
+        "description": "Creates a desktop sign-in request that expires after five minutes in the configured shared identity store. Any current control-plane replica can approve or complete it. The response returns the poll secret once. The store keeps only its hash, and the native client must never put the secret in a URL or browser.",
+        "operationId": "startDesktopAuthorization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {},
+              "schema": {
+                "$ref": "#/components/schemas/DesktopAuthorizationStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "expires_at": "2026-07-23T12:05:00Z",
+                  "interval_seconds": 5,
+                  "poll_secret": "\u003cdesktop-poll-secret\u003e",
+                  "request_id": "desktop_example",
+                  "verification_url": "https://mesh.example.com/?mesh_desktop_request=desktop_example"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopAuthorizationStartResponse"
+                }
+              }
+            },
+            "description": "One-time desktop authorization request."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [],
+        "summary": "Start desktop authorization",
+        "tags": [
+          "Authentication"
+        ],
+        "x-availability": "always",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'Content-Type: application/json' \\\n  -d '{}' \\\n  'https://mesh.example.com/api/v1/auth/desktop/start'"
+          }
+        ],
+        "x-interactive": false
+      }
+    },
+    "/api/v1/auth/desktop/{requestID}/decision": {
+      "post": {
+        "deprecated": false,
+        "description": "Approves an outstanding request for the principal in the current browser session, or denies the request. Legacy bearer authentication cannot make this decision. Approval requires the normal browser cookies, matching CSRF proof, and exact configured Origin.",
+        "operationId": "decideDesktopAuthorization",
+        "parameters": [
+          {
+            "description": "Public desktop-authorization request identifier.",
+            "example": "desktop_example",
+            "in": "path",
+            "name": "requestID",
+            "required": true,
+            "schema": {
+              "maxLength": 51,
+              "minLength": 51,
+              "pattern": "^desktop_[A-Za-z0-9_-]{43}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "decision": "approve"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/DesktopAuthorizationDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The browser decision was recorded."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "cookieSession": []
+          }
+        ],
+        "summary": "Approve or deny desktop authorization",
+        "tags": [
+          "Authentication"
+        ],
+        "x-availability": "always",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"decision\":\"approve\"}' \\\n  'https://mesh.example.com/api/v1/auth/desktop/desktop_example/decision'"
           }
         ],
         "x-interactive": false
@@ -7690,7 +8060,7 @@
                         "metric": 0,
                         "mtu": 0,
                         "prefix": "10.80.0.0/24",
-                        "request_id": "example",
+                        "request_id": "desktop_example",
                         "updated_at": "2026-07-23T12:00:00Z"
                       }
                     ],
@@ -7707,14 +8077,14 @@
                       "phase": "example",
                       "prepared_certificate_generation": 0,
                       "promoted_at": "2026-07-23T12:00:00Z",
-                      "request_id": "example",
+                      "request_id": "desktop_example",
                       "started_at": "2026-07-23T12:00:00Z"
                     },
                     "route_transfer": {
                       "finished_at": "2026-07-23T12:00:00Z",
                       "phase": "example",
                       "promoted_at": "2026-07-23T12:00:00Z",
-                      "request_id": "example",
+                      "request_id": "desktop_example",
                       "routed_subnets": [
                         "10.80.0.0/24"
                       ],
@@ -7918,7 +8288,7 @@
                       "metric": 0,
                       "mtu": 0,
                       "prefix": "10.80.0.0/24",
-                      "request_id": "example",
+                      "request_id": "desktop_example",
                       "updated_at": "2026-07-23T12:00:00Z"
                     }
                   ],
@@ -7935,14 +8305,14 @@
                     "phase": "example",
                     "prepared_certificate_generation": 0,
                     "promoted_at": "2026-07-23T12:00:00Z",
-                    "request_id": "example",
+                    "request_id": "desktop_example",
                     "started_at": "2026-07-23T12:00:00Z"
                   },
                   "route_transfer": {
                     "finished_at": "2026-07-23T12:00:00Z",
                     "phase": "example",
                     "promoted_at": "2026-07-23T12:00:00Z",
-                    "request_id": "example",
+                    "request_id": "desktop_example",
                     "routed_subnets": [
                       "10.80.0.0/24"
                     ],
@@ -10506,7 +10876,7 @@
                 "metric": 0,
                 "mtu": 0,
                 "prefix": "10.80.0.0/24",
-                "request_id": "example"
+                "request_id": "desktop_example"
               },
               "schema": {
                 "$ref": "#/components/schemas/UpdateNetworkRoutePolicyInput"
@@ -10598,7 +10968,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"gateways\":[{\"node_id\":\"node_example\",\"weight\":0}],\"metric\":0,\"mtu\":0,\"prefix\":\"10.80.0.0/24\",\"request_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/route-policies'"
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"gateways\":[{\"node_id\":\"node_example\",\"weight\":0}],\"metric\":0,\"mtu\":0,\"prefix\":\"10.80.0.0/24\",\"request_id\":\"desktop_example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/route-policies'"
           }
         ],
         "x-interactive": true,
@@ -10636,7 +11006,7 @@
                   "network_id": "net_example",
                   "phase": "example",
                   "promoted_at": "2026-07-23T12:00:00Z",
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "routed_subnets": [
                     "10.80.0.0/24"
                   ],
@@ -10738,7 +11108,7 @@
             "application/json": {
               "example": {
                 "expected_config_revision": 1,
-                "request_id": "example",
+                "request_id": "desktop_example",
                 "routed_subnets": [
                   "10.80.0.0/24"
                 ],
@@ -10765,7 +11135,7 @@
                   "network_id": "net_example",
                   "phase": "example",
                   "promoted_at": "2026-07-23T12:00:00Z",
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "routed_subnets": [
                     "10.80.0.0/24"
                   ],
@@ -10839,7 +11209,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"example\",\"routed_subnets\":[\"10.80.0.0/24\"],\"source_node_id\":\"example\",\"target_node_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/route-transfer'"
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"desktop_example\",\"routed_subnets\":[\"10.80.0.0/24\"],\"source_node_id\":\"example\",\"target_node_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/route-transfer'"
           }
         ],
         "x-interactive": true,
@@ -10869,7 +11239,7 @@
             "application/json": {
               "example": {
                 "expected_config_revision": 1,
-                "request_id": "example"
+                "request_id": "desktop_example"
               },
               "schema": {
                 "$ref": "#/components/schemas/UpdateRouteTransferInput"
@@ -10891,7 +11261,7 @@
                   "network_id": "net_example",
                   "phase": "example",
                   "promoted_at": "2026-07-23T12:00:00Z",
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "routed_subnets": [
                     "10.80.0.0/24"
                   ],
@@ -10965,7 +11335,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/route-transfer/advance'"
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"desktop_example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/route-transfer/advance'"
           }
         ],
         "x-interactive": true,
@@ -10995,7 +11365,7 @@
             "application/json": {
               "example": {
                 "expected_config_revision": 1,
-                "request_id": "example"
+                "request_id": "desktop_example"
               },
               "schema": {
                 "$ref": "#/components/schemas/UpdateRouteTransferInput"
@@ -11017,7 +11387,7 @@
                   "network_id": "net_example",
                   "phase": "example",
                   "promoted_at": "2026-07-23T12:00:00Z",
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "routed_subnets": [
                     "10.80.0.0/24"
                   ],
@@ -11091,7 +11461,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/route-transfer/cancel'"
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"desktop_example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/route-transfer/cancel'"
           }
         ],
         "x-interactive": true,
@@ -11358,7 +11728,7 @@
               "example": {
                 "confirmation_name": "example",
                 "expected_config_revision": 1,
-                "request_id": "example"
+                "request_id": "desktop_example"
               },
               "schema": {
                 "$ref": "#/components/schemas/RotateNodeCertificateInput"
@@ -11386,7 +11756,7 @@
                   "previous_certificate_blocklisted": false,
                   "previous_certificate_expires_at": "2026-07-23T12:00:00Z",
                   "previous_certificate_generation": 0,
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "role": "admin",
                   "rotated_at": "2026-07-23T12:00:00Z"
                 },
@@ -11439,7 +11809,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"confirmation_name\":\"example\",\"expected_config_revision\":1,\"request_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/certificate/rotate'"
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"confirmation_name\":\"example\",\"expected_config_revision\":1,\"request_id\":\"desktop_example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/certificate/rotate'"
           }
         ],
         "x-interactive": true,
@@ -11701,7 +12071,7 @@
                 "groups": [
                   "example"
                 ],
-                "request_id": "example"
+                "request_id": "desktop_example"
               },
               "schema": {
                 "$ref": "#/components/schemas/UpdateNodeGroupsInput"
@@ -11733,7 +12103,7 @@
                   "previous_groups": [
                     "example"
                   ],
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "updated_at": "2026-07-23T12:00:00Z"
                 },
                 "schema": {
@@ -11785,7 +12155,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X PUT \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"confirmation_name\":\"example\",\"expected_config_revision\":1,\"groups\":[\"example\"],\"request_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/groups'"
+            "source": "curl --fail-with-body \\\n  -X PUT \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"confirmation_name\":\"example\",\"expected_config_revision\":1,\"groups\":[\"example\"],\"request_id\":\"desktop_example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/groups'"
           }
         ],
         "x-interactive": true,
@@ -11956,7 +12326,7 @@
               "example": {
                 "confirmation_name": "example",
                 "expected_config_revision": 1,
-                "request_id": "example"
+                "request_id": "desktop_example"
               },
               "schema": {
                 "$ref": "#/components/schemas/RevokeNodeInput"
@@ -11982,7 +12352,7 @@
                   "network_id": "net_example",
                   "node_id": "node_example",
                   "relay_assignment_removed": false,
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "revoked_at": "2026-07-23T12:00:00Z",
                   "role": "admin",
                   "routed_subnet_reservations_released": 0,
@@ -12037,7 +12407,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"confirmation_name\":\"example\",\"expected_config_revision\":1,\"request_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/revocation'"
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"confirmation_name\":\"example\",\"expected_config_revision\":1,\"request_id\":\"desktop_example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/revocation'"
           }
         ],
         "x-interactive": true,
@@ -12218,7 +12588,7 @@
                   "removals": [
                     "example"
                   ],
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "schema": "example",
                   "started_at": "2026-07-23T12:00:00Z"
                 },
@@ -12299,7 +12669,7 @@
             "application/json": {
               "example": {
                 "expected_config_revision": 1,
-                "request_id": "example",
+                "request_id": "desktop_example",
                 "routed_subnets": [
                   "10.80.0.0/24"
                 ]
@@ -12346,7 +12716,7 @@
                   "removals": [
                     "example"
                   ],
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "schema": "example",
                   "started_at": "2026-07-23T12:00:00Z"
                 },
@@ -12399,7 +12769,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"example\",\"routed_subnets\":[\"10.80.0.0/24\"]}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/route-profile'"
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"desktop_example\",\"routed_subnets\":[\"10.80.0.0/24\"]}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/route-profile'"
           }
         ],
         "x-interactive": true,
@@ -12429,7 +12799,7 @@
             "application/json": {
               "example": {
                 "expected_config_revision": 1,
-                "request_id": "example"
+                "request_id": "desktop_example"
               },
               "schema": {
                 "$ref": "#/components/schemas/UpdateRouteProfileEditInput"
@@ -12473,7 +12843,7 @@
                   "removals": [
                     "example"
                   ],
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "schema": "example",
                   "started_at": "2026-07-23T12:00:00Z"
                 },
@@ -12526,7 +12896,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/route-profile/advance'"
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"desktop_example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/route-profile/advance'"
           }
         ],
         "x-interactive": true,
@@ -12556,7 +12926,7 @@
             "application/json": {
               "example": {
                 "expected_config_revision": 1,
-                "request_id": "example"
+                "request_id": "desktop_example"
               },
               "schema": {
                 "$ref": "#/components/schemas/UpdateRouteProfileEditInput"
@@ -12600,7 +12970,7 @@
                   "removals": [
                     "example"
                   ],
-                  "request_id": "example",
+                  "request_id": "desktop_example",
                   "schema": "example",
                   "started_at": "2026-07-23T12:00:00Z"
                 },
@@ -12653,7 +13023,7 @@
           {
             "label": "curl",
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/route-profile/cancel'"
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"expected_config_revision\":1,\"request_id\":\"desktop_example\"}' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/route-profile/cancel'"
           }
         ],
         "x-interactive": true,
@@ -12798,11 +13168,11 @@
     "/api/v1/session": {
       "delete": {
         "deprecated": false,
-        "description": "Revokes the active browser session and clears both session cookies. Legacy bearer requests cannot use this endpoint.",
+        "description": "Revokes the active cookie session and clears both session cookies. Legacy bearer requests cannot use this endpoint.",
         "operationId": "logoutCurrentSession",
         "responses": {
           "204": {
-            "description": "The browser session was revoked."
+            "description": "The current session was revoked."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -12837,7 +13207,7 @@
             "legacyAdminBearer": []
           }
         ],
-        "summary": "Log out the current browser session",
+        "summary": "Log out the current session",
         "tags": [
           "Sessions"
         ],
@@ -12853,7 +13223,7 @@
       },
       "get": {
         "deprecated": false,
-        "description": "Returns the authenticated principal, role, permissions, and browser-session lifetime when applicable.",
+        "description": "Returns the authenticated principal, role, permissions, and session lifetime when applicable.",
         "operationId": "getCurrentSession",
         "responses": {
           "200": {
@@ -13043,7 +13413,7 @@
     "/api/v1/sessions": {
       "get": {
         "deprecated": false,
-        "description": "Lists active sessions, optionally including revoked sessions.",
+        "description": "Lists active web and desktop sessions, optionally including revoked sessions.",
         "operationId": "listSessions",
         "parameters": [
           {
@@ -13146,7 +13516,7 @@
             "legacyAdminBearer": []
           }
         ],
-        "summary": "List browser sessions",
+        "summary": "List control-plane sessions",
         "tags": [
           "Sessions"
         ],
@@ -13217,7 +13587,7 @@
             "legacyAdminBearer": []
           }
         ],
-        "summary": "Revoke a browser session",
+        "summary": "Revoke a session",
         "tags": [
           "Sessions"
         ],

@@ -39,6 +39,32 @@ type openAPIOIDCStartResponse struct {
 	AuthorizationURL string `json:"authorization_url"`
 }
 
+type openAPIDesktopAuthorizationStartRequest struct{}
+
+type openAPIDesktopAuthorizationStartResponse struct {
+	RequestID       string    `json:"request_id"`
+	PollSecret      string    `json:"poll_secret"`
+	VerificationURL string    `json:"verification_url"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	IntervalSeconds int64     `json:"interval_seconds"`
+}
+
+type openAPIDesktopAuthorizationDecisionRequest struct {
+	Decision string `json:"decision"`
+}
+
+type openAPIDesktopAuthorizationCompleteRequest struct {
+	RequestID  string `json:"request_id"`
+	PollSecret string `json:"poll_secret"`
+}
+
+type openAPIDesktopAuthorizationCompletionResponse struct {
+	State           string                  `json:"state"`
+	ExpiresAt       time.Time               `json:"expires_at"`
+	IntervalSeconds int64                   `json:"interval_seconds"`
+	Session         *openAPISessionResponse `json:"session,omitempty"`
+}
+
 type openAPILegacyLoginRequest struct {
 	Token string `json:"token"`
 }
@@ -172,6 +198,9 @@ func openAPIOperations() []openAPIOperation {
 		{Method: http.MethodGet, Path: "/readyz", OperationID: "getReadiness", Tag: "System", Summary: "Check service readiness", Description: "Checks the configured durable-store dependency and returns either ready or unavailable.", Security: public, Response: openAPIType[openAPIStatusResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "The service is ready.", Interactive: true},
 		{Method: http.MethodHead, Path: "/readyz", OperationID: "headReadiness", Tag: "System", Summary: "Check readiness without a body", Description: "Returns the same status code as GET /readyz without a response body.", Security: public, ResponseStatus: http.StatusOK, ResponseSummary: "The service is ready.", Interactive: true},
 		{Method: http.MethodGet, Path: "/api/v1/auth/methods", OperationID: "getAuthenticationMethods", Tag: "Authentication", Summary: "List enabled browser authentication methods", Description: "Returns deployment-specific availability for OIDC, legacy browser login, and break-glass login.", Security: public, Response: openAPIType[openAPIAuthMethodsResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Enabled browser authentication methods.", Interactive: true},
+		{Method: http.MethodPost, Path: "/api/v1/auth/desktop/start", OperationID: "startDesktopAuthorization", Tag: "Authentication", Summary: "Start desktop authorization", Description: "Creates a desktop sign-in request that expires after five minutes in the configured shared identity store. Any current control-plane replica can approve or complete it. The response returns the poll secret once. The store keeps only its hash, and the native client must never put the secret in a URL or browser.", Security: "desktop", Request: openAPIType[openAPIDesktopAuthorizationStartRequest](), Response: openAPIType[openAPIDesktopAuthorizationStartResponse](), ResponseStatus: http.StatusCreated, ResponseSummary: "One-time desktop authorization request.", Interactive: false},
+		{Method: http.MethodPost, Path: "/api/v1/auth/desktop/{requestID}/decision", OperationID: "decideDesktopAuthorization", Tag: "Authentication", Summary: "Approve or deny desktop authorization", Description: "Approves an outstanding request for the principal in the current browser session, or denies the request. Legacy bearer authentication cannot make this decision. Approval requires the normal browser cookies, matching CSRF proof, and exact configured Origin.", Security: "browser", Request: openAPIType[openAPIDesktopAuthorizationDecisionRequest](), ResponseStatus: http.StatusNoContent, ResponseSummary: "The browser decision was recorded.", Interactive: false},
+		{Method: http.MethodPost, Path: "/api/v1/auth/desktop/complete", OperationID: "completeDesktopAuthorization", Tag: "Authentication", Summary: "Poll desktop authorization", Description: "Uses the request ID and one-time poll secret to read the request state. Pending, denied, and expired responses contain no credentials. The first completion after approval creates a normal Mesh session and returns its session and CSRF cookies.", Security: "desktop", Request: openAPIType[openAPIDesktopAuthorizationCompleteRequest](), Response: openAPIType[openAPIDesktopAuthorizationCompletionResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Current desktop authorization state and, once, an authorized session.", Interactive: false},
 		{Method: http.MethodPost, Path: "/api/v1/auth/oidc/start", OperationID: "startOIDCLogin", Tag: "Authentication", Summary: "Start an OIDC login", Description: "Creates a bounded OIDC transaction after same-origin and JSON-content checks. The browser must follow the returned provider URL.", Security: oidc, Request: openAPIType[openAPIOIDCStartRequest](), Response: openAPIType[openAPIOIDCStartResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "OIDC authorization URL.", Optional: "OIDC", Interactive: false},
 		{Method: http.MethodGet, Path: "/api/v1/auth/oidc/callback", OperationID: "completeOIDCLogin", Tag: "Authentication", Summary: "Complete an OIDC callback", Description: "Consumes the provider callback and transaction cookie, creates the Mesh browser session, and redirects to the bound return path.", Security: oidc, ResponseStatus: http.StatusSeeOther, ResponseSummary: "Browser redirect after successful authentication.", Optional: "OIDC", Interactive: false, Query: []openAPIQueryParameter{
 			{Name: "state", Description: "Opaque OIDC state bound to the transaction cookie.", Required: true, Schema: map[string]any{"type": "string"}},
@@ -180,13 +209,13 @@ func openAPIOperations() []openAPIOperation {
 		}},
 		{Method: http.MethodPost, Path: "/api/v1/auth/break-glass", OperationID: "loginWithBreakGlassCode", Tag: "Authentication", Summary: "Consume a break-glass code", Description: "Consumes one recovery code after same-origin and JSON-content checks and creates a short-lived browser session.", Security: recovery, Request: openAPIType[openAPIBreakGlassLoginRequest](), Response: openAPIType[openAPISessionResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Authenticated recovery session.", Optional: "Break-glass recovery", Interactive: false},
 		{Method: http.MethodPost, Path: "/api/v1/session", OperationID: "loginWithLegacyToken", Tag: "Authentication", Summary: "Create a legacy browser session", Description: "Exchanges the deployment administrator token for hardened session and CSRF cookies. OIDC is preferred where configured.", Security: public, Request: openAPIType[openAPILegacyLoginRequest](), Response: openAPIType[openAPISessionResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Authenticated browser session.", Interactive: false},
-		{Method: http.MethodGet, Path: "/api/v1/session", OperationID: "getCurrentSession", Tag: "Sessions", Summary: "Read the current access context", Description: "Returns the authenticated principal, role, permissions, and browser-session lifetime when applicable.", Security: admin, Response: openAPIType[openAPISessionResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Current authenticated access context.", Interactive: true},
-		{Method: http.MethodDelete, Path: "/api/v1/session", OperationID: "logoutCurrentSession", Tag: "Sessions", Summary: "Log out the current browser session", Description: "Revokes the active browser session and clears both session cookies. Legacy bearer requests cannot use this endpoint.", Security: admin, ResponseStatus: http.StatusNoContent, ResponseSummary: "The browser session was revoked.", Interactive: true},
-		{Method: http.MethodGet, Path: "/api/v1/sessions", OperationID: "listSessions", Tag: "Sessions", Summary: "List browser sessions", Description: "Lists active sessions, optionally including revoked sessions.", Security: admin, Permission: identityManage, Response: openAPIType[[]identity.SessionSummary](), ResponseStatus: http.StatusOK, ResponseSummary: "Session inventory.", Interactive: true, Query: []openAPIQueryParameter{
+		{Method: http.MethodGet, Path: "/api/v1/session", OperationID: "getCurrentSession", Tag: "Sessions", Summary: "Read the current access context", Description: "Returns the authenticated principal, role, permissions, and session lifetime when applicable.", Security: admin, Response: openAPIType[openAPISessionResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Current authenticated access context.", Interactive: true},
+		{Method: http.MethodDelete, Path: "/api/v1/session", OperationID: "logoutCurrentSession", Tag: "Sessions", Summary: "Log out the current session", Description: "Revokes the active cookie session and clears both session cookies. Legacy bearer requests cannot use this endpoint.", Security: admin, ResponseStatus: http.StatusNoContent, ResponseSummary: "The current session was revoked.", Interactive: true},
+		{Method: http.MethodGet, Path: "/api/v1/sessions", OperationID: "listSessions", Tag: "Sessions", Summary: "List control-plane sessions", Description: "Lists active web and desktop sessions, optionally including revoked sessions.", Security: admin, Permission: identityManage, Response: openAPIType[[]identity.SessionSummary](), ResponseStatus: http.StatusOK, ResponseSummary: "Session inventory.", Interactive: true, Query: []openAPIQueryParameter{
 			{Name: "limit", Description: "Maximum number of sessions, from 1 through 256.", Schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 256, "default": 100}},
 			{Name: "include_revoked", Description: "Include revoked and expired session records.", Schema: map[string]any{"type": "boolean", "default": false}},
 		}},
-		{Method: http.MethodDelete, Path: "/api/v1/sessions/{sessionID}", OperationID: "revokeSession", Tag: "Sessions", Summary: "Revoke a browser session", Description: "Revokes the selected session idempotently and clears cookies when the caller revokes its own session.", Security: admin, Permission: identityManage, ResponseStatus: http.StatusNoContent, ResponseSummary: "The session is revoked.", Interactive: true},
+		{Method: http.MethodDelete, Path: "/api/v1/sessions/{sessionID}", OperationID: "revokeSession", Tag: "Sessions", Summary: "Revoke a session", Description: "Revokes the selected session idempotently and clears cookies when the caller revokes its own session.", Security: admin, Permission: identityManage, ResponseStatus: http.StatusNoContent, ResponseSummary: "The session is revoked.", Interactive: true},
 		{Method: http.MethodGet, Path: "/api/v1/break-glass-codes", OperationID: "listBreakGlassCodes", Tag: "Recovery access", Summary: "List break-glass code metadata", Description: "Returns non-secret code identifiers, expiry, state, and the configured usable-code floor.", Security: admin, Permission: identityManage, Response: openAPIType[openAPIBreakGlassInventoryResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Break-glass code inventory.", Optional: "Break-glass recovery", Interactive: true},
 		{Method: http.MethodPost, Path: "/api/v1/break-glass-codes", OperationID: "registerBreakGlassCode", Tag: "Recovery access", Summary: "Register a break-glass code", Description: "Stores only the verifier for a newly generated one-use recovery code. A recovery-authenticated principal cannot register replacements.", Security: admin, Permission: identityManage, Request: openAPIType[openAPIBreakGlassCodeRegistrationRequest](), Response: openAPIType[identity.BreakGlassCodeSummary](), ResponseStatus: http.StatusCreated, ResponseSummary: "Registered break-glass code metadata.", Optional: "Break-glass recovery", Interactive: false},
 		{Method: http.MethodDelete, Path: "/api/v1/break-glass-codes/{codeID}", OperationID: "revokeBreakGlassCode", Tag: "Recovery access", Summary: "Revoke a break-glass code", Description: "Permanently revokes the selected unused recovery code.", Security: admin, Permission: identityManage, ResponseStatus: http.StatusNoContent, ResponseSummary: "The recovery code is revoked.", Optional: "Break-glass recovery", Interactive: true},
@@ -483,6 +512,8 @@ func openAPIStringExample(fieldName string) string {
 		return "session_example"
 	case name == "code_id":
 		return "code_example"
+	case name == "request_id":
+		return "desktop_example"
 	case name == "id":
 		return "example_id"
 	case strings.Contains(name, "cidr") || strings.Contains(name, "subnet") || strings.Contains(name, "prefix"):
@@ -530,6 +561,14 @@ func openAPIStringExample(fieldName string) string {
 
 func openAPIRequestExample(operation openAPIOperation) any {
 	overrides := map[string]any{
+		"startDesktopAuthorization": map[string]any{},
+		"decideDesktopAuthorization": map[string]any{
+			"decision": "approve",
+		},
+		"completeDesktopAuthorization": map[string]any{
+			"request_id":  "desktop_example",
+			"poll_secret": "<desktop-poll-secret>",
+		},
 		"startOIDCLogin":          map[string]any{"return_path": "/"},
 		"loginWithLegacyToken":    map[string]any{"token": "<administrator-token>"},
 		"loginWithBreakGlassCode": map[string]any{"code": "<one-time-break-glass-code>"},
@@ -555,6 +594,27 @@ func openAPIRequestExample(operation openAPIOperation) any {
 	return openAPIExample(operation.Request)
 }
 
+func openAPIResponseExample(operation openAPIOperation) any {
+	switch operation.OperationID {
+	case "startDesktopAuthorization":
+		return map[string]any{
+			"request_id":       "desktop_example",
+			"poll_secret":      "<desktop-poll-secret>",
+			"verification_url": "https://mesh.example.com/?mesh_desktop_request=desktop_example",
+			"expires_at":       "2026-07-23T12:05:00Z",
+			"interval_seconds": 5,
+		}
+	case "completeDesktopAuthorization":
+		return map[string]any{
+			"state":            "pending",
+			"expires_at":       "2026-07-23T12:05:00Z",
+			"interval_seconds": 5,
+		}
+	default:
+		return openAPIExample(operation.Response)
+	}
+}
+
 func openAPISecurity(operation openAPIOperation) []any {
 	switch operation.Security {
 	case "admin":
@@ -562,6 +622,8 @@ func openAPISecurity(operation openAPIOperation) []any {
 			map[string]any{"cookieSession": []any{}},
 			map[string]any{"legacyAdminBearer": []any{}},
 		}
+	case "browser":
+		return []any{map[string]any{"cookieSession": []any{}}}
 	case "agent":
 		return []any{map[string]any{"agentBearer": []any{}}}
 	default:
@@ -579,6 +641,20 @@ func openAPIErrorResponse(description string) map[string]any {
 			},
 		},
 	}
+}
+
+func openAPIRetryAfterErrorResponse(description string) map[string]any {
+	response := openAPIErrorResponse(description)
+	response["headers"] = map[string]any{
+		"Retry-After": map[string]any{
+			"description": "Positive delta-seconds before the client may poll again.",
+			"required":    true,
+			"schema": map[string]any{
+				"type": "integer", "minimum": 1, "maximum": 3600, "example": 5,
+			},
+		},
+	}
+	return response
 }
 
 func openAPIPathParameters(path string) []any {
@@ -605,12 +681,22 @@ func openAPIPathParameters(path string) []any {
 			description = "Browser-session identifier."
 		case "codeID":
 			description = "Break-glass code identifier."
+		case "requestID":
+			description = "Public desktop-authorization request identifier."
 		}
 		parameters = append(parameters, map[string]any{
 			"name": name, "in": "path", "required": true,
 			"description": description,
-			"schema":      map[string]any{"type": "string", "minLength": 1},
-			"example":     openAPIStringExample(strings.ReplaceAll(name, "ID", "_id")),
+			"schema": func() map[string]any {
+				if name == "requestID" {
+					return map[string]any{
+						"type": "string", "minLength": 51, "maxLength": 51,
+						"pattern": `^desktop_[A-Za-z0-9_-]{43}$`,
+					}
+				}
+				return map[string]any{"type": "string", "minLength": 1}
+			}(),
+			"example": openAPIStringExample(strings.ReplaceAll(name, "ID", "_id")),
 		})
 		offset = end + 1
 	}
@@ -624,6 +710,7 @@ func openAPICurlSample(operation openAPIOperation, requestExample any) string {
 		"{nodeID}":    "node_example",
 		"{sessionID}": "session_example",
 		"{codeID}":    "code_example",
+		"{requestID}": "desktop_example",
 	}
 	for source, target := range replacements {
 		path = strings.ReplaceAll(path, source, target)
@@ -641,7 +728,7 @@ func openAPICurlSample(operation openAPIOperation, requestExample any) string {
 	}
 	parts := []string{"curl --fail-with-body", "-X " + operation.Method}
 	switch operation.Security {
-	case "admin":
+	case "admin", "browser":
 		parts = append(parts, "--cookie '__Host-mesh_session=<browser-session-value>'")
 		if operation.Method != http.MethodGet && operation.Method != http.MethodHead {
 			parts = append(parts,
@@ -651,7 +738,7 @@ func openAPICurlSample(operation openAPIOperation, requestExample any) string {
 		}
 	case "agent":
 		parts = append(parts, "-H 'Authorization: Bearer <agent-token>'")
-	case "oidc", "recovery":
+	case "desktop", "oidc", "recovery":
 		if operation.Method != http.MethodGet && operation.Method != http.MethodHead {
 			parts = append(parts, "-H 'Origin: https://mesh.example.com'")
 		}
@@ -684,7 +771,7 @@ func buildOpenAPIDocument() (map[string]any, error) {
 			success["content"] = map[string]any{
 				"application/json": map[string]any{
 					"schema":  builder.schemaFor(operation.Response),
-					"example": openAPIExample(operation.Response),
+					"example": openAPIResponseExample(operation),
 				},
 			}
 		}
@@ -701,6 +788,11 @@ func buildOpenAPIDocument() (map[string]any, error) {
 		}
 		if operation.OperationID == "getAgentConfig" {
 			responses["304"] = map[string]any{"description": "The supplied configuration signature is current."}
+		}
+		if operation.OperationID == "completeDesktopAuthorization" {
+			responses["429"] = openAPIRetryAfterErrorResponse(
+				"The desktop client polled before the server-provided interval.",
+			)
 		}
 		if operation.ResponseStatus == http.StatusSeeOther {
 			success["headers"] = map[string]any{
@@ -763,6 +855,7 @@ func buildOpenAPIDocument() (map[string]any, error) {
 		}
 		pathItem[method] = item
 	}
+	refineDesktopAuthorizationSchemas(builder.schemas)
 
 	// Error is intentionally defined independently of Go reflection: every
 	// HTTP error boundary exposes exactly one generic, non-secret message.
@@ -797,8 +890,9 @@ func buildOpenAPIDocument() (map[string]any, error) {
 		"info": map[string]any{
 			"title":   "Mesh control-plane API",
 			"version": openAPIContractVersion,
-			"description": "The canonical contract for Mesh browser, administrator, installer, and managed-agent endpoints. " +
+			"description": "The canonical contract for Mesh browser, desktop, administrator, installer, and managed-agent endpoints. " +
 				"Browser sessions use the mesh_session cookie (or __Host-mesh_session over HTTPS). Unsafe cookie-authenticated requests must send the readable mesh_csrf or __Host-mesh_csrf cookie value in X-Mesh-CSRF and must originate from the configured exact public origin. " +
+				"A desktop sign-in response returns its high-entropy poll secret once and uses Cache-Control: no-store. Keep the secret in the native client. Never place it in the verification URL, logs, or documentation tools. " +
 				"Configured legacy administrator bearer authentication is CSRF-exempt. Managed-agent bearer credentials are device-scoped. Examples contain placeholders only; never paste production credentials into documentation tools.",
 		},
 		"servers": []any{
@@ -836,6 +930,37 @@ func buildOpenAPIDocument() (map[string]any, error) {
 			},
 		},
 	}, nil
+}
+
+func refineDesktopAuthorizationSchemas(schemas map[string]any) {
+	stringProperty := func(schemaName, propertyName string) map[string]any {
+		schema, _ := schemas[schemaName].(map[string]any)
+		properties, _ := schema["properties"].(map[string]any)
+		property, _ := properties[propertyName].(map[string]any)
+		return property
+	}
+	for _, schemaName := range []string{"DesktopAuthorizationStartResponse", "DesktopAuthorizationCompleteRequest"} {
+		property := stringProperty(schemaName, "request_id")
+		property["minLength"], property["maxLength"] = 51, 51
+		property["pattern"] = `^desktop_[A-Za-z0-9_-]{43}$`
+	}
+	for _, schemaName := range []string{"DesktopAuthorizationStartResponse", "DesktopAuthorizationCompleteRequest"} {
+		property := stringProperty(schemaName, "poll_secret")
+		property["minLength"], property["maxLength"] = 43, 43
+		property["pattern"] = `^[A-Za-z0-9_-]{43}$`
+	}
+	verification := stringProperty("DesktopAuthorizationStartResponse", "verification_url")
+	verification["format"] = "uri"
+	decision := stringProperty("DesktopAuthorizationDecisionRequest", "decision")
+	decision["enum"] = []string{"approve", "deny"}
+	state := stringProperty("DesktopAuthorizationCompletionResponse", "state")
+	state["enum"] = []string{"pending", "denied", "expired", "authorized"}
+	for _, schemaName := range []string{"DesktopAuthorizationStartResponse", "DesktopAuthorizationCompletionResponse"} {
+		schema, _ := schemas[schemaName].(map[string]any)
+		properties, _ := schema["properties"].(map[string]any)
+		interval, _ := properties["interval_seconds"].(map[string]any)
+		interval["minimum"], interval["maximum"] = 1, 30
+	}
 }
 
 var (

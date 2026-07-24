@@ -1,4 +1,4 @@
-.PHONY: build test docs api-docs pages pages-check docs-check api-docs-check docs-change-gate vet security-baseline image-security-baseline observer-security-baseline origin-image-security-baseline linux-package-security-baseline windows-package-security-baseline darwin-package-security-baseline smoke oidc-breakglass-smoke packet-smoke ui-guided-packet-smoke network-dns-smoke native-dns-smoke network-relay-smoke network-ca-rotation-smoke network-firewall-rollout-smoke routed-subnet-smoke route-transfer-smoke route-profile-smoke route-ecmp-smoke ui-guided-linux-package-smoke backup-restore-smoke nebula-observer-smoke nebula-observer-overlay-smoke nebula-public-endpoint-smoke postgres-multi-replica-smoke postgres-load-soak-smoke postgres-max-document-smoke postgres-sync-failover-smoke postgres-ambiguous-commit-smoke postgres-pitr-smoke postgres-roles-tls-smoke linux-install-smoke bootstrap-verifier-smoke windows-bundle-smoke darwin-bundle-smoke darwin-path-security-smoke darwin-native-runtime-smoke helm-chart-smoke release-origin-helm-smoke helm-runtime-smoke helm-kubernetes-smoke compose-smoke release-origin-smoke dev
+.PHONY: build test docs api-docs pages pages-check docs-check api-docs-check docs-change-gate desktop-check desktop-linux-build desktop-linux-package vet security-baseline image-security-baseline observer-security-baseline origin-image-security-baseline linux-package-security-baseline windows-package-security-baseline darwin-package-security-baseline smoke oidc-breakglass-smoke packet-smoke ui-guided-packet-smoke network-dns-smoke native-dns-smoke network-relay-smoke network-ca-rotation-smoke network-firewall-rollout-smoke routed-subnet-smoke route-transfer-smoke route-profile-smoke route-ecmp-smoke ui-guided-linux-package-smoke backup-restore-smoke nebula-observer-smoke nebula-observer-overlay-smoke nebula-public-endpoint-smoke postgres-multi-replica-smoke postgres-load-soak-smoke postgres-max-document-smoke postgres-sync-failover-smoke postgres-ambiguous-commit-smoke postgres-pitr-smoke postgres-roles-tls-smoke linux-install-smoke bootstrap-verifier-smoke windows-bundle-smoke darwin-bundle-smoke darwin-path-security-smoke darwin-native-runtime-smoke helm-chart-smoke release-origin-helm-smoke helm-runtime-smoke helm-kubernetes-smoke compose-smoke release-origin-smoke dev
 
 build:
 	mkdir -p bin
@@ -50,6 +50,18 @@ docs-change-gate:
 	test -n "$(HEAD_REF)"
 	python3 scripts/public-docs-change-gate.py --base "$(BASE_REF)" --head "$(HEAD_REF)"
 	python3 scripts/api-docs-change-gate.py --base "$(BASE_REF)" --head "$(HEAD_REF)"
+
+desktop-check:
+	cd desktop && dart pub get --enforce-lockfile
+	cd desktop && dart format --output=none --set-exit-if-changed lib test
+	cd desktop && flutter analyze
+	cd desktop && flutter test
+
+desktop-linux-build: desktop-check
+	cd desktop && flutter build linux --release
+
+desktop-linux-package: desktop-linux-build
+	./packaging/desktop/linux/build-deb.sh desktop/build/linux/x64/release/bundle
 
 vet:
 	go vet ./...
