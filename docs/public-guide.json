@@ -260,6 +260,7 @@
             "The app must wait for the server-provided polling interval. A 429 response includes Retry-After and means the client polled too soon.",
             "The preview can create networks and node enrollments, reissue a pending enrollment, rotate or permanently revoke a node identity, revoke a control-plane session, and create one-use recovery access. Every action is checked again by server-side RBAC.",
             "A lighthouse enrollment requires its reachable public UDP endpoint. Enrollment tokens and recovery codes appear in a one-time custody view and are removed when the view closes or the app leaves the foreground.",
+            "Linux Debian and Windows MSIX artifacts produced by the current CI workflow are unsigned. Verify the published checksum, then sign and validate the package in a protected release environment before distribution.",
             "Use the web control plane or API for any workflow that the preview desktop client does not yet expose. The server remains the authorization authority for every request."
           ],
           "note": {
