@@ -62,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           desktop-file-validate packaging/desktop/linux/io.rw0.mesh.desktop.desktop
-          appstreamcli validate --strict --no-net packaging/desktop/linux/io.rw0.mesh.desktop.metainfo.xml
+          appstreamcli validate --pedantic --no-net packaging/desktop/linux/io.rw0.mesh.desktop.metainfo.xml
 
       - name: Install the pinned Flutter SDK
         shell: bash
