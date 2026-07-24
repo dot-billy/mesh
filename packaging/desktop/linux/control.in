@@ -1,0 +1,10 @@
+Package: mesh-desktop
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: @ARCH@
+Depends: libgtk-3-0, libsecret-1-0
+Maintainer: Mesh maintainers
+Description: Native Mesh operator console
+ Mesh Desktop is the unprivileged administration client for a remote Mesh
+ control plane. It does not install or run the managed node service.

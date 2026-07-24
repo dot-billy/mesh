@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.rw0.mesh.desktop</id>
+  <name>Mesh</name>
+  <summary>Manage Mesh networks and nodes</summary>
+  <developer id="io.rw0.mesh">
+    <name>Mesh maintainers</name>
+  </developer>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      Mesh Desktop is an unprivileged operator console for a remote Mesh
+      control plane. It displays fleet health, network policy, node lifecycle
+      state, audit history, and role-appropriate administrative actions.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.rw0.mesh.desktop.desktop</launchable>
+  <provides>
+    <binary>mesh-desktop</binary>
+  </provides>
+  <url type="homepage">https://dot-billy.github.io/mesh/</url>
+  <content_rating type="oars-1.1"/>
+</component>

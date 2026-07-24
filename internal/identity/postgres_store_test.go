@@ -409,6 +409,46 @@ func TestPostgresStoreCloseWaitsForAdmittedUpdate(t *testing.T) {
 	}
 }
 
+func TestPostgresDesktopAuthorizationCrossAdapterLifecycle(t *testing.T) {
+	repository := &fakePostgresIdentityRepository{body: nonCanonicalValidIdentityRaw()}
+	sealer := newTestSealer(t)
+	startStore := newTestPostgresIdentityStore(t, repository, sealer, PostgresStoreOptions{})
+	decisionStore := newTestPostgresIdentityStore(t, repository, sealer, PostgresStoreOptions{})
+	completionStore := newTestPostgresIdentityStore(t, repository, sealer, PostgresStoreOptions{})
+	t.Cleanup(func() {
+		_ = startStore.Close()
+		_ = decisionStore.Close()
+		_ = completionStore.Close()
+	})
+
+	now := identityTestTime()
+	requestID, pollSecret := desktopRequestID(t), mustToken(t)
+	if err := startStore.CreateDesktopAuthorization(context.Background(), CreateDesktopAuthorizationInput{
+		ID: requestID, PollSecret: pollSecret, CreatedAt: now,
+		ExpiresAt: now.Add(5 * time.Minute), PollInterval: 5 * time.Second,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	principal, err := NewLegacyPrincipal(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := decisionStore.DecideDesktopAuthorization(context.Background(), requestID, principal, DesktopAuthorizationApprove, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	poll, err := completionStore.PollDesktopAuthorization(context.Background(), requestID, pollSecret, now.Add(5*time.Second))
+	if err != nil || poll.State != DesktopAuthorizationApproved || !principalsEqual(poll.Principal, principal) {
+		t.Fatalf("cross-adapter completion=%#v error=%v", poll, err)
+	}
+	if _, err := startStore.PollDesktopAuthorization(context.Background(), requestID, pollSecret, now.Add(10*time.Second)); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("cross-adapter replay error=%v, want unauthorized", err)
+	}
+	raw := repository.bodyCopy()
+	if bytes.Contains(raw, []byte(pollSecret)) {
+		t.Fatal("shared identity document contains the raw poll secret")
+	}
+}
+
 type wrappedIdentityTestError struct{ cause error }
 
 func (e *wrappedIdentityTestError) Error() string { return "wrapped: " + e.cause.Error() }

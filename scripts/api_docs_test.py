@@ -110,7 +110,7 @@ class APIDocumentationTest(unittest.TestCase):
             for method, operation in path_item.items()
             if method in generator.HTTP_METHODS
         ]
-        self.assertEqual(len(operations), 67)
+        self.assertEqual(len(operations), 70)
         self.assertGreater(
             sum("x-required-permission" in operation for operation in operations),
             40,

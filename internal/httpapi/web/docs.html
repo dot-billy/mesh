@@ -94,6 +94,7 @@
             <ul class="docs-list">
               <li>Use at least two operational lighthouses.</li>
               <li>Place them in separate infrastructure failure domains.</li>
+              <li>Provide a reachable public UDP host and port when creating each lighthouse, for example vpn.example.com:4242.</li>
               <li>Expose the configured UDP port through every cloud and host firewall.</li>
             </ul>
           </article>
@@ -295,6 +296,30 @@
               <li>Admin: operator access plus certificate authority, node-security, recovery, session, and retirement operations.</li>
             </ul>
           </article>
+          <article class="docs-topic docs-topic-wide">
+            <h3>Use Mesh Desktop</h3>
+            <p>Mesh Desktop is a preview, unprivileged operator console for Linux and Windows. It connects to a remote Mesh control plane. It does not install Nebula, manage a local tunnel, or run the privileged node service.</p>
+            <ul class="docs-list">
+              <li>Mesh Desktop keeps the session and CSRF cookie pair in the operating system credential store. A legacy administrator token, when a deployment still allows one, stays in memory and is not saved.</li>
+              <li>Pending, denied, and expired requests return no session credentials. An approved request can create a session only once.</li>
+              <li>The app must wait for the server-provided polling interval. A 429 response includes Retry-After and means the client polled too soon.</li>
+              <li>The preview can create networks and node enrollments, reissue a pending enrollment, rotate or permanently revoke a node identity, revoke a control-plane session, and create one-use recovery access. Every action is checked again by server-side RBAC.</li>
+              <li>A lighthouse enrollment requires its reachable public UDP endpoint. Enrollment tokens and recovery codes appear in a one-time custody view and are removed when the view closes or the app leaves the foreground.</li>
+              <li>Linux Debian and Windows MSIX artifacts produced by the current CI workflow are unsigned. Verify the published checksum, then sign and validate the package in a protected release environment before distribution.</li>
+              <li>Use the web control plane or API for any workflow that the preview desktop client does not yet expose. The server remains the authorization authority for every request.</li>
+            </ul>
+            <ol class="docs-steps">
+              <li>Enter the exact HTTPS origin of the Mesh control plane. Plain HTTP is limited to an explicitly enabled loopback development profile.</li>
+              <li>Choose browser sign-in. Mesh Desktop creates a request that expires after five minutes and opens the system browser. The verification URL contains the public request ID, not the poll secret.</li>
+              <li>Sign in to the same control plane if needed. Approve the request only if you started it from Mesh Desktop. The browser also lets you deny the request.</li>
+              <li>Return to Mesh Desktop. After approval, the server creates a separate Mesh session with the same principal, role, and permissions as the browser session. The browser does not give its password or session cookie to the app.</li>
+              <li>Check the role shown in Mesh Desktop before making changes. Sign out when the workstation no longer needs access. An administrator can also revoke the session from the session inventory.</li>
+            </ol>
+            <aside class="docs-note warning">
+              <strong>Update every control-plane replica before restoring writes</strong>
+              <p>This release adds desktop_authorizations to the shared identity document. Older strict readers reject that field after a new server writes the document. During a multi-replica upgrade, block identity-writing traffic, replace every control-plane replica, then restore traffic. After the field has been written, do not roll back to an older build unless you first use an operator-reviewed state migration or restore a verified pre-upgrade identity backup.</p>
+            </aside>
+          </article>
           <article class="docs-topic">
             <h3>Rotate the network CA</h3>
             <p>CA rotation is a staged trust transition. Keep the workflow open and allow every active node to converge before advancing.</p>
@@ -312,11 +337,12 @@
           </article>
           <article class="docs-topic">
             <h3>Sessions and recovery access</h3>
-            <p>Admins can inspect and revoke browser sessions. If the deployment enables one-use recovery codes, create and custody them before an identity-provider outage.</p>
+            <p>Admins can inspect and revoke control-plane sessions created by the web app or Mesh Desktop. If the deployment enables one-use recovery codes, create and custody them before an identity-provider outage.</p>
             <ul class="docs-list">
               <li>Revoke unfamiliar or unneeded sessions immediately.</li>
               <li>Store recovery codes outside the Mesh host and identity provider.</li>
               <li>A displayed recovery code cannot be retrieved again.</li>
+              <li>Mesh Desktop creates recovery access with a seven-day lifetime. Use the web control plane or API when a different expiry is required.</li>
               <li>Keep normal OIDC access protected with the organization&#x27;s MFA policy.</li>
             </ul>
           </article>

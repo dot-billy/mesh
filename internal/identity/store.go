@@ -142,9 +142,10 @@ type BreakGlassCodeSummary struct {
 }
 
 type CleanupResult struct {
-	LoginAttempts   int
-	Sessions        int
-	BreakGlassCodes int
+	LoginAttempts         int
+	Sessions              int
+	BreakGlassCodes       int
+	DesktopAuthorizations int
 }
 
 type SessionStore interface {
@@ -159,6 +160,9 @@ type SessionStore interface {
 	RevokePrincipal(ctx context.Context, principalID string, at time.Time, reason string) (int, error)
 	CreateBreakGlassCode(context.Context, BreakGlassCodeInput) error
 	ConsumeBreakGlassCode(ctx context.Context, codeID, token string, now time.Time) (BreakGlassCode, error)
+	CreateDesktopAuthorization(context.Context, CreateDesktopAuthorizationInput) error
+	DecideDesktopAuthorization(ctx context.Context, requestID string, principal Principal, decision DesktopAuthorizationDecision, now time.Time) error
+	PollDesktopAuthorization(ctx context.Context, requestID, pollSecret string, now time.Time) (DesktopAuthorizationPoll, error)
 	CleanupExpired(ctx context.Context, now time.Time) (CleanupResult, error)
 	Close() error
 }

@@ -62,6 +62,10 @@ func TestDashboardFleetHealthAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	desktopAuthorizationScript, err := webFiles.ReadFile("web/desktop-authorization.js")
+	if err != nil {
+		t.Fatal(err)
+	}
 	appScript, err := webFiles.ReadFile("web/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -267,8 +271,9 @@ func TestDashboardFleetHealthAssets(t *testing.T) {
 	firewallRolloutIndex := bytes.Index(html, []byte(`<script src="/firewall-rollout.js" defer></script>`))
 	certificateRotationIndex := bytes.Index(html, []byte(`<script src="/certificate-rotation.js" defer></script>`))
 	nodeRevocationIndex := bytes.Index(html, []byte(`<script src="/node-revocation.js" defer></script>`))
+	desktopAuthorizationIndex := bytes.Index(html, []byte(`<script src="/desktop-authorization.js" defer></script>`))
 	appIndex := bytes.Index(html, []byte(`<script src="/app.js" defer></script>`))
-	if healthIndex < 0 || telemetryIndex < 0 || readinessIndex < 0 || dnsIndex < 0 || relayIndex < 0 || caRotationIndex < 0 || routeTransferIndex < 0 || routeProfileIndex < 0 || routePoliciesIndex < 0 || firewallRolloutIndex < 0 || certificateRotationIndex < 0 || nodeRevocationIndex < 0 || appIndex < 0 || healthIndex >= telemetryIndex || telemetryIndex >= readinessIndex || readinessIndex >= dnsIndex || dnsIndex >= relayIndex || relayIndex >= caRotationIndex || caRotationIndex >= routeTransferIndex || routeTransferIndex >= routeProfileIndex || routeProfileIndex >= routePoliciesIndex || routePoliciesIndex >= firewallRolloutIndex || firewallRolloutIndex >= certificateRotationIndex || certificateRotationIndex >= nodeRevocationIndex || nodeRevocationIndex >= appIndex {
+	if healthIndex < 0 || telemetryIndex < 0 || readinessIndex < 0 || dnsIndex < 0 || relayIndex < 0 || caRotationIndex < 0 || routeTransferIndex < 0 || routeProfileIndex < 0 || routePoliciesIndex < 0 || firewallRolloutIndex < 0 || certificateRotationIndex < 0 || nodeRevocationIndex < 0 || desktopAuthorizationIndex < 0 || appIndex < 0 || healthIndex >= telemetryIndex || telemetryIndex >= readinessIndex || readinessIndex >= dnsIndex || dnsIndex >= relayIndex || relayIndex >= caRotationIndex || caRotationIndex >= routeTransferIndex || routeTransferIndex >= routeProfileIndex || routeProfileIndex >= routePoliciesIndex || routePoliciesIndex >= firewallRolloutIndex || firewallRolloutIndex >= certificateRotationIndex || certificateRotationIndex >= nodeRevocationIndex || nodeRevocationIndex >= desktopAuthorizationIndex || desktopAuthorizationIndex >= appIndex {
 		t.Fatal("dashboard must load its strict adapters before the application script")
 	}
 	for _, required := range []string{
@@ -288,6 +293,8 @@ func TestDashboardFleetHealthAssets(t *testing.T) {
 		`id="route-profile-dialog"`, `id="route-profile-subnets"`, `id="route-profile-primary"`, "complete routed-subnet set",
 		`id="route-policies-dialog"`, `id="route-policies-prefix"`, `id="route-policies-gateways"`, `id="save-route-policy"`, "relative gateway weights",
 		`id="policy-rollout-panel"`, `id="policy-canary-list"`, `id="promote-policy"`, `id="rollback-policy"`, "selected canaries",
+		`id="desktop-authorization-dialog"`, `id="desktop-authorization-approve"`, `id="desktop-authorization-deny"`,
+		"Approve only if you started sign-in from the native app.",
 	} {
 		if !bytes.Contains(html, []byte(required)) {
 			t.Fatalf("dashboard fail-closed markup is missing %q", required)
@@ -295,6 +302,11 @@ func TestDashboardFleetHealthAssets(t *testing.T) {
 	}
 	if bytes.Contains(html, []byte("Control plane healthy")) {
 		t.Fatal("dashboard static markup must not claim health before authoritative data loads")
+	}
+	if bytes.Contains(html, []byte("poll_secret")) || bytes.Contains(appScript, []byte("poll_secret")) ||
+		!bytes.Contains(desktopAuthorizationScript, []byte("replaceState(null")) ||
+		!bytes.Contains(desktopAuthorizationScript, []byte(`^desktop_[A-Za-z0-9_-]{43}$`)) {
+		t.Fatal("desktop authorization UI must keep poll secrets out of markup and strictly scrub public request IDs from browser history")
 	}
 	for _, required := range []string{
 		"--surface-raised", "--accent-hover", ".skip-link", ".login-assurance",
@@ -323,7 +335,7 @@ func TestDashboardFleetHealthModelWithNode(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, node, "--test", "webtest/dns-settings.test.js", "webtest/relay-settings.test.js", "webtest/ca-rotation.test.js", "webtest/route-transfer.test.js", "webtest/route-profile.test.js", "webtest/route-policies.test.js", "webtest/firewall-rollout.test.js", "webtest/health.test.js", "webtest/install-guide.test.js", "webtest/runtime-telemetry.test.js", "webtest/readiness.test.js")
+	command := exec.CommandContext(ctx, node, "--test", "webtest/dns-settings.test.js", "webtest/relay-settings.test.js", "webtest/ca-rotation.test.js", "webtest/route-transfer.test.js", "webtest/route-profile.test.js", "webtest/route-policies.test.js", "webtest/firewall-rollout.test.js", "webtest/health.test.js", "webtest/install-guide.test.js", "webtest/runtime-telemetry.test.js", "webtest/readiness.test.js", "webtest/desktop-authorization.test.js")
 	output, err := command.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
 		t.Fatalf("fleet health JavaScript tests exceeded the 30-second deadline\n%s", output)
