@@ -19,7 +19,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneWillResignActive(_ scene: UIScene) {
         (window?.rootViewController as? MeshTunnelViewController)?
-            .protectForBackground()
+            .protectForInactivity()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

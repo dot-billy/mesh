@@ -561,9 +561,13 @@ final class MeshTunnelViewController: UIViewController {
         }
     }
 
+    func protectForInactivity() {
+        privacyShield.isHidden = false
+    }
+
     func protectForBackground() {
         eraseTransientEnrollment()
-        privacyShield.isHidden = false
+        protectForInactivity()
     }
 
     func restoreFromBackground() {

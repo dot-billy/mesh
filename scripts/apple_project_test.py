@@ -616,6 +616,24 @@ class AppleProjectTest(unittest.TestCase):
             "removeFromPreferences",
         ):
             self.assertIn(required, host)
+        for required in (
+            "func protectForInactivity()",
+            "func protectForBackground()",
+            "eraseTransientEnrollment()",
+        ):
+            self.assertIn(required, host)
+        tunnel_scene = (
+            IOS_TUNNEL / "MeshTunnelHost" / "SceneDelegate.swift"
+        ).read_text()
+        resign_body = tunnel_scene.split(
+            "func sceneWillResignActive", 1
+        )[1].split("func sceneDidEnterBackground", 1)[0]
+        self.assertIn(".protectForInactivity()", resign_body)
+        self.assertNotIn(".protectForBackground()", resign_body)
+        background_body = tunnel_scene.split(
+            "func sceneDidEnterBackground", 1
+        )[1].split("func sceneDidBecomeActive", 1)[0]
+        self.assertIn(".protectForBackground()", background_body)
         for forbidden in ("startVPNTunnel",):
             self.assertNotIn(forbidden, host)
 
