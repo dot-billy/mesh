@@ -114,13 +114,14 @@ post-export-verified App Store IPA, and Xcode uploaded those exact version
 `0.1.0` build `1` bytes to App Store Connect on 2026-07-25.
 
 App Store Connect completed processing and export-compliance review for
-standard encryption with no France distribution. Build `0.1.0 (1)` is
-`Waiting for Review` in external Beta App Review. Individual tester
-`wtmuller.medi@gmail.com` is attached to the build with automatic notification
-enabled; App Store Connect reports no build available to that tester until
-Apple approves the beta. This upload is controlled TestFlight qualification,
-not public App Store, Custom App, supported release, installation, or
-physical-device evidence.
+standard encryption with no France distribution. A read-only App Store Connect
+check on 2026-07-25 showed build `0.1.0 (1)` in `Testing`, expiring in 90 days.
+Individual tester `wtmuller.media@gmail.com` had installed it on 2026-07-25 on
+an iPhone 17 Pro Max running iOS 26.5.2. App Store Connect showed no sessions,
+crashes, or feedback. This upload and installation are controlled TestFlight
+qualification, not public App Store, Custom App, supported release, or
+packet-path evidence. Build `0.1.0 (1)` is the earlier framework-v4 artifact,
+not the current framework-v5 host and extension.
 
 The App Group stores authenticated configuration, never the node private key.
 The handoff HMAC key is device-only Keychain data shared by the two targets.
@@ -311,6 +312,8 @@ transport review, physical-device network-settings, Keychain, UDP, packet, and
 resource measurements, roaming/suspension/crash/reboot evidence,
 heartbeat/renewal/rotation/revocation convergence, cutoff, response-loss,
 reinstall, and transfer coverage, privacy and legal review, Apple Beta App
-Review approval, installed TestFlight execution, and Custom App distribution
-evidence. App Store Connect still showed build `0.1.0 (1)` as
-`Waiting for Review` on 2026-07-25; it is the earlier framework-v4 artifact.
+Review and installed TestFlight execution for a corrected build `2`, and
+Custom App distribution evidence. The earlier framework-v4 build `0.1.0 (1)`
+entered `Testing` and was installed on 2026-07-25. Its launch and VPN
+permission screens do not prove that an enrollment request reached Mesh or
+that any packet traversed the tunnel.

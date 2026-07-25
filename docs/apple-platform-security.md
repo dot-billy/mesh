@@ -550,15 +550,17 @@ lifecycle, and packet-path evidence.
 Xcode uploaded those exact version `0.1.0` build `1` bytes to App Store
 Connect app `6794340524` on 2026-07-25. Processing and the standard-encryption,
 no-France-distribution compliance questionnaire completed. Build UUID
-`7539de60-2da3-4071-b326-ed08db6786dc` is `Waiting for Review`; individual
-tester `wtmuller.medi@gmail.com` is attached with automatic notification and
-has no build available until Apple approves Beta App Review. A read-only
-App Store Connect check on 2026-07-25 still showed `Waiting for Review`.
-This operational state authorizes no public App Store or Custom App
-distribution and proves no installation or runtime behavior. Build
-`0.1.0 (1)` contains the earlier framework-v4 pre-start implementation, not the
-current framework-v5 additions. The registered Devices inventory contains the
-development Mac but no iPhone or iPad.
+`7539de60-2da3-4071-b326-ed08db6786dc` completed Beta App Review. A read-only
+App Store Connect check on 2026-07-25 showed build `0.1.0 (1)` in `Testing`,
+expiring in 90 days. Individual tester `wtmuller.media@gmail.com` had installed
+it that day on an iPhone 17 Pro Max running iOS 26.5.2. App Store Connect
+showed no sessions, crashes, or feedback. This operational state authorizes no
+public App Store or Custom App distribution and proves no authenticated
+enrollment, tunnel runtime, or packet behavior. Build `0.1.0 (1)` contains the
+earlier framework-v4 pre-start implementation, not the current framework-v5
+additions. The registered Devices inventory contains the development Mac but
+no iPhone or iPad; TestFlight installation does not require development-device
+registration.
 
 A create-only security gate now binds the exact ten-file unsigned
 static-engine simulator product and its nested extension tree. SwiftPM
