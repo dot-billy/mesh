@@ -1,0 +1,35 @@
+{
+  "schema": "mesh-hybrid-identity-v1",
+  "legacy_browser_login": false,
+  "oidc": {
+    "issuer": "https://id.example.com/tenant",
+    "client_id": "mesh-control-plane",
+    "client_secret_file": "/run/secrets/mesh-oidc-client-secret",
+    "scopes": [
+      "openid",
+      "profile",
+      "email"
+    ],
+    "groups_claim": "groups",
+    "allowed_signing_algorithms": [
+      "RS256"
+    ],
+    "admins": [
+      {
+        "kind": "group",
+        "value": "mesh-admins"
+      }
+    ],
+    "required_amr_all": [
+      "pwd",
+      "otp"
+    ],
+    "max_authentication_age": "15m"
+  },
+  "sessions": {
+    "idle_ttl": "15m",
+    "absolute_ttl": "1h",
+    "login_attempt_ttl": "5m",
+    "touch_interval": "1m"
+  }
+}

@@ -1,0 +1,49 @@
+[Unit]
+Description=Nebula managed by the Mesh lifecycle agent
+Documentation=file:/usr/local/share/doc/mesh/systemd/README.md
+Wants=network-online.target
+After=network-online.target mesh-agent.service
+BindsTo=mesh-agent.service
+ConditionPathExists=/var/lib/mesh-installer/runtime.enabled
+ConditionPathExists=/run/mesh-agent/nebula.validated
+ConditionPathExists=/var/lib/mesh-agent/nebula/current/config.yml
+
+[Service]
+Type=exec
+User=root
+Group=root
+UMask=0077
+RuntimeDirectory=mesh-nebula
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=no
+ExecStart=/usr/local/bin/nebula -config /var/lib/mesh-agent/nebula/current/config.yml
+
+# Mesh owns restart policy. A failed process is recovered by the next validated
+# agent cycle; systemd must not independently start it with unchecked state.
+Restart=no
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=no
+ProtectSystem=strict
+ProtectHome=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+KeyringMode=private
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
+
+# Intentionally no [Install] section. Only mesh-agent.service may be enabled.

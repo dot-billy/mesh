@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mesh-release-origin
+description: Digest-pinned, read-only HTTPS courier for authenticated Mesh releases
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

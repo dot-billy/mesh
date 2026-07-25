@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Mesh
+Comment=Manage Mesh networks and nodes
+Exec=mesh-desktop
+Icon=io.rw0.mesh.desktop
+Terminal=false
+Categories=Network;
+StartupNotify=true
+StartupWMClass=io.rw0.mesh.desktop

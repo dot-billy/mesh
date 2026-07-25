@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["replicaCount", "image", "publicURL", "publicHost", "credentials", "tls", "identity", "storage", "service", "ingress", "serviceAccount", "resources", "networkPolicy"],
+  "properties": {
+    "replicaCount": {"type": "integer", "minimum": 1, "maximum": 9},
+    "revisionHistoryLimit": {"type": "integer", "minimum": 0, "maximum": 10},
+    "image": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "digest", "pullPolicy"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1, "pattern": "^[^@[:space:]]+$"},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+      }
+    },
+    "imagePullSecrets": {"type": "array", "items": {"type": "object"}},
+    "publicURL": {"type": "string", "pattern": "^https://[^/?#]+$"},
+    "publicHost": {"type": "string", "minLength": 1, "pattern": "^[^/?#@[:space:]]+$"},
+    "linuxInstallBundleURL": {"type": "string", "pattern": "^$|^https://[^?#]+$"},
+    "linuxBootstrapHandoffURL": {"type": "string", "pattern": "^$|^https://[^?#]+$"},
+    "credentials": {
+      "type": "object", "additionalProperties": false,
+      "required": ["secretName", "adminTokenKey", "masterKeyKey"],
+      "properties": {
+        "secretName": {"type": "string", "minLength": 1},
+        "adminTokenKey": {"type": "string", "minLength": 1},
+        "masterKeyKey": {"type": "string", "minLength": 1}
+      }
+    },
+    "tls": {
+      "type": "object", "additionalProperties": false,
+      "required": ["secretName", "certificateKey", "privateKeyKey", "caBundleKey"],
+      "properties": {
+        "secretName": {"type": "string", "minLength": 1},
+        "certificateKey": {"type": "string", "minLength": 1},
+        "privateKeyKey": {"type": "string", "minLength": 1},
+        "caBundleKey": {"type": "string", "minLength": 1}
+      }
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enabled", "secretName", "policyKey", "oidcClientSecretKey"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "secretName": {"type": "string"},
+        "policyKey": {"type": "string", "minLength": 1},
+        "oidcClientSecretKey": {"type": "string", "minLength": 1}
+      }
+    },
+    "storage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["backend", "persistence", "postgres"],
+      "properties": {
+        "backend": {"type": "string", "enum": ["json", "postgres"]},
+        "persistence": {
+          "type": "object", "additionalProperties": false,
+          "required": ["existingClaim", "storageClass", "accessModes", "size", "annotations"],
+          "properties": {
+            "existingClaim": {"type": "string"},
+            "storageClass": {"type": "string"},
+            "accessModes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany", "ReadWriteOncePod"]}},
+            "size": {"type": "string", "pattern": "^[1-9][0-9]*(Ei|Pi|Ti|Gi|Mi|Ki)$"},
+            "annotations": {"type": "object", "additionalProperties": {"type": "string"}}
+          }
+        },
+        "postgres": {
+          "type": "object", "additionalProperties": false,
+          "required": ["secretName", "dsnKey"],
+          "properties": {
+            "secretName": {"type": "string"},
+            "dsnKey": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "service": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "port", "annotations"],
+      "properties": {
+        "type": {"type": "string", "enum": ["ClusterIP", "LoadBalancer", "NodePort"]},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "annotations": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "ingress": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enabled", "className", "annotations", "tlsSecretName"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "className": {"type": "string"},
+        "annotations": {"type": "object", "additionalProperties": {"type": "string"}},
+        "tlsSecretName": {"type": "string"}
+      }
+    },
+    "serviceAccount": {
+      "type": "object", "additionalProperties": false,
+      "required": ["create", "name", "annotations"],
+      "properties": {
+        "create": {"type": "boolean"},
+        "name": {"type": "string"},
+        "annotations": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "podAnnotations": {"type": "object", "additionalProperties": {"type": "string"}},
+    "podLabels": {"type": "object", "additionalProperties": {"type": "string"}},
+    "resources": {"type": "object"},
+    "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+    "tolerations": {"type": "array", "items": {"type": "object"}},
+    "affinity": {"type": "object"},
+    "topologySpreadConstraints": {"type": "array", "items": {"type": "object"}},
+    "networkPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enabled", "ingressFrom"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "ingressFrom": {"type": "array", "items": {"type": "object"}}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"storage": {"properties": {"backend": {"const": "json"}}}}},
+      "then": {"properties": {"replicaCount": {"const": 1}}}
+    },
+    {
+      "if": {"properties": {"storage": {"properties": {"backend": {"const": "postgres"}}}}},
+      "then": {"properties": {"storage": {"properties": {"postgres": {"properties": {"secretName": {"minLength": 1}}}}}}}
+    },
+    {
+      "if": {"properties": {"identity": {"properties": {"enabled": {"const": true}}}}},
+      "then": {"properties": {"identity": {"properties": {"secretName": {"minLength": 1}}}}}
+    },
+    {
+      "if": {"properties": {"ingress": {"properties": {"enabled": {"const": true}}}}},
+      "then": {"properties": {"ingress": {"properties": {"tlsSecretName": {"minLength": 1}}}}}
+    }
+  ]
+}

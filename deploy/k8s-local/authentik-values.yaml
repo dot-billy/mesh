@@ -1,0 +1,63 @@
+global:
+  fullnameOverride: mesh-authentik
+  envFrom:
+    - secretRef:
+        name: mesh-authentik-env
+
+authentik:
+  existingSecret:
+    secretName: mesh-authentik-env
+  error_reporting:
+    enabled: false
+
+server:
+  replicas: 1
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - auth-mesh.verify.rw0.io
+    tls:
+      - secretName: verify-rw0-io-tls
+        hosts:
+          - auth-mesh.verify.rw0.io
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+worker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+postgresql:
+  enabled: true
+  auth:
+    username: authentik
+    database: authentik
+    existingSecret: mesh-authentik-postgresql
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
+  primary:
+    persistence:
+      enabled: true
+      storageClass: local-path
+      size: 8Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+

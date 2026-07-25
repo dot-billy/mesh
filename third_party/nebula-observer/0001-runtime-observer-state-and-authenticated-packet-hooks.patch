@@ -1,0 +1,583 @@
+diff --git a/control.go b/control.go
+index f8567b500786d35d29204bb54f6a312874724bbd..c24d30a7a907b8f2f3851fcb0d7a896dcd85ce6b 100644
+--- a/control.go
++++ b/control.go
+@@ -35,6 +35,7 @@ type Control struct {
+ 	dnsStart               func()
+ 	lighthouseStart        func()
+ 	connectionManagerStart func(context.Context)
++	runtimeObserver        *RuntimeObserver
+ }
+ 
+ type ControlHostInfo struct {
+diff --git a/handshake_manager.go b/handshake_manager.go
+index 8b1ce83958c38556c8f070b90ef80846a80d7d21..27df2eb40440bdd98173e3293a9bec4777fce53e 100644
+--- a/handshake_manager.go
++++ b/handshake_manager.go
+@@ -60,6 +60,7 @@ type HandshakeManager struct {
+ 	metricTimedOut         metrics.Counter
+ 	f                      *Interface
+ 	l                      *logrus.Logger
++	runtimeObserver        *RuntimeObserver
+ 
+ 	// can be used to trigger outbound handshake for the given vpnIp
+ 	trigger chan netip.Addr
+@@ -190,6 +191,7 @@ func (hm *HandshakeManager) handleOutbound(vpnIp netip.Addr, lighthouseTriggered
+ 			WithField("durationNs", time.Since(hh.startTime).Nanoseconds()).
+ 			Info("Handshake timed out")
+ 		hm.metricTimedOut.Inc(1)
++		hm.runtimeObserver.recordHandshakeTimedOut()
+ 		hm.DeleteHostInfo(hostinfo)
+ 		return
+ 	}
+@@ -555,6 +557,7 @@ func (hm *HandshakeManager) CheckAndComplete(hostinfo *HostInfo, handshakePacket
+ 	}
+ 
+ 	hm.mainHostMap.unlockedAddHostInfo(hostinfo, f)
++	hm.runtimeObserver.recordHandshakeCompleted(hostinfo)
+ 	return existingHostInfo, nil
+ }
+ 
+@@ -579,6 +582,7 @@ func (hm *HandshakeManager) Complete(hostinfo *HostInfo, f *Interface) {
+ 	// We need to remove from the pending hostmap first to avoid undoing work when after to the main hostmap.
+ 	hm.unlockedDeleteHostInfo(hostinfo)
+ 	hm.mainHostMap.unlockedAddHostInfo(hostinfo, f)
++	hm.runtimeObserver.recordHandshakeCompleted(hostinfo)
+ }
+ 
+ // allocateIndex generates a unique localIndexId for this HostInfo
+diff --git a/hostmap.go b/hostmap.go
+index 7e2939e0ff43d8ead1299e7a426cfa5e44ccaeaf..bed0649afcfbbb4919a6ed66d89036f293d2f4bd 100644
+--- a/hostmap.go
++++ b/hostmap.go
+@@ -227,12 +227,14 @@ const (
+ )
+ 
+ type HostInfo struct {
+-	remote          netip.AddrPort
+-	remotes         *RemoteList
+-	promoteCounter  atomic.Uint32
+-	ConnectionState *ConnectionState
+-	remoteIndexId   uint32
+-	localIndexId    uint32
++	remote                             netip.AddrPort
++	remotes                            *RemoteList
++	promoteCounter                     atomic.Uint32
++	runtimeObserverLastHandshake       atomic.Uint64
++	runtimeObserverLastAuthenticatedRX atomic.Uint64
++	ConnectionState                    *ConnectionState
++	remoteIndexId                      uint32
++	localIndexId                       uint32
+ 
+ 	// vpnAddrs is a list of vpn addresses assigned to this host that are within our own vpn networks
+ 	// The host may have other vpn addresses that are outside our
+diff --git a/interface.go b/interface.go
+index 61b1f228312e4378a8d8f68ff8b06de9cdbfc12b..59e86c5b31dee5a59195e0283701f6f67093e66f 100644
+--- a/interface.go
++++ b/interface.go
+@@ -41,6 +41,7 @@ type InterfaceConfig struct {
+ 	version            string
+ 	relayManager       *relayManager
+ 	punchy             *Punchy
++	RuntimeObserver    *RuntimeObserver
+ 
+ 	tryPromoteEvery uint32
+ 	reQueryEvery    uint32
+@@ -72,6 +73,7 @@ type Interface struct {
+ 	disconnectInvalid     atomic.Bool
+ 	closed                atomic.Bool
+ 	relayManager          *relayManager
++	runtimeObserver       *RuntimeObserver
+ 
+ 	tryPromoteEvery atomic.Uint32
+ 	reQueryEvery    atomic.Uint32
+@@ -185,6 +187,7 @@ func NewInterface(ctx context.Context, c *InterfaceConfig) (*Interface, error) {
+ 		myVpnAddrsTable:       cs.myVpnAddrsTable,
+ 		myBroadcastAddrsTable: cs.myVpnBroadcastAddrsTable,
+ 		relayManager:          c.relayManager,
++		runtimeObserver:       c.RuntimeObserver,
+ 		connectionManager:     c.connectionManager,
+ 		conntrackCacheTimeout: c.ConntrackCacheTimeout,
+ 
+diff --git a/main.go b/main.go
+index 17aaa548010f5cb3100801a34735ed2e0ccf2ccc..4377371101c024d1e319239d8e7555a8968afc7c 100644
+--- a/main.go
++++ b/main.go
+@@ -218,6 +218,14 @@ func Main(c *config.C, configTest bool, buildVersion string, logger *logrus.Logg
+ 
+ 	handshakeManager := NewHandshakeManager(l, hostMap, lightHouse, udpConns[0], handshakeConfig)
+ 	lightHouse.handshakeTrigger = handshakeManager.trigger
++	var runtimeObserver *RuntimeObserver
++	if !configTest {
++		runtimeObserver, err = newRuntimeObserver(hostMap, handshakeManager, lightHouse)
++		if err != nil {
++			return nil, util.ContextualizeIfNeeded("Failed to initialize runtime observer", err)
++		}
++		handshakeManager.runtimeObserver = runtimeObserver
++	}
+ 
+ 	serveDns := false
+ 	if c.GetBool("lighthouse.serve_dns", false) {
+@@ -248,6 +256,7 @@ func Main(c *config.C, configTest bool, buildVersion string, logger *logrus.Logg
+ 		version:               buildVersion,
+ 		relayManager:          NewRelayManager(ctx, l, hostMap, c),
+ 		punchy:                punchy,
++		RuntimeObserver:       runtimeObserver,
+ 		ConntrackCacheTimeout: conntrackCacheTimeout,
+ 		l:                     l,
+ 	}
+@@ -292,15 +301,16 @@ func Main(c *config.C, configTest bool, buildVersion string, logger *logrus.Logg
+ 	}
+ 
+ 	return &Control{
+-		ifce,
+-		l,
+-		ctx,
+-		cancel,
+-		sshStart,
+-		statsStart,
+-		dnsStart,
+-		lightHouse.StartUpdateWorker,
+-		connManager.Start,
++		f:                      ifce,
++		l:                      l,
++		ctx:                    ctx,
++		cancel:                 cancel,
++		sshStart:               sshStart,
++		statsStart:             statsStart,
++		dnsStart:               dnsStart,
++		lighthouseStart:        lightHouse.StartUpdateWorker,
++		connectionManagerStart: connManager.Start,
++		runtimeObserver:        runtimeObserver,
+ 	}, nil
+ }
+ 
+diff --git a/outside.go b/outside.go
+index 172c3e83ffbe80d5a9ddd3cffef7120625bb5b52..e3f35b6ac931283de8861e0586836abf2b3c8a62 100644
+--- a/outside.go
++++ b/outside.go
+@@ -468,6 +468,7 @@ func (f *Interface) decrypt(hostinfo *HostInfo, mc uint64, out []byte, packet []
+ 			Debugln("dropping out of window packet")
+ 		return nil, errors.New("out of window packet")
+ 	}
++	f.runtimeObserver.recordAuthenticatedRX(hostinfo)
+ 
+ 	return out, nil
+ }
+@@ -493,6 +494,7 @@ func (f *Interface) decryptToTun(hostinfo *HostInfo, messageCounter uint64, out
+ 			Debugln("dropping out of window packet")
+ 		return false
+ 	}
++	f.runtimeObserver.recordAuthenticatedRX(hostinfo)
+ 
+ 	dropReason := f.firewall.Drop(*fwPacket, true, hostinfo, f.pki.GetCAPool(), localCache)
+ 	if dropReason != nil {
+diff --git a/runtime_observer.go b/runtime_observer.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..0040272a290c40a114d4d27750c0846355068b21
+--- /dev/null
++++ b/runtime_observer.go
+@@ -0,0 +1,403 @@
++package nebula
++
++import (
++	"crypto/rand"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"net/netip"
++	"sort"
++	"sync"
++	"sync/atomic"
++	"time"
++)
++
++const (
++	runtimeObserverRequestSchema  = "nebula.runtime-observer.request.v1"
++	runtimeObserverSnapshotSchema = "nebula.runtime-observer.snapshot.v2"
++	runtimeObserverOperation      = "snapshot"
++	runtimeObserverNonceBytes     = 16
++	runtimeObserverNonceHexLength = runtimeObserverNonceBytes * 2
++	runtimeObserverMaxRequest     = 256
++	runtimeObserverMaxResponse    = 16 << 10
++	runtimeObserverMaxEntries     = 8
++	runtimeObserverMaxLighthouses = 64
++	runtimeObserverMaxJSONInteger = uint64(1<<53 - 1)
++	runtimeObserverMaxAggregate   = uint64(1<<32 - 1)
++	runtimeObserverRX2m           = 2 * time.Minute
++	runtimeObserverRX5m           = 5 * time.Minute
++)
++
++var errRuntimeObserverProtocol = errors.New("runtime observer protocol violation")
++
++// RuntimeObserver owns only bounded, process-local observation state. It has
++// no configuration, command, key, certificate, underlay-address, or packet
++// fields and is intentionally not exported through any general metrics API.
++type RuntimeObserver struct {
++	startedAt         time.Time
++	processInstanceID string
++	hostMap           *HostMap
++	handshakeManager  *HandshakeManager
++	lightHouse        *LightHouse
++	sampleSequence    atomic.Uint64
++	completedTotal    atomic.Uint64
++	timedOutTotal     atomic.Uint64
++	lastCompletion    atomic.Uint64
++	lighthouseMu      sync.Mutex
++	lighthouseRX      map[netip.Addr]uint64
++}
++
++type runtimeObserverSnapshot struct {
++	Schema            string                            `json:"schema"`
++	Nonce             string                            `json:"nonce"`
++	ProcessInstanceID string                            `json:"process_instance_id"`
++	SampleSequence    uint64                            `json:"sample_sequence"`
++	ProcessUptimeMS   uint64                            `json:"process_uptime_ms"`
++	Handshakes        runtimeObserverHandshakeSnapshot  `json:"handshakes"`
++	Peers             runtimeObserverPeerSnapshot       `json:"peers"`
++	Lighthouses       runtimeObserverLighthouseSnapshot `json:"lighthouses"`
++}
++
++type runtimeObserverHandshakeSnapshot struct {
++	CompletedTotal            uint64  `json:"completed_total"`
++	TimedOutTotal             uint64  `json:"timed_out_total"`
++	Pending                   uint64  `json:"pending"`
++	MostRecentCompletionAgeMS *uint64 `json:"most_recent_completion_age_ms"`
++}
++
++type runtimeObserverPeerSnapshot struct {
++	Established                uint64  `json:"established"`
++	AuthenticatedRXWithin2m    uint64  `json:"authenticated_rx_within_2m"`
++	AuthenticatedRXWithin5m    uint64  `json:"authenticated_rx_within_5m"`
++	OldestAuthenticatedRXAgeMS *uint64 `json:"oldest_authenticated_rx_age_ms"`
++}
++
++type runtimeObserverLighthouseSnapshot struct {
++	Configured              uint64                           `json:"configured"`
++	Established             uint64                           `json:"established"`
++	AuthenticatedRXWithin2m uint64                           `json:"authenticated_rx_within_2m"`
++	AuthenticatedRXWithin5m uint64                           `json:"authenticated_rx_within_5m"`
++	MostRecentAuthenticatedRXAgeMS *uint64                   `json:"most_recent_authenticated_rx_age_ms"`
++	Overflow                bool                             `json:"overflow"`
++	Entries                 []runtimeObserverLighthouseEntry `json:"entries"`
++}
++
++type runtimeObserverLighthouseEntry struct {
++	VPNIP                    string  `json:"vpn_ip"`
++	Established              bool    `json:"established"`
++	LastHandshakeAgeMS       *uint64 `json:"last_handshake_age_ms"`
++	LastAuthenticatedRXAgeMS *uint64 `json:"last_authenticated_rx_age_ms"`
++}
++
++func newRuntimeObserver(hostMap *HostMap, handshakeManager *HandshakeManager, lightHouse *LightHouse) (*RuntimeObserver, error) {
++	var instance [runtimeObserverNonceBytes]byte
++	if _, err := rand.Read(instance[:]); err != nil {
++		return nil, errors.New("could not initialize runtime observer")
++	}
++	return newRuntimeObserverWithInstance(hostMap, handshakeManager, lightHouse, time.Now(), hex.EncodeToString(instance[:])), nil
++}
++
++func newRuntimeObserverWithInstance(hostMap *HostMap, handshakeManager *HandshakeManager, lightHouse *LightHouse, startedAt time.Time, instanceID string) *RuntimeObserver {
++	return &RuntimeObserver{
++		startedAt:         startedAt,
++		processInstanceID: instanceID,
++		hostMap:           hostMap,
++		handshakeManager:  handshakeManager,
++		lightHouse:        lightHouse,
++		lighthouseRX:      make(map[netip.Addr]uint64),
++	}
++}
++
++// elapsedMark stores process-relative monotonic nanoseconds plus one, leaving
++// zero as the unambiguous "not observed in this process" value.
++func (o *RuntimeObserver) elapsedMark() uint64 {
++	elapsed := time.Since(o.startedAt)
++	if elapsed < 0 {
++		elapsed = 0
++	}
++	ns := uint64(elapsed)
++	if ns == ^uint64(0) {
++		return ns
++	}
++	return ns + 1
++}
++
++func (o *RuntimeObserver) recordHandshakeCompleted(hostInfo *HostInfo) {
++	if o == nil || hostInfo == nil {
++		return
++	}
++	mark := o.elapsedMark()
++	hostInfo.runtimeObserverLastHandshake.Store(mark)
++	o.lastCompletion.Store(mark)
++	saturatingIncrement(&o.completedTotal, runtimeObserverMaxJSONInteger)
++}
++
++func (o *RuntimeObserver) recordHandshakeTimedOut() {
++	if o != nil {
++		saturatingIncrement(&o.timedOutTotal, runtimeObserverMaxJSONInteger)
++	}
++}
++
++func (o *RuntimeObserver) recordAuthenticatedRX(hostInfo *HostInfo) {
++	if o != nil && hostInfo != nil {
++		mark := o.elapsedMark()
++		hostInfo.runtimeObserverLastAuthenticatedRX.Store(mark)
++		o.recordLighthouseAuthenticatedRX(hostInfo, mark)
++	}
++}
++
++func (o *RuntimeObserver) recordLighthouseAuthenticatedRX(hostInfo *HostInfo, mark uint64) {
++	configured := o.lightHouse.GetLighthouses()
++	o.lighthouseMu.Lock()
++	defer o.lighthouseMu.Unlock()
++	if len(configured) > runtimeObserverMaxLighthouses {
++		clear(o.lighthouseRX)
++		return
++	}
++	o.pruneLighthouseRXLocked(configured)
++	for _, configuredAddress := range configured {
++		for _, hostAddress := range hostInfo.vpnAddrs {
++			if configuredAddress == hostAddress && mark > o.lighthouseRX[configuredAddress] {
++				o.lighthouseRX[configuredAddress] = mark
++				break
++			}
++		}
++	}
++}
++
++func (o *RuntimeObserver) mostRecentLighthouseAuthenticatedRX(configured []netip.Addr) uint64 {
++	o.lighthouseMu.Lock()
++	defer o.lighthouseMu.Unlock()
++	if len(configured) > runtimeObserverMaxLighthouses {
++		clear(o.lighthouseRX)
++		return 0
++	}
++	o.pruneLighthouseRXLocked(configured)
++	var latest uint64
++	for _, address := range configured {
++		if mark := o.lighthouseRX[address]; mark > latest {
++			latest = mark
++		}
++	}
++	return latest
++}
++
++func (o *RuntimeObserver) pruneLighthouseRXLocked(configured []netip.Addr) {
++	for observed := range o.lighthouseRX {
++		keep := false
++		for _, address := range configured {
++			if observed == address {
++				keep = true
++				break
++			}
++		}
++		if !keep {
++			delete(o.lighthouseRX, observed)
++		}
++	}
++}
++
++func saturatingIncrement(value *atomic.Uint64, maximum uint64) uint64 {
++	for {
++		current := value.Load()
++		if current >= maximum {
++			return maximum
++		}
++		if value.CompareAndSwap(current, current+1) {
++			return current + 1
++		}
++	}
++}
++
++func runtimeObserverAge(nowElapsed time.Duration, mark uint64) *uint64 {
++	if mark == 0 {
++		return nil
++	}
++	eventNS := mark - 1
++	nowNS := uint64(nowElapsed)
++	if eventNS > nowNS {
++		eventNS = nowNS
++	}
++	age := (nowNS - eventNS) / uint64(time.Millisecond)
++	if age > runtimeObserverMaxJSONInteger {
++		age = runtimeObserverMaxJSONInteger
++	}
++	return &age
++}
++
++func runtimeObserverSaturatedDurationMS(duration time.Duration) uint64 {
++	if duration <= 0 {
++		return 0
++	}
++	value := uint64(duration / time.Millisecond)
++	if value > runtimeObserverMaxJSONInteger {
++		return runtimeObserverMaxJSONInteger
++	}
++	return value
++}
++
++func runtimeObserverSaturatedLength(length int) uint64 {
++	if length <= 0 {
++		return 0
++	}
++	if uint64(length) > runtimeObserverMaxAggregate {
++		return runtimeObserverMaxAggregate
++	}
++	return uint64(length)
++}
++
++func (o *RuntimeObserver) snapshot(nonce string) (runtimeObserverSnapshot, error) {
++	if o == nil || !runtimeObserverValidNonce(nonce) || o.hostMap == nil || o.handshakeManager == nil || o.lightHouse == nil {
++		return runtimeObserverSnapshot{}, errRuntimeObserverProtocol
++	}
++	nowElapsed := time.Since(o.startedAt)
++	if nowElapsed < 0 {
++		nowElapsed = 0
++	}
++
++	o.handshakeManager.RLock()
++	pending := runtimeObserverSaturatedLength(len(o.handshakeManager.indexes))
++	o.handshakeManager.RUnlock()
++
++	configured := append([]netip.Addr(nil), o.lightHouse.GetLighthouses()...)
++	sort.Slice(configured, func(i, j int) bool { return configured[i].Compare(configured[j]) < 0 })
++
++	snapshot := runtimeObserverSnapshot{
++		Schema:            runtimeObserverSnapshotSchema,
++		Nonce:             nonce,
++		ProcessInstanceID: o.processInstanceID,
++		SampleSequence:    saturatingIncrement(&o.sampleSequence, runtimeObserverMaxJSONInteger),
++		ProcessUptimeMS:   runtimeObserverSaturatedDurationMS(nowElapsed),
++		Handshakes: runtimeObserverHandshakeSnapshot{
++			CompletedTotal:            o.completedTotal.Load(),
++			TimedOutTotal:             o.timedOutTotal.Load(),
++			Pending:                   pending,
++			MostRecentCompletionAgeMS: runtimeObserverAge(nowElapsed, o.lastCompletion.Load()),
++		},
++		Lighthouses: runtimeObserverLighthouseSnapshot{
++			Configured:                     runtimeObserverSaturatedLength(len(configured)),
++			MostRecentAuthenticatedRXAgeMS: runtimeObserverAge(nowElapsed, o.mostRecentLighthouseAuthenticatedRX(configured)),
++			Overflow:                       len(configured) > runtimeObserverMaxEntries,
++			Entries:                        make([]runtimeObserverLighthouseEntry, 0, runtimeObserverMaxEntries),
++		},
++	}
++
++	o.hostMap.RLock()
++	for _, hostInfo := range o.hostMap.Indexes {
++		snapshot.Peers.Established = addSaturated(snapshot.Peers.Established, 1, runtimeObserverMaxAggregate)
++		rxAge := runtimeObserverAge(nowElapsed, hostInfo.runtimeObserverLastAuthenticatedRX.Load())
++		if rxAge != nil {
++			snapshot.Peers.OldestAuthenticatedRXAgeMS = maxAge(snapshot.Peers.OldestAuthenticatedRXAgeMS, rxAge)
++			if *rxAge <= uint64(runtimeObserverRX5m/time.Millisecond) {
++				snapshot.Peers.AuthenticatedRXWithin5m = addSaturated(snapshot.Peers.AuthenticatedRXWithin5m, 1, runtimeObserverMaxAggregate)
++			}
++			if *rxAge <= uint64(runtimeObserverRX2m/time.Millisecond) {
++				snapshot.Peers.AuthenticatedRXWithin2m = addSaturated(snapshot.Peers.AuthenticatedRXWithin2m, 1, runtimeObserverMaxAggregate)
++			}
++		}
++	}
++
++	observedLighthouses := make(map[*HostInfo]struct{}, len(configured))
++	for _, address := range configured {
++		hostInfo := o.hostMap.Hosts[address]
++		if hostInfo == nil {
++			continue
++		}
++		if _, alreadyObserved := observedLighthouses[hostInfo]; alreadyObserved {
++			continue
++		}
++		observedLighthouses[hostInfo] = struct{}{}
++		snapshot.Lighthouses.Established = addSaturated(snapshot.Lighthouses.Established, 1, runtimeObserverMaxAggregate)
++		handshakeAge := runtimeObserverAge(nowElapsed, hostInfo.runtimeObserverLastHandshake.Load())
++		rxAge := runtimeObserverAge(nowElapsed, hostInfo.runtimeObserverLastAuthenticatedRX.Load())
++		snapshot.Lighthouses.MostRecentAuthenticatedRXAgeMS = minAge(snapshot.Lighthouses.MostRecentAuthenticatedRXAgeMS, rxAge)
++		if rxAge != nil && *rxAge <= uint64(runtimeObserverRX5m/time.Millisecond) {
++			snapshot.Lighthouses.AuthenticatedRXWithin5m = addSaturated(snapshot.Lighthouses.AuthenticatedRXWithin5m, 1, runtimeObserverMaxAggregate)
++		}
++		if rxAge != nil && *rxAge <= uint64(runtimeObserverRX2m/time.Millisecond) {
++			snapshot.Lighthouses.AuthenticatedRXWithin2m = addSaturated(snapshot.Lighthouses.AuthenticatedRXWithin2m, 1, runtimeObserverMaxAggregate)
++		}
++		if len(snapshot.Lighthouses.Entries) < runtimeObserverMaxEntries {
++			snapshot.Lighthouses.Entries = append(snapshot.Lighthouses.Entries, runtimeObserverLighthouseEntry{
++				VPNIP:                    address.String(),
++				Established:              true,
++				LastHandshakeAgeMS:       handshakeAge,
++				LastAuthenticatedRXAgeMS: rxAge,
++			})
++		}
++	}
++	o.hostMap.RUnlock()
++
++	return snapshot, nil
++}
++
++func addSaturated(left, right, maximum uint64) uint64 {
++	if left >= maximum || right >= maximum-left {
++		return maximum
++	}
++	return left + right
++}
++
++func maxAge(current, candidate *uint64) *uint64 {
++	if candidate == nil {
++		return current
++	}
++	if current == nil || *candidate > *current {
++		value := *candidate
++		return &value
++	}
++	return current
++}
++
++func minAge(current, candidate *uint64) *uint64 {
++	if candidate == nil {
++		return current
++	}
++	if current == nil || *candidate < *current {
++		value := *candidate
++		return &value
++	}
++	return current
++}
++
++func runtimeObserverValidNonce(nonce string) bool {
++	if len(nonce) != runtimeObserverNonceHexLength {
++		return false
++	}
++	for _, character := range nonce {
++		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
++			return false
++		}
++	}
++	return true
++}
++
++func decodeRuntimeObserverRequest(line []byte) (string, error) {
++	const prefix = `{"schema":"nebula.runtime-observer.request.v1","operation":"snapshot","nonce":"`
++	const suffix = "\"}\n"
++	if len(line) > runtimeObserverMaxRequest || len(line) != len(prefix)+runtimeObserverNonceHexLength+len(suffix) ||
++		string(line[:len(prefix)]) != prefix || string(line[len(line)-len(suffix):]) != suffix {
++		return "", errRuntimeObserverProtocol
++	}
++	nonce := string(line[len(prefix) : len(prefix)+runtimeObserverNonceHexLength])
++	if !runtimeObserverValidNonce(nonce) {
++		return "", errRuntimeObserverProtocol
++	}
++	return nonce, nil
++}
++
++func (o *RuntimeObserver) encodeSnapshot(nonce string) ([]byte, error) {
++	snapshot, err := o.snapshot(nonce)
++	if err != nil {
++		return nil, errRuntimeObserverProtocol
++	}
++	encoded, err := json.Marshal(snapshot)
++	if err != nil {
++		return nil, errRuntimeObserverProtocol
++	}
++	encoded = append(encoded, '\n')
++	if len(encoded) > runtimeObserverMaxResponse {
++		return nil, errRuntimeObserverProtocol
++	}
++	return encoded, nil
++}

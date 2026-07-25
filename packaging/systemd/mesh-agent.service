@@ -1,0 +1,50 @@
+[Unit]
+Description=Mesh Nebula lifecycle agent
+Documentation=file:/usr/local/share/doc/mesh/systemd/README.md
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/var/lib/mesh-installer/runtime.enabled
+ConditionPathExists=/var/lib/mesh-agent/state.json
+
+[Service]
+Type=exec
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/local/bin/meshctl agent --state /var/lib/mesh-agent/state.json --interval 1m --max-config-staleness 5m --nebula /usr/local/bin/nebula --nebula-cert /usr/local/bin/nebula-cert --restart-service mesh-nebula.service
+Restart=always
+RestartSec=5s
+TimeoutStopSec=30s
+RuntimeDirectory=mesh-agent
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=no
+
+# The agent validates bundles, controls mesh-nebula.service, and, only when the
+# signed network policy opts in, registers transient per-link split DNS through
+# systemd-resolved. Persistent writes remain limited to its dedicated tree.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+# AF_NETLINK is used only for unprivileged route/address inventory. The empty
+# capability bounding set prevents route mutation through that socket.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+KeyringMode=private
+ReadWritePaths=/var/lib/mesh-agent /run/mesh-agent
+
+[Install]
+WantedBy=multi-user.target

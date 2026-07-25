@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+bin
+data
+nebula
+*.out
+*.test
+docs/superpowers
+scripts
+packaging/launchd
+packaging/systemd/proof-fedora42.Dockerfile

@@ -1,0 +1,498 @@
+diff --git a/cmd/nebula/main.go b/cmd/nebula/main.go
+index ffdc15bfb4ba1a57de36b2693066cc9dc61db669..626a22feadebb598d7fc68ff6cce8848262c73f9 100644
+--- a/cmd/nebula/main.go
++++ b/cmd/nebula/main.go
+@@ -72,6 +72,10 @@ func main() {
+ 	}
+ 
+ 	if !*configTest {
++		if err := ctrl.StartRuntimeObserver(); err != nil {
++			util.LogWithContextIfNeeded("Failed to start runtime observer", err, l)
++			os.Exit(1)
++		}
+ 		ctrl.Start()
+ 		notifyReady(l)
+ 		ctrl.ShutdownBlock()
+diff --git a/control.go b/control.go
+index c24d30a7a907b8f2f3851fcb0d7a896dcd85ce6b..9a0abc4fb086e914369c302cdaf588afa743b29e 100644
+--- a/control.go
++++ b/control.go
+@@ -5,6 +5,7 @@ import (
+ 	"net/netip"
+ 	"os"
+ 	"os/signal"
++	"sync"
+ 	"syscall"
+ 
+ 	"github.com/sirupsen/logrus"
+@@ -25,6 +26,10 @@ type controlHostLister interface {
+ 	GetPreferredRanges() []netip.Prefix
+ }
+ 
++type runtimeObserverService interface {
++	Close() error
++}
++
+ type Control struct {
+ 	f                      *Interface
+ 	l                      *logrus.Logger
+@@ -36,6 +41,8 @@ type Control struct {
+ 	lighthouseStart        func()
+ 	connectionManagerStart func(context.Context)
+ 	runtimeObserver        *RuntimeObserver
++	runtimeObserverMu      sync.Mutex
++	runtimeObserverService runtimeObserverService
+ }
+ 
+ type ControlHostInfo struct {
+@@ -82,6 +89,9 @@ func (c *Control) Context() context.Context {
+ 
+ // Stop signals nebula to shutdown and close all tunnels, returns after the shutdown is complete
+ func (c *Control) Stop() {
++	// The local observation endpoint must disappear before live tunnel state.
++	c.stopRuntimeObserver()
++
+ 	// Stop the handshakeManager (and other services), to prevent new tunnels from
+ 	// being created while we're shutting them all down.
+ 	c.cancel()
+diff --git a/runtime_observer_linux.go b/runtime_observer_linux.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..ee8712bb5398aea99a8eeb0ffb6af2e702a249ce
+--- /dev/null
++++ b/runtime_observer_linux.go
+@@ -0,0 +1,421 @@
++//go:build linux
++
++package nebula
++
++import (
++	"errors"
++	"io"
++	"net"
++	"os"
++	"path/filepath"
++	"strings"
++	"sync"
++	"time"
++
++	"golang.org/x/sys/unix"
++)
++
++const runtimeObserverSocketPath = "/run/mesh-nebula/runtime-observer.sock"
++
++var runtimeObserverUmaskMu sync.Mutex
++
++type runtimeObserverServerOptions struct {
++	socketPath        string
++	expectedOwner     uint32
++	expectedPeer      uint32
++	parentMode        os.FileMode
++	socketMode        os.FileMode
++	readTimeout       time.Duration
++	writeTimeout      time.Duration
++	totalTimeout      time.Duration
++	maximumHandlers   int
++	requestsPerSecond int
++	afterSocketChmod  func()
++}
++
++type runtimeObserverSocketIdentity struct {
++	device uint64
++	inode  uint64
++	uid    uint32
++	mode   uint32
++	nlink  uint64
++}
++
++type runtimeObserverServer struct {
++	observer   *RuntimeObserver
++	options    runtimeObserverServerOptions
++	listener   *net.UnixListener
++	parentFD   int
++	identity   runtimeObserverSocketIdentity
++	done       chan struct{}
++	acceptDone chan struct{}
++
++	closeOnce sync.Once
++	handlers  sync.WaitGroup
++	activeMu  sync.Mutex
++	active    map[*net.UnixConn]struct{}
++	limit     chan struct{}
++	rateMu    sync.Mutex
++	rateStart time.Time
++	rateCount int
++}
++
++func productionRuntimeObserverServerOptions() runtimeObserverServerOptions {
++	return runtimeObserverServerOptions{
++		socketPath:        runtimeObserverSocketPath,
++		expectedOwner:     0,
++		expectedPeer:      0,
++		parentMode:        0o700,
++		socketMode:        0o600,
++		readTimeout:       500 * time.Millisecond,
++		writeTimeout:      time.Second,
++		totalTimeout:      2 * time.Second,
++		maximumHandlers:   2,
++		requestsPerSecond: 8,
++	}
++}
++
++// StartRuntimeObserver binds the one fixed production endpoint. It must be
++// called before Start so a bad runtime directory or pre-existing path fails
++// startup rather than silently dropping the observation plane.
++func (c *Control) StartRuntimeObserver() error {
++	c.runtimeObserverMu.Lock()
++	defer c.runtimeObserverMu.Unlock()
++	if c.runtimeObserver == nil || c.runtimeObserverService != nil {
++		return errors.New("runtime observer unavailable")
++	}
++	server, err := startRuntimeObserverServer(c.runtimeObserver, productionRuntimeObserverServerOptions())
++	if err != nil {
++		return errors.New("runtime observer unavailable")
++	}
++	c.runtimeObserverService = server
++	return nil
++}
++
++func (c *Control) stopRuntimeObserver() {
++	c.runtimeObserverMu.Lock()
++	service := c.runtimeObserverService
++	c.runtimeObserverService = nil
++	c.runtimeObserverMu.Unlock()
++	if service != nil {
++		_ = service.Close()
++	}
++}
++
++func startRuntimeObserverServer(observer *RuntimeObserver, options runtimeObserverServerOptions) (*runtimeObserverServer, error) {
++	if observer == nil || validateRuntimeObserverServerOptions(options) != nil {
++		return nil, errors.New("runtime observer unavailable")
++	}
++	parentFD, err := openRuntimeObserverParent(options)
++	if err != nil {
++		return nil, errors.New("runtime observer unavailable")
++	}
++	base := filepath.Base(options.socketPath)
++	var preexisting unix.Stat_t
++	if err := unix.Fstatat(parentFD, base, &preexisting, unix.AT_SYMLINK_NOFOLLOW); err == nil || !errors.Is(err, unix.ENOENT) {
++		_ = unix.Close(parentFD)
++		return nil, errors.New("runtime observer unavailable")
++	}
++
++	runtimeObserverUmaskMu.Lock()
++	previousUmask := unix.Umask(0o077)
++	listener, listenErr := net.ListenUnix("unix", &net.UnixAddr{Name: options.socketPath, Net: "unix"})
++	unix.Umask(previousUmask)
++	runtimeObserverUmaskMu.Unlock()
++	if listenErr != nil {
++		_ = unix.Close(parentFD)
++		return nil, errors.New("runtime observer unavailable")
++	}
++	listener.SetUnlinkOnClose(false)
++
++	identity, err := secureRuntimeObserverSocket(parentFD, base, options)
++	if err != nil {
++		_ = listener.Close()
++		removeRuntimeObserverSocket(parentFD, base, identity, options)
++		_ = unix.Close(parentFD)
++		return nil, errors.New("runtime observer unavailable")
++	}
++	server := &runtimeObserverServer{
++		observer:   observer,
++		options:    options,
++		listener:   listener,
++		parentFD:   parentFD,
++		identity:   identity,
++		done:       make(chan struct{}),
++		acceptDone: make(chan struct{}),
++		active:     make(map[*net.UnixConn]struct{}),
++		limit:      make(chan struct{}, options.maximumHandlers),
++	}
++	go server.serve()
++	return server, nil
++}
++
++func validateRuntimeObserverServerOptions(options runtimeObserverServerOptions) error {
++	if !filepath.IsAbs(options.socketPath) || filepath.Clean(options.socketPath) != options.socketPath ||
++		strings.ContainsRune(options.socketPath, '\x00') || filepath.Base(options.socketPath) == "." ||
++		options.parentMode != 0o700 || options.socketMode != 0o600 ||
++		options.readTimeout <= 0 || options.writeTimeout <= 0 || options.totalTimeout <= 0 ||
++		options.maximumHandlers != 2 || options.requestsPerSecond <= 0 || options.requestsPerSecond > 16 {
++		return errors.New("runtime observer unavailable")
++	}
++	return nil
++}
++
++func openRuntimeObserverParent(options runtimeObserverServerOptions) (int, error) {
++	parent := filepath.Dir(options.socketPath)
++	volume := filepath.VolumeName(parent)
++	remainder := strings.TrimPrefix(parent, volume+string(filepath.Separator))
++	current := volume + string(filepath.Separator)
++	for _, component := range strings.Split(remainder, string(filepath.Separator)) {
++		if component == "" || component == "." || component == ".." {
++			return -1, errors.New("runtime observer unavailable")
++		}
++		current = filepath.Join(current, component)
++		info, err := os.Lstat(current)
++		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
++			return -1, errors.New("runtime observer unavailable")
++		}
++	}
++	fd, err := unix.Open(parent, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
++	if err != nil {
++		return -1, errors.New("runtime observer unavailable")
++	}
++	var stat unix.Stat_t
++	if err := unix.Fstat(fd, &stat); err != nil || stat.Uid != options.expectedOwner || os.FileMode(stat.Mode).Perm() != options.parentMode {
++		_ = unix.Close(fd)
++		return -1, errors.New("runtime observer unavailable")
++	}
++	return fd, nil
++}
++
++func secureRuntimeObserverSocket(parentFD int, base string, options runtimeObserverServerOptions) (runtimeObserverSocketIdentity, error) {
++	identity, err := readRuntimeObserverSocketIdentity(parentFD, base)
++	if err != nil {
++		return runtimeObserverSocketIdentity{}, err
++	}
++	if identity.mode&unix.S_IFMT != unix.S_IFSOCK || identity.uid != options.expectedOwner || identity.nlink != 1 {
++		return identity, errors.New("runtime observer unavailable")
++	}
++	if err := unix.Fchmodat(parentFD, base, uint32(options.socketMode.Perm()), 0); err != nil {
++		return identity, err
++	}
++	if options.afterSocketChmod != nil {
++		options.afterSocketChmod()
++	}
++	currentIdentity, err := readRuntimeObserverSocketIdentity(parentFD, base)
++	if err != nil {
++		return identity, err
++	}
++	if currentIdentity.device != identity.device || currentIdentity.inode != identity.inode ||
++		currentIdentity.uid != identity.uid || currentIdentity.nlink != identity.nlink ||
++		currentIdentity.mode&unix.S_IFMT != unix.S_IFSOCK || currentIdentity.uid != options.expectedOwner ||
++		os.FileMode(currentIdentity.mode).Perm() != options.socketMode || currentIdentity.nlink != 1 {
++		return identity, errors.New("runtime observer unavailable")
++	}
++	var parentStat, pathParentStat unix.Stat_t
++	if err := unix.Fstat(parentFD, &parentStat); err != nil {
++		return identity, err
++	}
++	if err := unix.Stat(filepath.Dir(options.socketPath), &pathParentStat); err != nil || parentStat.Dev != pathParentStat.Dev || parentStat.Ino != pathParentStat.Ino {
++		return identity, errors.New("runtime observer unavailable")
++	}
++	return identity, nil
++}
++
++func readRuntimeObserverSocketIdentity(parentFD int, base string) (runtimeObserverSocketIdentity, error) {
++	var stat unix.Stat_t
++	if err := unix.Fstatat(parentFD, base, &stat, unix.AT_SYMLINK_NOFOLLOW); err != nil {
++		return runtimeObserverSocketIdentity{}, err
++	}
++	return runtimeObserverSocketIdentity{device: uint64(stat.Dev), inode: stat.Ino, uid: stat.Uid, mode: stat.Mode, nlink: uint64(stat.Nlink)}, nil
++}
++
++func (s *runtimeObserverServer) serve() {
++	defer close(s.acceptDone)
++	for {
++		connection, err := s.listener.AcceptUnix()
++		if err != nil {
++			select {
++			case <-s.done:
++				return
++			default:
++				return
++			}
++		}
++		if !s.allowRequest() {
++			_ = connection.Close()
++			continue
++		}
++		select {
++		case s.limit <- struct{}{}:
++		default:
++			_ = connection.Close()
++			continue
++		}
++		s.activeMu.Lock()
++		s.active[connection] = struct{}{}
++		s.activeMu.Unlock()
++		s.handlers.Add(1)
++		go s.handle(connection)
++	}
++}
++
++func (s *runtimeObserverServer) allowRequest() bool {
++	s.rateMu.Lock()
++	defer s.rateMu.Unlock()
++	now := time.Now()
++	if s.rateStart.IsZero() || now.Sub(s.rateStart) >= time.Second {
++		s.rateStart = now
++		s.rateCount = 0
++	}
++	if s.rateCount >= s.options.requestsPerSecond {
++		return false
++	}
++	s.rateCount++
++	return true
++}
++
++func (s *runtimeObserverServer) handle(connection *net.UnixConn) {
++	defer func() {
++		_ = connection.Close()
++		s.activeMu.Lock()
++		delete(s.active, connection)
++		s.activeMu.Unlock()
++		<-s.limit
++		s.handlers.Done()
++	}()
++	totalDeadline := time.Now().Add(s.options.totalTimeout)
++	if err := connection.SetDeadline(totalDeadline); err != nil {
++		return
++	}
++	if validateRuntimeObserverPeer(connection, s.options.expectedPeer) != nil {
++		return
++	}
++	if err := connection.SetReadDeadline(runtimeObserverOperationDeadline(totalDeadline, s.options.readTimeout)); err != nil {
++		return
++	}
++	line, err := readRuntimeObserverLine(connection)
++	if err != nil || runtimeObserverHasTrailingBytes(connection, totalDeadline) {
++		writeRuntimeObserverError(connection, totalDeadline, s.options.writeTimeout)
++		return
++	}
++	nonce, err := decodeRuntimeObserverRequest(line)
++	if err != nil {
++		writeRuntimeObserverError(connection, totalDeadline, s.options.writeTimeout)
++		return
++	}
++	response, err := s.observer.encodeSnapshot(nonce)
++	if err != nil {
++		writeRuntimeObserverError(connection, totalDeadline, s.options.writeTimeout)
++		return
++	}
++	if err := connection.SetWriteDeadline(runtimeObserverOperationDeadline(totalDeadline, s.options.writeTimeout)); err != nil {
++		return
++	}
++	writeRuntimeObserverLine(connection, response)
++}
++
++func validateRuntimeObserverPeer(connection *net.UnixConn, expectedUID uint32) error {
++	raw, err := connection.SyscallConn()
++	if err != nil {
++		return err
++	}
++	var credential *unix.Ucred
++	var socketErr error
++	if err := raw.Control(func(fd uintptr) {
++		credential, socketErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
++	}); err != nil || socketErr != nil || credential == nil || credential.Uid != expectedUID {
++		return errors.New("runtime observer unavailable")
++	}
++	return nil
++}
++
++func readRuntimeObserverLine(connection io.Reader) ([]byte, error) {
++	line := make([]byte, 0, 128)
++	var next [1]byte
++	for len(line) < runtimeObserverMaxRequest {
++		count, err := connection.Read(next[:])
++		if count == 1 {
++			line = append(line, next[0])
++			if next[0] == '\n' {
++				return line, nil
++			}
++		}
++		if err != nil {
++			return nil, err
++		}
++		if count != 1 {
++			return nil, io.ErrNoProgress
++		}
++	}
++	return nil, errRuntimeObserverProtocol
++}
++
++func runtimeObserverHasTrailingBytes(connection *net.UnixConn, totalDeadline time.Time) bool {
++	if err := connection.SetReadDeadline(runtimeObserverOperationDeadline(totalDeadline, time.Millisecond)); err != nil {
++		return true
++	}
++	var trailing [1]byte
++	count, err := connection.Read(trailing[:])
++	if count > 0 || err == nil {
++		return true
++	}
++	var networkError net.Error
++	return !errors.As(err, &networkError) || !networkError.Timeout()
++}
++
++func writeRuntimeObserverError(connection *net.UnixConn, totalDeadline time.Time, timeout time.Duration) {
++	_ = connection.SetWriteDeadline(runtimeObserverOperationDeadline(totalDeadline, timeout))
++	writeRuntimeObserverLine(connection, []byte("{\"error\":\"invalid request\"}\n"))
++}
++
++func runtimeObserverOperationDeadline(totalDeadline time.Time, operationLimit time.Duration) time.Time {
++	operationDeadline := time.Now().Add(operationLimit)
++	if totalDeadline.Before(operationDeadline) {
++		return totalDeadline
++	}
++	return operationDeadline
++}
++
++func writeRuntimeObserverLine(connection io.Writer, line []byte) {
++	for len(line) > 0 {
++		count, err := connection.Write(line)
++		if err != nil || count <= 0 || count > len(line) {
++			return
++		}
++		line = line[count:]
++	}
++}
++
++func (s *runtimeObserverServer) Close() error {
++	s.closeOnce.Do(func() {
++		close(s.done)
++		_ = s.listener.Close()
++		<-s.acceptDone
++		s.activeMu.Lock()
++		for connection := range s.active {
++			_ = connection.Close()
++		}
++		s.activeMu.Unlock()
++		s.handlers.Wait()
++		removeRuntimeObserverSocket(s.parentFD, filepath.Base(s.options.socketPath), s.identity, s.options)
++		_ = unix.Close(s.parentFD)
++	})
++	return nil
++}
++
++func removeRuntimeObserverSocket(parentFD int, base string, expected runtimeObserverSocketIdentity, options runtimeObserverServerOptions) {
++	if expected.inode == 0 {
++		return
++	}
++	var stat unix.Stat_t
++	if err := unix.Fstatat(parentFD, base, &stat, unix.AT_SYMLINK_NOFOLLOW); err != nil {
++		return
++	}
++	if uint64(stat.Dev) != expected.device || stat.Ino != expected.inode || stat.Uid != expected.uid ||
++		uint64(stat.Nlink) != expected.nlink || stat.Mode&unix.S_IFMT != unix.S_IFSOCK ||
++		stat.Uid != options.expectedOwner || stat.Nlink != 1 {
++		return
++	}
++	_ = unix.Unlinkat(parentFD, base, 0)
++}
+diff --git a/runtime_observer_other.go b/runtime_observer_other.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..da7f179bbf908762fee36bd2b6de6f5278198858
+--- /dev/null
++++ b/runtime_observer_other.go
+@@ -0,0 +1,8 @@
++//go:build !linux
++
++package nebula
++
++// Unsupported platforms deliberately start without a fallback TCP or abstract
++// socket. Mesh observes the missing native endpoint as telemetry unavailable.
++func (c *Control) StartRuntimeObserver() error { return nil }
++func (c *Control) stopRuntimeObserver()        {}

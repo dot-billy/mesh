@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+apply_rule() {
+	source_cidr=$1
+	if ! /usr/sbin/iptables -t nat -C POSTROUTING \
+		-s "${source_cidr}" -d 192.0.2.1/32 -j RETURN 2>/dev/null; then
+		/usr/sbin/iptables -t nat -I POSTROUTING 1 \
+			-s "${source_cidr}" -d 192.0.2.1/32 -j RETURN
+	fi
+}
+
+remove_rule() {
+	source_cidr=$1
+	while /usr/sbin/iptables -t nat -C POSTROUTING \
+		-s "${source_cidr}" -d 192.0.2.1/32 -j RETURN 2>/dev/null; do
+		/usr/sbin/iptables -t nat -D POSTROUTING \
+			-s "${source_cidr}" -d 192.0.2.1/32 -j RETURN
+	done
+}
+
+case "${1:-apply}" in
+	apply)
+		apply_rule 192.0.3.0/24
+		apply_rule 192.0.4.0/24
+		;;
+	remove)
+		remove_rule 192.0.3.0/24
+		remove_rule 192.0.4.0/24
+		;;
+	*)
+		echo "usage: $0 [apply|remove]" >&2
+		exit 2
+		;;
+esac

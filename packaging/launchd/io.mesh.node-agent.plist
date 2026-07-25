@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.mesh.node-agent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/mesh/current/bin/meshctl</string>
+        <string>agent</string>
+        <string>--state</string>
+        <string>/private/var/db/mesh-agent/state.json</string>
+        <string>--interval</string>
+        <string>1m</string>
+        <string>--max-config-staleness</string>
+        <string>5m</string>
+        <string>--nebula</string>
+        <string>/opt/mesh/current/bin/nebula</string>
+        <string>--nebula-cert</string>
+        <string>/opt/mesh/current/bin/nebula-cert</string>
+        <string>--supervise-nebula</string>
+    </array>
+
+    <key>UserName</key>
+    <string>root</string>
+    <key>GroupName</key>
+    <string>wheel</string>
+    <key>Umask</key>
+    <integer>63</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>PathState</key>
+        <dict>
+            <key>/private/var/db/mesh-installer/runtime.enabled</key>
+            <true/>
+        </dict>
+    </dict>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+    <key>AbandonProcessGroup</key>
+    <false/>
+</dict>
+</plist>

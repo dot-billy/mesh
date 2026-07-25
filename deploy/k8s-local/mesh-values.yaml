@@ -1,0 +1,48 @@
+replicaCount: 1
+
+image:
+  repository: 10.46.0.34:32000/kverify/mesh-control-plane
+  digest: sha256:21093ba4beeb92ced61912a115453b2bab70e332667e2bfa63ca441c78a48fe3
+  pullPolicy: IfNotPresent
+
+publicURL: https://mesh.verify.rw0.io
+publicHost: mesh.verify.rw0.io
+linuxInstallBundleURL: https://releases-mesh.verify.rw0.io/channels/stable/bundle.json
+linuxBootstrapHandoffURL: https://releases-mesh.verify.rw0.io/bootstrap/stable/bootstrap-handoff.json
+
+credentials:
+  secretName: mesh-credentials
+
+tls:
+  secretName: mesh-tls
+
+identity:
+  enabled: true
+  secretName: mesh-identity
+
+storage:
+  backend: json
+  persistence:
+    storageClass: local-path
+    size: 2Gi
+
+service:
+  annotations:
+    traefik.ingress.kubernetes.io/service.serversscheme: https
+    traefik.ingress.kubernetes.io/service.serverstransport: mesh-system-mesh-backend@kubernetescrd
+
+ingress:
+  enabled: true
+  className: traefik
+  tlsSecretName: verify-rw0-io-tls
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+podAnnotations:
+  mesh.rw0.io/identity-policy: authentik-per-provider-v1

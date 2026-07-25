@@ -1,0 +1,654 @@
+{
+  "schema": "mesh.nebula-dependency-lock.v1",
+  "repository": "https://github.com/slackhq/nebula",
+  "release_id": 283875123,
+  "release_tag": "v1.10.3",
+  "tag_object": "afe3e8c52cd4b91e8c5f946bf2e624df6d311c13",
+  "commit": "f573e8a26695278f9d71587390fbfe0d0933aa21",
+  "module": "github.com/slackhq/nebula",
+  "version": "v1.10.3",
+  "artifacts": [
+    {
+      "targets": [
+        {
+          "os": "linux",
+          "arch": "amd64"
+        }
+      ],
+      "asset_id": 351844835,
+      "name": "nebula-linux-amd64.tar.gz",
+      "url": "https://github.com/slackhq/nebula/releases/download/v1.10.3/nebula-linux-amd64.tar.gz",
+      "size": 15505220,
+      "sha256": "99ac335caeb69d02a6b6b00a3d4b5d0a36ec3971df480a1cc50e6db378342955",
+      "archive_format": "tar.gz",
+      "entries": [
+        {
+          "name": "nebula",
+          "type": "file",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 21592254,
+          "sha256": "8fc30c9b1cd102c4f406d8ece66f1f4a01e4630f724afc9cc32c2ba150fd67af",
+          "binary": {
+            "format": "elf",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula",
+            "targets": [
+              {
+                "os": "linux",
+                "arch": "amd64"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nebula-cert",
+          "type": "file",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 8728388,
+          "sha256": "c464ef117367fabef7a6fb5f78a35d64755e7ab08d8a440294d10dfbccb71e85",
+          "binary": {
+            "format": "elf",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula-cert",
+            "targets": [
+              {
+                "os": "linux",
+                "arch": "amd64"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "targets": [
+        {
+          "os": "linux",
+          "arch": "arm64"
+        }
+      ],
+      "asset_id": 351844847,
+      "name": "nebula-linux-arm64.tar.gz",
+      "url": "https://github.com/slackhq/nebula/releases/download/v1.10.3/nebula-linux-arm64.tar.gz",
+      "size": 14197111,
+      "sha256": "69b2764b0c27b04e4f3fb47764cf330555beb5a49e62e045ed5f208a14341343",
+      "archive_format": "tar.gz",
+      "entries": [
+        {
+          "name": "nebula",
+          "type": "file",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 20181436,
+          "sha256": "965b28e6deba6171fa997d04a40138b93570a3dbc3adbcfec455d1fecdeec03b",
+          "binary": {
+            "format": "elf",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula",
+            "targets": [
+              {
+                "os": "linux",
+                "arch": "arm64"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nebula-cert",
+          "type": "file",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 8216688,
+          "sha256": "608cf04d2491cff60fa50f8c05157b9639d0e34471204f5020ecbad96669596a",
+          "binary": {
+            "format": "elf",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula-cert",
+            "targets": [
+              {
+                "os": "linux",
+                "arch": "arm64"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "targets": [
+        {
+          "os": "darwin",
+          "arch": "amd64"
+        },
+        {
+          "os": "darwin",
+          "arch": "arm64"
+        }
+      ],
+      "asset_id": 351844822,
+      "name": "nebula-darwin.zip",
+      "url": "https://github.com/slackhq/nebula/releases/download/v1.10.3/nebula-darwin.zip",
+      "size": 35331520,
+      "sha256": "75f538a2ada19487f81d67a9d87f6db02040e6aed72f50f94a756597a0d5abbd",
+      "archive_format": "zip",
+      "entries": [
+        {
+          "name": "nebula-cert",
+          "type": "file",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 17418608,
+          "sha256": "b6c4e8bff140a6151ccd8245d2d9333a0ef781b8f9dc6e8e82d94bade1322b1b",
+          "compressed_size": 9371252,
+          "crc32": 2669804213,
+          "compression": 8,
+          "binary": {
+            "format": "macho-fat",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula-cert",
+            "targets": [
+              {
+                "os": "darwin",
+                "arch": "amd64"
+              },
+              {
+                "os": "darwin",
+                "arch": "arm64"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nebula",
+          "type": "file",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 52274592,
+          "sha256": "dd337ccc03d256ce3a7bc6f3d24f16ed9396c71c02f55977506a40f50dd41acc",
+          "compressed_size": 25959956,
+          "crc32": 3596229091,
+          "compression": 8,
+          "binary": {
+            "format": "macho-fat",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula-service",
+            "targets": [
+              {
+                "os": "darwin",
+                "arch": "amd64"
+              },
+              {
+                "os": "darwin",
+                "arch": "arm64"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "targets": [
+        {
+          "os": "windows",
+          "arch": "amd64"
+        }
+      ],
+      "asset_id": 351844826,
+      "name": "nebula-windows-amd64.zip",
+      "url": "https://github.com/slackhq/nebula/releases/download/v1.10.3/nebula-windows-amd64.zip",
+      "size": 16342405,
+      "sha256": "7e8f26eef9394c842d4eb73610e3e63b965a93b803e366eb42c9b548bd1a70b8",
+      "archive_format": "zip",
+      "entries": [
+        {
+          "name": "nebula.exe",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 21597184,
+          "sha256": "ecd48bc5a17275521db98d55fdffb22be2202418ba6d9f79f9fe871a94100821",
+          "compressed_size": 10765362,
+          "crc32": 7560812,
+          "compression": 8,
+          "binary": {
+            "format": "pe",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula-service",
+            "targets": [
+              {
+                "os": "windows",
+                "arch": "amd64"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nebula-cert.exe",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 9032704,
+          "sha256": "8679461f40450be64dc44f218b840f1d0c83bfc11b0ef961ace5f196521e5677",
+          "compressed_size": 4823088,
+          "crc32": 31678807,
+          "compression": 8,
+          "binary": {
+            "format": "pe",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula-cert",
+            "targets": [
+              {
+                "os": "windows",
+                "arch": "amd64"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dist/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/README.md",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 13916,
+          "sha256": "558d828fe4b2d64cc33ab79deaeea883516852af85facbb4e5af5f7672504163",
+          "compressed_size": 4307,
+          "crc32": 3695696514,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/LICENSE.txt",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 5431,
+          "sha256": "183adac21e7d96c508c8fd34d394b7b6708bc81564ad1bad61ab66143a008cd2",
+          "compressed_size": 2381,
+          "crc32": 817559173,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/bin/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/arm64/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/arm64/wintun.dll",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 222488,
+          "sha256": "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
+          "compressed_size": 100882,
+          "crc32": 198798015,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/bin/arm/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/arm/wintun.dll",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 364552,
+          "sha256": "daad267411ecdc70a0535e274d2c3e9da3d0084bdac7662cb8424dd4a031b4d9",
+          "compressed_size": 177814,
+          "crc32": 2853179378,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/bin/amd64/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/amd64/wintun.dll",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 427552,
+          "sha256": "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+          "compressed_size": 196533,
+          "crc32": 969662956,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/bin/x86/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/x86/wintun.dll",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 550928,
+          "sha256": "d694fa46ab4cfebcb2632d094c7aa97278eef2f8052438621766d863ae98a931",
+          "compressed_size": 265898,
+          "crc32": 3189727615,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/include/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/include/wintun.h",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 10362,
+          "sha256": "510a5984fbf73efd21a61ada60edfe05e1a38a77c8c47f6d62e0ab1cdbdd460f",
+          "compressed_size": 2848,
+          "crc32": 3607516433,
+          "compression": 8
+        }
+      ]
+    },
+    {
+      "targets": [
+        {
+          "os": "windows",
+          "arch": "arm64"
+        }
+      ],
+      "asset_id": 351844824,
+      "name": "nebula-windows-arm64.zip",
+      "url": "https://github.com/slackhq/nebula/releases/download/v1.10.3/nebula-windows-arm64.zip",
+      "size": 14936616,
+      "sha256": "c8e3c50c54708fed2e519dce7d455b639e5a9c2d124933b1a74aa3c2ba9632ae",
+      "archive_format": "zip",
+      "entries": [
+        {
+          "name": "nebula.exe",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 19952128,
+          "sha256": "f1ad84809e8b9a726bf5e27c7866e19276cc49c6efe5c247bd226c990737a7f0",
+          "compressed_size": 9782059,
+          "crc32": 578944545,
+          "compression": 8,
+          "binary": {
+            "format": "pe",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula-service",
+            "targets": [
+              {
+                "os": "windows",
+                "arch": "arm64"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nebula-cert.exe",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 8350720,
+          "sha256": "750ea8482ae9d4062567d310e86563d851928a7743f3c5a9a8c5a63348eba7e6",
+          "compressed_size": 4400602,
+          "crc32": 3142904169,
+          "compression": 8,
+          "binary": {
+            "format": "pe",
+            "main_path": "github.com/slackhq/nebula/cmd/nebula-cert",
+            "targets": [
+              {
+                "os": "windows",
+                "arch": "arm64"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dist/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/README.md",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 13916,
+          "sha256": "558d828fe4b2d64cc33ab79deaeea883516852af85facbb4e5af5f7672504163",
+          "compressed_size": 4307,
+          "crc32": 3695696514,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/LICENSE.txt",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 5431,
+          "sha256": "183adac21e7d96c508c8fd34d394b7b6708bc81564ad1bad61ab66143a008cd2",
+          "compressed_size": 2381,
+          "crc32": 817559173,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/bin/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/arm64/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/arm64/wintun.dll",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 222488,
+          "sha256": "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
+          "compressed_size": 100882,
+          "crc32": 198798015,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/bin/arm/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/arm/wintun.dll",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 364552,
+          "sha256": "daad267411ecdc70a0535e274d2c3e9da3d0084bdac7662cb8424dd4a031b4d9",
+          "compressed_size": 177814,
+          "crc32": 2853179378,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/bin/amd64/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/amd64/wintun.dll",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 427552,
+          "sha256": "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+          "compressed_size": 196533,
+          "crc32": 969662956,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/bin/x86/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/bin/x86/wintun.dll",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 550928,
+          "sha256": "d694fa46ab4cfebcb2632d094c7aa97278eef2f8052438621766d863ae98a931",
+          "compressed_size": 265898,
+          "crc32": 3189727615,
+          "compression": 8
+        },
+        {
+          "name": "dist/windows/wintun/include/",
+          "type": "dir",
+          "archive_mode": 493,
+          "output_mode": 493,
+          "size": 0,
+          "sha256": "",
+          "compressed_size": 0,
+          "crc32": 0,
+          "compression": 0
+        },
+        {
+          "name": "dist/windows/wintun/include/wintun.h",
+          "type": "file",
+          "archive_mode": 420,
+          "output_mode": 420,
+          "size": 10362,
+          "sha256": "510a5984fbf73efd21a61ada60edfe05e1a38a77c8c47f6d62e0ab1cdbdd460f",
+          "compressed_size": 2848,
+          "crc32": 3607516433,
+          "compression": 8
+        }
+      ]
+    }
+  ]
+}

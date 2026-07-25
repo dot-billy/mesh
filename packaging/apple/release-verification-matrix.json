@@ -1,0 +1,196 @@
+{
+  "products": {
+    "ios-admin": {
+      "gates": {
+        "apple-distribution": [
+          "distribution-validation",
+          "privacy-manifest-and-declaration-review"
+        ],
+        "physical-device": [
+          "physical-device-build",
+          "browser-authentication",
+          "keychain-behavior",
+          "background-and-lock-erasure",
+          "network-interruption",
+          "upgrade-and-state-migration"
+        ],
+        "physical-device-accessibility": [
+          "accessibility"
+        ],
+        "physical-device-control-plane": [
+          "every-documented-read",
+          "every-documented-mutation",
+          "rbac-denial"
+        ],
+        "provenance": [
+          "source-and-provenance-binding",
+          "independent-verification-without-signing-secrets"
+        ],
+        "simulator": [
+          "supported-iphone-sizes",
+          "supported-ipad-sizes",
+          "simulator-build"
+        ]
+      },
+      "support_status": "unsupported"
+    },
+    "ios-node": {
+      "gates": {
+        "apple-distribution": [
+          "distribution-validation",
+          "managed-update",
+          "network-extension-capability-approval"
+        ],
+        "physical-device": [
+          "physical-iphone",
+          "physical-ipad-if-supported",
+          "packet-tunnel-start-and-stop",
+          "local-key-generation-and-custody",
+          "enrollment",
+          "wifi-and-cellular",
+          "wifi-cellular-roaming",
+          "lock-and-background",
+          "low-power-behavior",
+          "extension-crash-and-restart",
+          "reboot",
+          "signed-revision-convergence",
+          "renewal-and-rotation",
+          "identity-removal"
+        ],
+        "physical-device-packet": [
+          "direct-packets",
+          "lighthouse-discovery",
+          "relay-packets",
+          "dns",
+          "firewall-allow-and-deny",
+          "revocation-cutoff"
+        ],
+        "provenance": [
+          "source-and-provenance-binding",
+          "independent-verification-without-signing-secrets"
+        ]
+      },
+      "support_status": "unsupported"
+    },
+    "macos-admin": {
+      "gates": {
+        "clean-host": [
+          "clean-build",
+          "uninstall"
+        ],
+        "native-host": [
+          "arm64-execution",
+          "amd64-execution",
+          "browser-authentication",
+          "keychain-persistence-and-erasure",
+          "every-documented-read",
+          "every-documented-mutation",
+          "rbac-denial",
+          "logout-and-server-session-revocation",
+          "one-time-secret-background-erasure",
+          "accessibility",
+          "upgrade-and-settings-migration"
+        ],
+        "protected-release": [
+          "signature-and-entitlement-verification",
+          "notarization-and-staple",
+          "gatekeeper-assessment"
+        ],
+        "provenance": [
+          "source-and-provenance-binding",
+          "independent-verification-without-signing-secrets"
+        ],
+        "publication": [
+          "release-metadata-binding",
+          "authenticated-publication",
+          "public-redownload-verification",
+          "sanitized-release-receipts"
+        ]
+      },
+      "support_status": "unsupported"
+    },
+    "macos-node": {
+      "gates": {
+        "clean-host": [
+          "authenticated-online-install",
+          "authenticated-offline-install",
+          "immutable-release-and-path-invariants",
+          "launchd-lifecycle",
+          "enrollment",
+          "signed-revision-convergence",
+          "heartbeat-and-runtime-evidence",
+          "certificate-renewal-and-rotation",
+          "permanent-revocation",
+          "ca-rotation",
+          "stale-state-quarantine",
+          "reboot",
+          "sleep-wake",
+          "network-change",
+          "crash-and-forced-kill",
+          "upgrade",
+          "rollback",
+          "interrupted-install-upgrade-recovery",
+          "uninstall"
+        ],
+        "native-host": [
+          "arm64-native-execution",
+          "amd64-native-execution"
+        ],
+        "native-host-packet": [
+          "direct-packets",
+          "lighthouse-discovery",
+          "relay-packets",
+          "dns",
+          "firewall-allow-and-deny",
+          "routed-prefix-behavior-where-supported"
+        ],
+        "protected-release": [
+          "signed-bundle-verification",
+          "installer-signature-verification",
+          "notarization-and-staple",
+          "gatekeeper-assessment"
+        ],
+        "provenance": [
+          "source-and-provenance-binding",
+          "independent-verification-without-signing-secrets"
+        ],
+        "publication": [
+          "release-metadata-binding",
+          "authenticated-publication",
+          "public-redownload-verification",
+          "sanitized-release-receipts"
+        ]
+      },
+      "support_status": "unsupported"
+    }
+  },
+  "proof_classes": {
+    "apple-distribution": "Installed archive accepted through the approved TestFlight, App Store, Custom App, enterprise, or MDM channel.",
+    "clean-host": "A controlled clean physical Mac executes the installed final artifact and retains a bounded native receipt.",
+    "native-host": "The final installed artifact executes on the named physical Mac architecture and exercises the stated lifecycle.",
+    "native-host-packet": "A physical Mac records authenticated packet-path evidence for the named behavior.",
+    "physical-device": "The final provisioned archive exercises the stated lifecycle on a physical iPhone or iPad.",
+    "physical-device-accessibility": "A physical iPhone or iPad review exercises assistive technology and the stated accessibility behavior.",
+    "physical-device-control-plane": "A physical iPhone or iPad exercises the real control-plane contract and authoritative readback.",
+    "physical-device-packet": "A physical iPhone or iPad Packet Tunnel exchanges authenticated packets and records the named path evidence.",
+    "protected-release": "The final bytes pass protected signing, notarization, staple, entitlement, Gatekeeper, and native verification as applicable.",
+    "provenance": "The final distributed artifact and its receipts are byte-bound to reviewed source and independently verifiable without signing secrets.",
+    "publication": "The final macOS artifact is bound to release metadata, published through the authenticated path, publicly re-downloaded, and retained with sanitized receipts.",
+    "simulator": "The pinned unsigned simulator source gate exercises only simulator-safe behavior."
+  },
+  "release_eligible": false,
+  "schema": "mesh-apple-release-verification-matrix-v2",
+  "source_or_simulator_evidence_cannot_satisfy": [
+    "apple-distribution",
+    "clean-host",
+    "native-host",
+    "native-host-packet",
+    "physical-device",
+    "physical-device-accessibility",
+    "physical-device-control-plane",
+    "physical-device-packet",
+    "protected-release",
+    "provenance",
+    "publication"
+  ]
+}

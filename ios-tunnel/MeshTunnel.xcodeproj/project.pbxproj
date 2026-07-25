@@ -1,0 +1,559 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000101 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000201 /* AppDelegate.swift */; };
+		A10000000000000000000102 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000202 /* SceneDelegate.swift */; };
+		A10000000000000000000103 /* MeshTunnelViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000203 /* MeshTunnelViewController.swift */; };
+		A10000000000000000000104 /* TunnelContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000204 /* TunnelContract.swift */; };
+		A10000000000000000000105 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000205 /* PacketTunnelProvider.swift */; };
+		A10000000000000000000106 /* TunnelContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000204 /* TunnelContract.swift */; };
+		A10000000000000000000107 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000208 /* PrivacyInfo.xcprivacy */; };
+		A10000000000000000000108 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020D /* PrivacyInfo.xcprivacy */; };
+		A10000000000000000000109 /* MeshPacketTunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020F /* MeshPacketTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A1000000000000000000010A /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000210 /* NetworkExtension.framework */; };
+		A1000000000000000000010B /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000210 /* NetworkExtension.framework */; };
+		A1000000000000000000010C /* TunnelConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000213 /* TunnelConfigurationStore.swift */; };
+		A1000000000000000000010D /* TunnelConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000213 /* TunnelConfigurationStore.swift */; };
+		A1000000000000000000010E /* TunnelHandoffKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000214 /* TunnelHandoffKeychain.swift */; };
+		A1000000000000000000010F /* TunnelHandoffKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000214 /* TunnelHandoffKeychain.swift */; };
+		A10000000000000000000110 /* TunnelHighWaterKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000215 /* TunnelHighWaterKeychain.swift */; };
+		A10000000000000000000111 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000216 /* Security.framework */; };
+		A10000000000000000000112 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000216 /* Security.framework */; };
+		A10000000000000000000113 /* TunnelPacketFlowPump.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000217 /* TunnelPacketFlowPump.swift */; };
+		A10000000000000000000114 /* TunnelPacketFlowPump.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000217 /* TunnelPacketFlowPump.swift */; };
+		A10000000000000000000115 /* TunnelAppleNetworkSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000218 /* TunnelAppleNetworkSettings.swift */; };
+		A10000000000000000000116 /* TunnelAppleNetworkSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000218 /* TunnelAppleNetworkSettings.swift */; };
+		A10000000000000000000117 /* TunnelLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000219 /* TunnelLog.swift */; };
+		A10000000000000000000118 /* TunnelRuntimeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021A /* TunnelRuntimeCoordinator.swift */; };
+		A10000000000000000000119 /* TunnelRuntimeAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021B /* TunnelRuntimeAdapters.swift */; };
+		A1000000000000000000011A /* GoTunnelEngineSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021C /* GoTunnelEngineSession.swift */; };
+		A1000000000000000000011B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021D /* Assets.xcassets */; };
+		A1000000000000000000011C /* TunnelUserEnrollment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021E /* TunnelUserEnrollment.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A10000000000000000000301 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000402;
+			remoteInfo = MeshPacketTunnel;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A10000000000000000000501 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A10000000000000000000109 /* MeshPacketTunnel.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A10000000000000000000201 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A10000000000000000000202 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		A10000000000000000000203 /* MeshTunnelViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshTunnelViewController.swift; sourceTree = "<group>"; };
+		A10000000000000000000204 /* TunnelContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelContract.swift; sourceTree = "<group>"; };
+		A10000000000000000000205 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		A10000000000000000000206 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A10000000000000000000207 /* Development.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Development.entitlements; sourceTree = "<group>"; };
+		A10000000000000000000208 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A10000000000000000000209 /* TestFlight.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TestFlight.entitlements; sourceTree = "<group>"; };
+		A1000000000000000000020A /* CustomApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CustomApp.entitlements; sourceTree = "<group>"; };
+		A1000000000000000000020B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1000000000000000000020C /* Development.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Development.entitlements; sourceTree = "<group>"; };
+		A1000000000000000000020D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A10000000000000000000211 /* TestFlight.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TestFlight.entitlements; sourceTree = "<group>"; };
+		A10000000000000000000212 /* CustomApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CustomApp.entitlements; sourceTree = "<group>"; };
+		A1000000000000000000020E /* Mesh Tunnel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Mesh Tunnel.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000000000000000000020F /* MeshPacketTunnel.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MeshPacketTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000210 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
+		A10000000000000000000213 /* TunnelConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelConfigurationStore.swift; sourceTree = "<group>"; };
+		A10000000000000000000214 /* TunnelHandoffKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelHandoffKeychain.swift; sourceTree = "<group>"; };
+		A10000000000000000000215 /* TunnelHighWaterKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelHighWaterKeychain.swift; sourceTree = "<group>"; };
+		A10000000000000000000216 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		A10000000000000000000217 /* TunnelPacketFlowPump.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelPacketFlowPump.swift; sourceTree = "<group>"; };
+		A10000000000000000000218 /* TunnelAppleNetworkSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelAppleNetworkSettings.swift; sourceTree = "<group>"; };
+		A10000000000000000000219 /* TunnelLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelLog.swift; sourceTree = "<group>"; };
+		A1000000000000000000021A /* TunnelRuntimeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelRuntimeCoordinator.swift; sourceTree = "<group>"; };
+		A1000000000000000000021B /* TunnelRuntimeAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelRuntimeAdapters.swift; sourceTree = "<group>"; };
+		A1000000000000000000021C /* GoTunnelEngineSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoTunnelEngineSession.swift; sourceTree = "<group>"; };
+		A1000000000000000000021D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A1000000000000000000021E /* TunnelUserEnrollment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelUserEnrollment.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000601 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000010A /* NetworkExtension.framework in Frameworks */,
+				A10000000000000000000111 /* Security.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000602 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000010B /* NetworkExtension.framework in Frameworks */,
+				A10000000000000000000112 /* Security.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A10000000000000000000701 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000702 /* MeshTunnelHost */,
+				A10000000000000000000703 /* PacketTunnel */,
+				A10000000000000000000704 /* Shared */,
+				A10000000000000000000705 /* Frameworks */,
+				A10000000000000000000706 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000702 /* MeshTunnelHost */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000201 /* AppDelegate.swift */,
+				A10000000000000000000202 /* SceneDelegate.swift */,
+				A10000000000000000000203 /* MeshTunnelViewController.swift */,
+				A1000000000000000000021D /* Assets.xcassets */,
+				A10000000000000000000206 /* Info.plist */,
+				A10000000000000000000208 /* PrivacyInfo.xcprivacy */,
+				A10000000000000000000207 /* Development.entitlements */,
+				A10000000000000000000209 /* TestFlight.entitlements */,
+				A1000000000000000000020A /* CustomApp.entitlements */,
+			);
+			path = MeshTunnelHost;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000703 /* PacketTunnel */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000205 /* PacketTunnelProvider.swift */,
+				A10000000000000000000219 /* TunnelLog.swift */,
+				A1000000000000000000021B /* TunnelRuntimeAdapters.swift */,
+				A1000000000000000000021C /* GoTunnelEngineSession.swift */,
+				A10000000000000000000215 /* TunnelHighWaterKeychain.swift */,
+				A1000000000000000000020B /* Info.plist */,
+				A1000000000000000000020D /* PrivacyInfo.xcprivacy */,
+				A1000000000000000000020C /* Development.entitlements */,
+				A10000000000000000000211 /* TestFlight.entitlements */,
+				A10000000000000000000212 /* CustomApp.entitlements */,
+			);
+			path = PacketTunnel;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000704 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000204 /* TunnelContract.swift */,
+				A10000000000000000000213 /* TunnelConfigurationStore.swift */,
+				A10000000000000000000214 /* TunnelHandoffKeychain.swift */,
+				A10000000000000000000217 /* TunnelPacketFlowPump.swift */,
+				A10000000000000000000218 /* TunnelAppleNetworkSettings.swift */,
+				A1000000000000000000021A /* TunnelRuntimeCoordinator.swift */,
+				A1000000000000000000021E /* TunnelUserEnrollment.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000705 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000210 /* NetworkExtension.framework */,
+				A10000000000000000000216 /* Security.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000706 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000020E /* Mesh Tunnel.app */,
+				A1000000000000000000020F /* MeshPacketTunnel.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000401 /* MeshTunnelHost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000A02 /* Build configuration list for PBXNativeTarget "MeshTunnelHost" */;
+			buildPhases = (
+				A10000000000000000000801 /* Sources */,
+				A10000000000000000000601 /* Frameworks */,
+				A10000000000000000000901 /* Resources */,
+				A10000000000000000000501 /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A10000000000000000000302 /* PBXTargetDependency */,
+			);
+			name = MeshTunnelHost;
+			productName = "Mesh Tunnel";
+			productReference = A1000000000000000000020E /* Mesh Tunnel.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A10000000000000000000402 /* MeshPacketTunnel */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000A03 /* Build configuration list for PBXNativeTarget "MeshPacketTunnel" */;
+			buildPhases = (
+				A10000000000000000000802 /* Sources */,
+				A10000000000000000000602 /* Frameworks */,
+				A10000000000000000000902 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MeshPacketTunnel;
+			productName = MeshPacketTunnel;
+			productReference = A1000000000000000000020F /* MeshPacketTunnel.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					A10000000000000000000401 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					A10000000000000000000402 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+				};
+			};
+			buildConfigurationList = A10000000000000000000A01 /* Build configuration list for PBXProject "MeshTunnel" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A10000000000000000000701;
+			productRefGroup = A10000000000000000000706 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10000000000000000000401 /* MeshTunnelHost */,
+				A10000000000000000000402 /* MeshPacketTunnel */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000901 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000107 /* PrivacyInfo.xcprivacy in Resources */,
+				A1000000000000000000011B /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000902 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000108 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000801 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000101 /* AppDelegate.swift in Sources */,
+				A10000000000000000000102 /* SceneDelegate.swift in Sources */,
+				A10000000000000000000103 /* MeshTunnelViewController.swift in Sources */,
+				A10000000000000000000104 /* TunnelContract.swift in Sources */,
+				A1000000000000000000010C /* TunnelConfigurationStore.swift in Sources */,
+				A1000000000000000000010E /* TunnelHandoffKeychain.swift in Sources */,
+				A10000000000000000000113 /* TunnelPacketFlowPump.swift in Sources */,
+				A10000000000000000000115 /* TunnelAppleNetworkSettings.swift in Sources */,
+				A1000000000000000000011C /* TunnelUserEnrollment.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000802 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000105 /* PacketTunnelProvider.swift in Sources */,
+				A10000000000000000000117 /* TunnelLog.swift in Sources */,
+				A10000000000000000000106 /* TunnelContract.swift in Sources */,
+				A1000000000000000000010D /* TunnelConfigurationStore.swift in Sources */,
+				A1000000000000000000010F /* TunnelHandoffKeychain.swift in Sources */,
+				A10000000000000000000110 /* TunnelHighWaterKeychain.swift in Sources */,
+				A10000000000000000000114 /* TunnelPacketFlowPump.swift in Sources */,
+				A10000000000000000000116 /* TunnelAppleNetworkSettings.swift in Sources */,
+				A10000000000000000000118 /* TunnelRuntimeCoordinator.swift in Sources */,
+				A10000000000000000000119 /* TunnelRuntimeAdapters.swift in Sources */,
+				A1000000000000000000011A /* GoTunnelEngineSession.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A10000000000000000000302 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000000000402 /* MeshPacketTunnel */;
+			targetProxy = A10000000000000000000301 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A10000000000000000000B01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A10000000000000000000B02 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Profile;
+		};
+		A10000000000000000000B03 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A10000000000000000000B11 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = MeshTunnelHost/Development.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = Y3P5UNNG23;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MeshTunnelHost/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rw0.mesh.tunnel.mobile;
+				PRODUCT_NAME = "Mesh Tunnel";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A10000000000000000000B12 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_ENTITLEMENTS = MeshTunnelHost/TestFlight.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = Y3P5UNNG23;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MeshTunnelHost/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rw0.mesh.tunnel.mobile;
+				PRODUCT_NAME = "Mesh Tunnel";
+				PROVISIONING_PROFILE_SPECIFIER = "Mesh Tunnel Host App Store";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Profile;
+		};
+		A10000000000000000000B13 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_ENTITLEMENTS = MeshTunnelHost/CustomApp.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = Y3P5UNNG23;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MeshTunnelHost/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rw0.mesh.tunnel.mobile;
+				PRODUCT_NAME = "Mesh Tunnel";
+				PROVISIONING_PROFILE_SPECIFIER = "Mesh Tunnel Host App Store";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A10000000000000000000B21 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = PacketTunnel/Development.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = Y3P5UNNG23;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PacketTunnel/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rw0.mesh.tunnel.mobile.packet-tunnel;
+				PRODUCT_NAME = MeshPacketTunnel;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A10000000000000000000B22 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_ENTITLEMENTS = PacketTunnel/TestFlight.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = Y3P5UNNG23;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PacketTunnel/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rw0.mesh.tunnel.mobile.packet-tunnel;
+				PRODUCT_NAME = MeshPacketTunnel;
+				PROVISIONING_PROFILE_SPECIFIER = "Mesh Packet Tunnel App Store";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Profile;
+		};
+		A10000000000000000000B23 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_ENTITLEMENTS = PacketTunnel/CustomApp.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = Y3P5UNNG23;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PacketTunnel/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rw0.mesh.tunnel.mobile.packet-tunnel;
+				PRODUCT_NAME = MeshPacketTunnel;
+				PROVISIONING_PROFILE_SPECIFIER = "Mesh Packet Tunnel App Store";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10000000000000000000A01 /* Build configuration list for PBXProject "MeshTunnel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000B01 /* Debug */,
+				A10000000000000000000B02 /* Profile */,
+				A10000000000000000000B03 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000A02 /* Build configuration list for PBXNativeTarget "MeshTunnelHost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000B11 /* Debug */,
+				A10000000000000000000B12 /* Profile */,
+				A10000000000000000000B13 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000A03 /* Build configuration list for PBXNativeTarget "MeshPacketTunnel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000B21 /* Debug */,
+				A10000000000000000000B22 /* Profile */,
+				A10000000000000000000B23 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000001 /* Project object */;
+}

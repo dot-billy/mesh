@@ -1,0 +1,13 @@
+[Unit]
+Description=Preserve quickstart host source addresses through Docker
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mesh-quickstart-docker-nat apply
+ExecStop=/usr/local/sbin/mesh-quickstart-docker-nat remove
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,153 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mesh-release-origin.fullname" . }}
+  labels:
+    {{- include "mesh-release-origin.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "mesh-release-origin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mesh-release-origin.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: materialize-tls
+          image: {{ include "mesh-release-origin.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/mesh-origin"]
+          args:
+            - materialize-kubernetes-tls
+            - --tls-source-dir=/input/tls
+            - --output-root=/prepared
+            - --tls-server-name={{ .Values.publicHost }}
+            - --runtime-uid=65532
+            - --runtime-gid=65532
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+          volumeMounts:
+            - name: tls-source
+              mountPath: /input/tls
+              readOnly: true
+            - name: prepared-tls
+              mountPath: /prepared
+      containers:
+        - name: mesh-release-origin
+          image: {{ include "mesh-release-origin.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --listen=0.0.0.0:8444
+            - --public-url={{ .Values.publicURL }}
+            - --tls-cert=/run/tls/private/server.crt
+            - --tls-key=/run/tls/private/server.key
+            - --root=/srv/generation/repository
+            - --index=/srv/generation/origin-index.json
+          env:
+            - name: MESH_HEALTHCHECK_URL
+              value: https://127.0.0.1:8444/readyz
+            - name: MESH_HEALTHCHECK_CA_FILE
+              value: /run/tls/private/ca.crt
+            - name: MESH_HEALTHCHECK_SERVER_NAME
+              value: {{ .Values.publicHost | quote }}
+          ports:
+            - name: https
+              containerPort: 8444
+              protocol: TCP
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            exec:
+              command: ["/usr/local/bin/mesh-healthcheck"]
+            periodSeconds: 2
+            timeoutSeconds: 4
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: ["/usr/local/bin/mesh-healthcheck"]
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: generation
+              mountPath: /srv/generation
+              readOnly: true
+            - name: prepared-tls
+              mountPath: /run/tls
+              readOnly: true
+      volumes:
+        - name: generation
+          persistentVolumeClaim:
+            claimName: {{ include "mesh-release-origin.claimName" . }}
+            readOnly: true
+        - name: tls-source
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.tls.certificateKey }}
+                path: tls.crt
+              - key: {{ .Values.tls.privateKeyKey }}
+                path: tls.key
+              - key: {{ .Values.tls.caBundleKey }}
+                path: ca.crt
+        - name: prepared-tls
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,44 @@
+replicaCount: 1
+
+image:
+  repository: 10.46.0.34:32000/kverify/mesh-release-origin
+  digest: sha256:a77fd9217a959e7ce08d6398f068757b460dcc9c5da41b0a69e6529d2c36a1ab
+  pullPolicy: IfNotPresent
+
+publicURL: https://releases-mesh.verify.rw0.io
+publicHost: releases-mesh.verify.rw0.io
+
+content:
+  storageClass: local-path
+  size: 1Gi
+
+tls:
+  secretName: mesh-tls
+
+service:
+  annotations:
+    traefik.ingress.kubernetes.io/service.serversscheme: https
+    traefik.ingress.kubernetes.io/service.serverstransport: mesh-system-mesh-release-origin-backend@kubernetescrd
+
+ingress:
+  enabled: true
+  className: traefik
+  tlsSecretName: verify-rw0-io-tls
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
+
+podAnnotations:
+  mesh.rw0.io/origin-generation: 02d9d213cd8cb934ae72199d043acaa97cc5ad07c91df61e84abdf54807be517
+
+networkPolicy:
+  enabled: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system

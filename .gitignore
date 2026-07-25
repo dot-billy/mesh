@@ -1,0 +1,9 @@
+/bin/
+/data/
+/nebula/
+*.test
+*.out
+*.pyc
+__pycache__/
+.env
+.pages-dist/

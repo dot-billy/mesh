@@ -1,0 +1,8 @@
+title = "Mesh secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Local generated build outputs are scanned before packaging, not as source"
+paths = ['''(?:^|/)(?:bin|\.pages-dist)/''']

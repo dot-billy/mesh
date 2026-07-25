@@ -1,0 +1,16 @@
+title = "Mesh final-image secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The exact oauth2 v0.36.0 Go checksum is public integrity metadata"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^peZ/1z27fi9hUOFCAZaHyrpWG5lwe0RJEEEeH0ThlIs=$'''] # gitleaks:allow -- exact public oauth2 v0.36.0 Go checksum
+
+[[allowlists]]
+description = "The exact Apple Admin browser API test source digest is public integrity metadata"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^6b00be81b6c391946b86245b3ac8b7b99bac9e3d09b0c87caa84b9169bd7ce2e$'''] # gitleaks:allow -- exact public browser API test source digest
