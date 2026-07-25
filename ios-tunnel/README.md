@@ -116,12 +116,11 @@ post-export-verified App Store IPA, and Xcode uploaded those exact version
 App Store Connect completed processing and export-compliance review for
 standard encryption with no France distribution. A read-only App Store Connect
 check on 2026-07-25 showed build `0.1.0 (1)` in `Testing`, expiring in 90 days.
-Individual tester `wtmuller.media@gmail.com` had installed it on 2026-07-25 on
-an iPhone 17 Pro Max running iOS 26.5.2. App Store Connect showed no sessions,
-crashes, or feedback. This upload and installation are controlled TestFlight
-qualification, not public App Store, Custom App, supported release, or
-packet-path evidence. Build `0.1.0 (1)` is the earlier framework-v4 artifact,
-not the current framework-v5 host and extension.
+One invited tester had installed it on a physical iPhone that day. App Store
+Connect showed no sessions, crashes, or feedback. This upload and installation
+are controlled TestFlight qualification, not public App Store, Custom App,
+supported release, or packet-path evidence. Build `0.1.0 (1)` is the earlier
+framework-v4 artifact, not the current framework-v5 host and extension.
 
 The App Group stores authenticated configuration, never the node private key.
 The handoff HMAC key is device-only Keychain data shared by the two targets.
