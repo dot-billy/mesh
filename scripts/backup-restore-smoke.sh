@@ -418,8 +418,9 @@ save_expected_network() {
   local output="$2"
   local expected_name="$3"
   local expected_cidr="$4"
+  local expected_id="${5:-}"
 
-  python3 - "${response}" "${output}" "${expected_name}" "${expected_cidr}" <<'PY'
+  python3 - "${response}" "${output}" "${expected_name}" "${expected_cidr}" "${expected_id}" <<'PY'
 import json
 import os
 import pathlib
@@ -436,9 +437,27 @@ def reject_duplicates(pairs):
 
 raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 decoder = json.JSONDecoder(object_pairs_hook=reject_duplicates)
-network, end = decoder.raw_decode(raw)
-if raw[end:].strip() or not isinstance(network, dict):
-    raise SystemExit("network response is not one strict JSON object")
+response, end = decoder.raw_decode(raw)
+if raw[end:].strip():
+    raise SystemExit("network response has trailing JSON data")
+expected_id = sys.argv[5]
+if isinstance(response, list):
+    if re.fullmatch(r"[A-Za-z0-9_-]+", expected_id) is None:
+        raise SystemExit("network-list checkpoint requires an expected network ID")
+    matches = [
+        item
+        for item in response
+        if isinstance(item, dict) and item.get("id") == expected_id
+    ]
+    if len(matches) != 1:
+        raise SystemExit("network list did not return exactly one expected network")
+    network = matches[0]
+elif isinstance(response, dict):
+    network = response
+    if expected_id and network.get("id") != expected_id:
+        raise SystemExit("network response identity changed")
+else:
+    raise SystemExit("network response is not one strict object or list")
 expected = {
     "id": network.get("id"),
     "name": network.get("name"),
@@ -1171,9 +1190,9 @@ network_name="backup-restore-smoke"
 network_cidr="10.86.240.0/24"
 printf '%s\n' "{\"name\":\"${network_name}\",\"cidr\":\"${network_cidr}\"}" >"${work_dir}/network-create-request.json"
 api_request POST "/api/v1/networks" "${work_dir}/network-created.json" "${work_dir}/network-create-request.json"
-save_expected_network "${work_dir}/network-created.json" "${work_dir}/expected-network.json" "${network_name}" "${network_cidr}"
-network_id="$(json_scalar "${work_dir}/expected-network.json" id)"
-network_revision="$(json_scalar "${work_dir}/expected-network.json" config_revision)"
+save_expected_network "${work_dir}/network-created.json" "${work_dir}/created-network-checkpoint.json" "${network_name}" "${network_cidr}"
+network_id="$(json_scalar "${work_dir}/created-network-checkpoint.json" id)"
+network_revision="$(json_scalar "${work_dir}/created-network-checkpoint.json" config_revision)"
 require_record_id "${network_id}" "network ID"
 require_positive_integer "${network_revision}" "network config revision"
 
@@ -1247,6 +1266,13 @@ save_active_node_checkpoint \
   "${network_id}" \
   "${active_member_name}" \
   "${work_dir}/active-member-before-backup.json"
+api_request GET "/api/v1/networks" "${work_dir}/networks-before-backup.json"
+save_expected_network \
+  "${work_dir}/networks-before-backup.json" \
+  "${work_dir}/expected-network.json" \
+  "${network_name}" \
+  "${network_cidr}" \
+  "${network_id}"
 
 "${mesh_backup}" keygen --output "${backup_key}" >"${work_dir}/keygen.json" 2>"${work_dir}/keygen.stderr"
 [[ "$(json_scalar "${work_dir}/keygen.json" schema)" == "mesh-backup-command-result-v1" ]] || die "backup keygen schema changed"
