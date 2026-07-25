@@ -34,6 +34,7 @@ enum AppleAdminDiagnosticSessionState {
 }
 
 enum AppleAdminDiagnosticRole {
+  member('member'),
   viewer('viewer'),
   operator('operator'),
   admin('admin');

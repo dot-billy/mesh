@@ -80,6 +80,7 @@ String _permissionLabel(MeshPermission permission) => switch (permission) {
   MeshPermission.networksRead => 'network-read permission',
   MeshPermission.networksWrite => 'network-write permission',
   MeshPermission.networksSecurity => 'network-security permission',
+  MeshPermission.nodesEnrollSelf => 'self-enrollment permission',
   MeshPermission.identityManage => 'identity-management permission',
   MeshPermission.auditRead => 'audit-read permission',
 };

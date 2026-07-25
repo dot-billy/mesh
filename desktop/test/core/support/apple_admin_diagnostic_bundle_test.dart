@@ -132,6 +132,13 @@ void main() {
     expect(collection['recipient_deletion_enforced_by_mesh'], isFalse);
   });
 
+  test('member diagnostics preserve the least-privileged role', () {
+    final decoded =
+        jsonDecode(bundle(role: AppleAdminDiagnosticRole.member).encode())
+            as Map<String, Object?>;
+    expect(decoded['session'], {'state': 'signed-in', 'role': 'member'});
+  });
+
   test('diagnostic identity and session-role combinations fail closed', () {
     expect(() => bundle(releaseIdentity: 'not-a-digest'), throwsArgumentError);
     expect(

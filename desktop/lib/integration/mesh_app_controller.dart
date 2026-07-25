@@ -1524,6 +1524,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
               .inSeconds
               .clamp(0, 31_536_000);
     final role = switch (value.accessContext?.role) {
+      MeshRole.member => AppleAdminDiagnosticRole.member,
       MeshRole.viewer => AppleAdminDiagnosticRole.viewer,
       MeshRole.operator => AppleAdminDiagnosticRole.operator,
       MeshRole.admin => AppleAdminDiagnosticRole.admin,
@@ -2205,6 +2206,7 @@ Set<MeshPermission> _presentationPermissions(
       auth.MeshPermission.networksRead => MeshPermission.networksRead,
       auth.MeshPermission.networksWrite => MeshPermission.networksWrite,
       auth.MeshPermission.networksSecurity => MeshPermission.networksSecurity,
+      auth.MeshPermission.nodesEnrollSelf => MeshPermission.nodesEnrollSelf,
       auth.MeshPermission.identityManage => MeshPermission.identityManage,
       auth.MeshPermission.auditRead => MeshPermission.auditRead,
     },
