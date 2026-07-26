@@ -1018,6 +1018,14 @@ class AppleProjectTest(unittest.TestCase):
         self.assertNotIn("security default-keychain", build)
         self.assertNotIn("security list-keychains", build)
         workflow = (ROOT / ".github" / "workflows" / "apple.yml").read_text()
+        self.assertIn(
+            "- name: Install the pinned iOS 18.6 simulator runtime",
+            workflow,
+        )
+        self.assertIn(
+            "xcodebuild -downloadPlatform iOS -buildVersion 18.6",
+            workflow,
+        )
         ios_test_start = workflow.index("- name: Run native iOS runner tests")
         ios_test_end = workflow.index(
             "- name: Upload the sanitized source receipt",
