@@ -1264,6 +1264,41 @@ func runningEvidenceRequiresRealEngineAndPacketFields() throws {
 }
 
 @Test
+func providerLifecycleGateSerializesStartAndLatchesStop() {
+  let gate = TunnelProviderLifecycleGate()
+  #expect(gate.beginStart() == .begin)
+  #expect(gate.beginStart() == .alreadyStarting)
+  #expect(gate.mayContinueStart())
+  #expect(gate.markRunning())
+  #expect(gate.beginStart() == .alreadyRunning)
+  #expect(!gate.latchStop())
+  #expect(gate.isStopped())
+  #expect(gate.beginStart() == .stopped)
+  #expect(!gate.markRunning())
+  #expect(gate.latchStop())
+}
+
+@Test
+func providerLifecycleGateRejectsStopRacingStart() {
+  let gate = TunnelProviderLifecycleGate()
+  #expect(gate.beginStart() == .begin)
+  #expect(!gate.latchStop())
+  #expect(!gate.mayContinueStart())
+  #expect(!gate.markRunning())
+  gate.finishStartFailure()
+  #expect(gate.beginStart() == .stopped)
+}
+
+@Test
+func providerLifecycleGateAllowsRetryAfterStartFailure() {
+  let gate = TunnelProviderLifecycleGate()
+  #expect(gate.beginStart() == .begin)
+  gate.finishStartFailure()
+  #expect(gate.beginStart() == .begin)
+  #expect(gate.markRunning())
+}
+
+@Test
 func configurationSlotsActivateMonotonicallyAndPreserveRecovery() throws {
   let root = FileManager.default.temporaryDirectory.appending(
     path: "mesh-tunnel-store-\(UUID().uuidString)",

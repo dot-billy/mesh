@@ -35,6 +35,7 @@
 		A1000000000000000000011A /* GoTunnelEngineSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021C /* GoTunnelEngineSession.swift */; };
 		A1000000000000000000011B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021D /* Assets.xcassets */; };
 		A1000000000000000000011C /* TunnelUserEnrollment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021E /* TunnelUserEnrollment.swift */; };
+		A1000000000000000000011D /* TunnelProviderLifecycleGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021F /* TunnelProviderLifecycleGate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -92,6 +93,7 @@
 		A1000000000000000000021C /* GoTunnelEngineSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoTunnelEngineSession.swift; sourceTree = "<group>"; };
 		A1000000000000000000021D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1000000000000000000021E /* TunnelUserEnrollment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelUserEnrollment.swift; sourceTree = "<group>"; };
+		A1000000000000000000021F /* TunnelProviderLifecycleGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelProviderLifecycleGate.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -170,6 +172,7 @@
 				A10000000000000000000218 /* TunnelAppleNetworkSettings.swift */,
 				A1000000000000000000021A /* TunnelRuntimeCoordinator.swift */,
 				A1000000000000000000021E /* TunnelUserEnrollment.swift */,
+				A1000000000000000000021F /* TunnelProviderLifecycleGate.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -320,6 +323,7 @@
 				A10000000000000000000118 /* TunnelRuntimeCoordinator.swift in Sources */,
 				A10000000000000000000119 /* TunnelRuntimeAdapters.swift in Sources */,
 				A1000000000000000000011A /* GoTunnelEngineSession.swift in Sources */,
+				A1000000000000000000011D /* TunnelProviderLifecycleGate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

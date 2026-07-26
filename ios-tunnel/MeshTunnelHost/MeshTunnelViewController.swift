@@ -445,7 +445,10 @@ final class MeshTunnelViewController: UIViewController {
                     )
                     return
                 }
-                let origin = try self.validatedOrigin(for: manager)
+                let origin = try self.validatedOrigin(
+                    for: manager,
+                    requireEnabled: false
+                )
                 self.preparedManager = manager
                 self.preparedOrigin = origin
                 self.originField.text = origin
@@ -471,24 +474,46 @@ final class MeshTunnelViewController: UIViewController {
     }
 
     @objc private func startExistingTunnel() {
-        guard let manager = preparedManager,
-              let session = manager.connection
-                as? NETunnelProviderSession
-        else {
+        guard setupTask == nil else {
+            return
+        }
+        guard preparedManager != nil, preparedOrigin != nil else {
             statusLabel.text = (
                 "Inspect the installed Mesh Tunnel configuration before "
                     + "starting it."
             )
             return
         }
+        setControlsBusy(true)
+        setupTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            await self.runStartExistingTunnel()
+            self.setupTask = nil
+        }
+    }
+
+    @MainActor
+    private func runStartExistingTunnel() async {
         do {
-            guard session.status == .disconnected,
+            guard let manager = preparedManager,
+                  let expectedOrigin = preparedOrigin,
                   let current = try loadLocalConfiguration(),
-                  current.controlPlaneOrigin == preparedOrigin
+                  current.controlPlaneOrigin == expectedOrigin
             else {
                 throw TunnelHostError.localIdentityUnavailable
             }
-            setControlsBusy(true)
+            try await enableManager(
+                manager,
+                expectedOrigin: expectedOrigin
+            )
+            guard let session = manager.connection
+                as? NETunnelProviderSession,
+                session.status == .disconnected
+            else {
+                throw TunnelHostError.providerSessionUnavailable
+            }
             try session.startTunnel()
             inspectButton.isEnabled = true
             stopButton.isEnabled = true
@@ -587,9 +612,10 @@ final class MeshTunnelViewController: UIViewController {
     }
 
     private func validatedOrigin(
-        for manager: NETunnelProviderManager
+        for manager: NETunnelProviderManager,
+        requireEnabled: Bool = true
     ) throws -> String {
-        guard manager.isEnabled,
+        guard (!requireEnabled || manager.isEnabled),
               !manager.isOnDemandEnabled,
               manager.onDemandRules == nil,
               let tunnelProtocol = manager.protocolConfiguration
@@ -616,6 +642,12 @@ final class MeshTunnelViewController: UIViewController {
         inspectButton.isEnabled = true
         removeIdentityButton.isEnabled = hasLocalIdentity
         originField.isEnabled = false
+        if !manager.isEnabled {
+            startButton.isEnabled = hasLocalIdentity
+            stopButton.isEnabled = false
+            signInButton.isEnabled = !hasLocalIdentity
+            return
+        }
         switch manager.connection.status {
         case .disconnected:
             startButton.isEnabled = hasLocalIdentity
@@ -645,6 +677,22 @@ final class MeshTunnelViewController: UIViewController {
     private func presentRuntimeStatus(
         manager: NETunnelProviderManager
     ) async throws {
+        let current = try loadLocalConfiguration()
+        if !manager.isEnabled {
+            if current == nil {
+                statusLabel.text = (
+                    "A saved Mesh Tunnel VPN configuration is disabled. "
+                        + "Sign in to restore it and enroll this device."
+                )
+            } else {
+                statusLabel.text = (
+                    "The saved Mesh Tunnel VPN configuration is disabled. "
+                        + "Start the existing tunnel to restore it without "
+                        + "creating another identity."
+                )
+            }
+            return
+        }
         switch manager.connection.status {
         case .connected, .reasserting:
             guard let session = manager.connection
@@ -677,7 +725,7 @@ final class MeshTunnelViewController: UIViewController {
                     + "state before changing the local identity."
             )
         case .disconnected:
-            if try loadLocalConfiguration() == nil {
+            if current == nil {
                 statusLabel.text = (
                     "The VPN configuration is prepared but no authenticated "
                         + "local identity is present. Sign in to enroll this "
@@ -995,6 +1043,25 @@ final class MeshTunnelViewController: UIViewController {
             throw TunnelHostError.savedConfigurationMismatch
         }
         return manager
+    }
+
+    private func enableManager(
+        _ manager: NETunnelProviderManager,
+        expectedOrigin: String
+    ) async throws {
+        try await reload(manager)
+        guard try validatedOrigin(
+            for: manager,
+            requireEnabled: false
+        ) == expectedOrigin else {
+            throw TunnelHostError.originMismatch
+        }
+        manager.isEnabled = true
+        try await save(manager)
+        try await reload(manager)
+        guard try validatedOrigin(for: manager) == expectedOrigin else {
+            throw TunnelHostError.savedConfigurationMismatch
+        }
     }
 
     private func loadManagers() async throws -> [NETunnelProviderManager] {

@@ -620,6 +620,9 @@ class AppleProjectTest(unittest.TestCase):
             "eraseTransientEnrollment()",
             "manager.isOnDemandEnabled = false",
             "removeFromPreferences",
+            "requireEnabled: false",
+            "try await enableManager(",
+            "manager.isEnabled = true",
         ):
             self.assertIn(required, host)
         for required in (
@@ -675,6 +678,35 @@ class AppleProjectTest(unittest.TestCase):
                 "kSecUseDataProtectionKeychain as String: kCFBooleanTrue!",
                 source,
             )
+
+        lifecycle_gate = (
+            IOS_TUNNEL / "Shared" / "TunnelProviderLifecycleGate.swift"
+        ).read_text()
+        for required in (
+            "public final class TunnelProviderLifecycleGate",
+            "case alreadyStarting",
+            "case alreadyRunning",
+            "public func mayContinueStart() -> Bool",
+            "public func markRunning() -> Bool",
+            "public func latchStop() -> Bool",
+        ):
+            self.assertIn(required, lifecycle_gate)
+        provider = (
+            IOS_TUNNEL / "PacketTunnel" / "PacketTunnelProvider.swift"
+        ).read_text()
+        for required in (
+            "lifecycleGate.beginStart()",
+            "lifecycleGate.mayContinueStart()",
+            "lifecycleGate.markRunning()",
+            "lifecycleGate.latchStop()",
+            '"start-already-in-progress"',
+            '"start-cancelled"',
+        ):
+            self.assertIn(required, provider)
+        self.assertEqual(
+            project.count("TunnelProviderLifecycleGate.swift in Sources"),
+            2,
+        )
 
     def test_ios_tunnel_logging_accepts_only_fixed_reviewed_codes(self) -> None:
         source = (

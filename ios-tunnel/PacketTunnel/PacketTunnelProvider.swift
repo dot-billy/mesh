@@ -22,6 +22,7 @@ final class PacketTunnelProvider:
   )
   private var pathMonitor: NWPathMonitor?
   private var observedInitialPath = false
+  private let lifecycleGate = TunnelProviderLifecycleGate()
 
   override func startTunnel(
     options: [String: NSObject]?,
@@ -54,26 +55,54 @@ final class PacketTunnelProvider:
       }
       return
     }
+    switch lifecycleGate.beginStart() {
+    case .begin:
+      break
+    case .alreadyRunning:
+      completionHandler(nil)
+      return
+    case .alreadyStarting:
+      completionHandler(Self.failure("start-already-in-progress"))
+      return
+    case .stopped:
+      completionHandler(Self.failure("start-cancelled"))
+      return
+    }
     TunnelLog.record(.startRequested)
     sequence &+= 1
     state = .starting
     Task {
+      defer {
+        self.lifecycleGate.finishStartFailure()
+      }
       let configuration: TunnelConfigurationPayload
       do {
         configuration = try await self.resolveConfiguration(
           options: options
         )
       } catch let failure as TunnelStartupFailure {
+        if self.lifecycleGate.isStopped() {
+          self.completeCancelledStart(completionHandler)
+          return
+        }
         self.errorCode = failure.code
         self.state = .extensionError
         TunnelLog.record(failure.event)
         completionHandler(Self.failure(failure.code))
         return
       } catch {
+        if self.lifecycleGate.isStopped() {
+          self.completeCancelledStart(completionHandler)
+          return
+        }
         self.errorCode = "configuration-invalid"
         self.state = .extensionError
         TunnelLog.record(.configurationInvalid)
         completionHandler(Self.failure("configuration-invalid"))
+        return
+      }
+      guard self.lifecycleGate.mayContinueStart() else {
+        self.completeCancelledStart(completionHandler)
         return
       }
       let reporter: TunnelMobileRuntimeReporter
@@ -93,18 +122,31 @@ final class PacketTunnelProvider:
         }
         self.runtimeReporter = reporter
       } catch let failure as TunnelStartupFailure {
+        if self.lifecycleGate.isStopped() {
+          self.completeCancelledStart(completionHandler)
+          return
+        }
         self.errorCode = failure.code
         self.state = failure.state
         TunnelLog.record(failure.event)
         completionHandler(Self.failure(failure.code))
         return
       } catch {
+        if self.lifecycleGate.isStopped() {
+          self.completeCancelledStart(completionHandler)
+          return
+        }
         self.errorCode = "mobile-runtime-evidence-failed"
         self.state = .quarantined
         TunnelLog.record(.lifecycleRefreshFailed)
         completionHandler(
           Self.failure("mobile-runtime-evidence-failed")
         )
+        return
+      }
+      guard self.lifecycleGate.mayContinueStart() else {
+        self.runtimeReporter = nil
+        self.completeCancelledStart(completionHandler)
         return
       }
       do {
@@ -138,6 +180,15 @@ final class PacketTunnelProvider:
           }
           self.errorCode = nil
           self.state = .running
+          guard self.lifecycleGate.markRunning() else {
+            await coordinator.stop()
+            if self.runtime === coordinator {
+              self.runtime = nil
+            }
+            self.runtimeReporter = nil
+            self.completeCancelledStart(completionHandler)
+            return
+          }
           self.startPathMonitoring(coordinator: coordinator)
           self.startLifecycleReporting(
             coordinator: coordinator,
@@ -152,6 +203,10 @@ final class PacketTunnelProvider:
           await coordinator.stop()
           self.runtime = nil
           self.runtimeReporter = nil
+          if self.lifecycleGate.isStopped() {
+            self.completeCancelledStart(completionHandler)
+            return
+          }
           self.errorCode = failure.code
           self.state = failure.state
           TunnelLog.record(failure.event)
@@ -160,12 +215,20 @@ final class PacketTunnelProvider:
           await coordinator.stop()
           self.runtime = nil
           self.runtimeReporter = nil
+          if self.lifecycleGate.isStopped() {
+            self.completeCancelledStart(completionHandler)
+            return
+          }
           self.errorCode = "engine-unavailable"
           self.state = .extensionError
           TunnelLog.record(.engineUnavailable)
           completionHandler(Self.failure("engine-unavailable"))
         }
       } catch {
+        if self.lifecycleGate.isStopped() {
+          self.completeCancelledStart(completionHandler)
+          return
+        }
         self.errorCode = "configuration-invalid"
         self.state = .extensionError
         TunnelLog.record(.configurationInvalid)
@@ -323,6 +386,7 @@ final class PacketTunnelProvider:
     completionHandler: @escaping () -> Void
   ) {
     TunnelLog.record(.stopRequested)
+    _ = lifecycleGate.latchStop()
     sequence &+= 1
     state = .stopping
     stopPathMonitoring()
@@ -631,6 +695,15 @@ final class PacketTunnelProvider:
   private func cancelLifecycleReporting() {
     lifecycleTask?.cancel()
     lifecycleTask = nil
+  }
+
+  private func completeCancelledStart(
+    _ completionHandler: @escaping (Error?) -> Void
+  ) {
+    runtimeReporter = nil
+    errorCode = nil
+    state = .stopped
+    completionHandler(Self.failure("start-cancelled"))
   }
 
   private func startPathMonitoring(

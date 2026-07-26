@@ -463,6 +463,9 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "runtime_coordinator": (
             IOS_TUNNEL / "Shared" / "TunnelRuntimeCoordinator.swift"
         ),
+        "provider_lifecycle_gate": (
+            IOS_TUNNEL / "Shared" / "TunnelProviderLifecycleGate.swift"
+        ),
         "provider": IOS_TUNNEL / "PacketTunnel" / "PacketTunnelProvider.swift",
         "runtime_adapters": (
             IOS_TUNNEL / "PacketTunnel" / "TunnelRuntimeAdapters.swift"
@@ -700,16 +703,43 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "responseRuntime.runtimeEvidence(",
         "TunnelControlOutcome(",
         "requestID: request.requestID",
+        "lifecycleGate.beginStart()",
+        "lifecycleGate.mayContinueStart()",
+        "lifecycleGate.markRunning()",
+        "lifecycleGate.latchStop()",
+        '"start-already-in-progress"',
+        '"start-cancelled"',
     ):
         if required not in sources["provider"]:
             raise ReceiptError("Mesh Tunnel provider flow wiring is incomplete")
+    for required in (
+        "public final class TunnelProviderLifecycleGate",
+        "case alreadyStarting",
+        "case alreadyRunning",
+        "public func mayContinueStart() -> Bool",
+        "public func markRunning() -> Bool",
+        "public func latchStop() -> Bool",
+    ):
+        if required not in sources["provider_lifecycle_gate"]:
+            raise ReceiptError("Mesh Tunnel provider lifecycle gate is incomplete")
+    provider_start_index = sources["provider"].index(
+        "try await coordinator.start()"
+    )
+    provider_completion_index = sources["provider"].index(
+        "completionHandler(nil)",
+        provider_start_index,
+    )
     if not (
-        sources["provider"].index("try await coordinator.start()")
+        provider_start_index
         < sources["provider"].index(
-            "self.startPathMonitoring(coordinator: coordinator)"
+            "self.startPathMonitoring(coordinator: coordinator)",
+            provider_start_index,
         )
-        < sources["provider"].index("completionHandler(nil)")
-        < sources["provider"].index("self.startPacketLoops(")
+        < provider_completion_index
+        < sources["provider"].index(
+            "self.startPacketLoops(",
+            provider_completion_index,
+        )
     ):
         raise ReceiptError("Mesh Tunnel provider starts packet flow too early")
     if (
@@ -748,6 +778,9 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "evidence.packetsWritten",
         "do not by themselves prove",
         "UIScrollView()",
+        "requireEnabled: false",
+        "try await enableManager(",
+        "manager.isEnabled = true",
     ):
         if required not in sources["host_controller"]:
             raise ReceiptError("Mesh Tunnel host enrollment handoff is incomplete")
@@ -772,6 +805,7 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "TunnelRuntimeCoordinator.swift",
         "TunnelRuntimeAdapters.swift",
         "GoTunnelEngineSession.swift",
+        "TunnelProviderLifecycleGate.swift",
     ):
         if sources["project"].count(f"{source_name} in Sources") != 2:
             raise ReceiptError("Mesh Tunnel runtime source is not compiled by extension")

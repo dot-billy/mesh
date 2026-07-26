@@ -46,6 +46,13 @@ implementation discovers a utun descriptor rather than receiving one from the
 documented Packet Tunnel flow API. Mesh has not adopted or approved that
 technique.
 
+Mesh nevertheless treats the official Mobile Nebula application as a
+behavioral reference for Network Extension lifecycle. The successor host
+source follows its manager reload, enable, save, reload, then start sequence
+when iOS retains a disabled VPN preference, while the provider adds equivalent
+single-flight start and stop-race protection. This convergence is intentionally
+limited to lifecycle behavior and does not adopt utun-descriptor discovery.
+
 Pinned Nebula 1.10.3 also exports `overlay.UserDevice`, an in-memory packet
 device intended for an embedding caller. Mesh has a bounded adapter that
 validates and copies complete IPv4/IPv6 packets between that device and the

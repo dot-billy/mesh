@@ -4,12 +4,13 @@ This directory is the source and controlled-beta qualification boundary for a
 future Mesh Tunnel application on iPhone and iPad. Version `0.1.0` build `1`
 contains the earlier framework-v4 pre-start lifecycle source and remains in
 TestFlight. Version `0.1.0` build `2` contains the framework-v5 lifecycle,
-runtime-evidence, identity-removal, and host-control changes; Apple accepted
-its upload and export-compliance declaration on 2026-07-26, approved its Beta
-App Review, and placed it in external testing. Neither build is a supported
-application, proven working VPN, production enrollment path, or public App
-Store release. The self-service OIDC onboarding described below is a subsequent
-unsigned source delta and is not present in either uploaded build.
+runtime-evidence, identity-removal, host-control, and self-service OIDC
+onboarding changes; Apple accepted its upload and export-compliance declaration
+on 2026-07-26, approved its Beta App Review, and placed it in external testing.
+A physical iPhone launch on 2026-07-26 confirmed that OIDC UI and exposed a
+disabled saved-manager recovery defect after app deletion and reinstall. No
+enrollment or packet path was proved. Neither build is a supported application,
+proven working VPN, production enrollment path, or public App Store release.
 
 ## What exists
 
@@ -31,7 +32,11 @@ unsigned source delta and is not present in either uploaded build.
   revision, certificate generation, engine identity, and directional Apple
   callback counters. Neither those counters nor `NEVPNStatus` proves a peer
   reply or end-to-end connectivity. The onboarding view scrolls so the
-  controls remain reachable on compact iPhones and with larger text.
+  controls remain reachable on compact iPhones and with larger text. The
+  successor source also accepts one structurally valid but disabled saved
+  manager after reinstall, presents recovery rather than disabling the UI, and
+  reloads, re-enables, saves, and reloads the manager only after an explicit
+  sign-in or start action.
 - `MeshPacketTunnel`: a Packet Tunnel Provider that authenticates the selected
   App Group configuration, or, when no current configuration exists, strictly
   decodes the single start-option enrollment request and performs enrollment
@@ -53,7 +58,9 @@ unsigned source delta and is not present in either uploaded build.
   validated Apple settings, starts the bounded packet loops, and requests an
   engine UDP rebind after subsequent `NWPathMonitor` updates. Enrollment,
   refresh, startup, packet, and rebind errors stop the coordinator and fail the
-  extension closed.
+  extension closed. A locked provider lifecycle gate rejects duplicate starts,
+  prevents a stop racing startup from publishing a running session, and latches
+  stop for the lifetime of that provider instance.
 - `Shared`: strict user-authorization, fixed-policy self-enrollment, and
   authenticated handoff schemas; a pure validated
   IPv4/IPv6 remote/address/route/DNS/MTU settings plan, a bounded packet-pump
@@ -68,6 +75,8 @@ unsigned source delta and is not present in either uploaded build.
   backpressure, stop-time queue erasure, coordinator ordering, rebind, and
   failure cleanup, running-evidence requirements, monotonic
   activation/recovery, replay, and symlink rejection.
+  It also covers duplicate start, stop-during-start, and failed-start retry
+  transitions for the provider lifecycle gate.
 - `engine`: a separate Go module for a reproducible `MeshMobile.xcframework`
   packet-session proof. It pins Nebula 1.10.3, keeps identity custody in the
   extension-only Keychain group, and exports identity creation/public-key
@@ -126,8 +135,19 @@ The successor framework-v5 archive and strictly verified IPA were uploaded as
 `0.1.0 (2)` on 2026-07-26. App Store Connect reports the binary as valid and
 the checked-in exempt-encryption declaration as accepted. The build is attached
 to the external tester group, its Beta App Review is approved, and its external
-state is `IN_BETA_TESTING`. It has not yet been installed or exercised on a
-device.
+state is `IN_BETA_TESTING`. It was installed and launched on a physical iPhone
+on 2026-07-26. That launch confirmed the OIDC host UI and exposed a retained
+Mesh VPN manager that iOS kept structurally valid but disabled after an
+app-delete/reinstall cycle. The app-group container contained no current,
+candidate, or recovery identity slot, and no enrollment, browser return,
+extension start, packet callback, or packet-path result was established.
+
+The successor source now treats that disabled manager as recoverable state:
+inspection accepts it without claiming a running tunnel, the host enables,
+saves, and reloads it before start, and a user without local identity can sign
+in again. The provider also serializes duplicate starts and latches stop across
+an in-flight start. These changes remain source-tested until a successor build
+is installed and exercised.
 
 ## TestFlight publishing
 
@@ -327,8 +347,9 @@ validation remain false.
 The uploaded TestFlight `0.1.0 (1)` framework-v4 artifact does not contain
 these newer host runtime controls or the framework-v5 source changes.
 Build `0.1.0 (2)` contains those changes and is approved for external testing,
-but the absence of installed-device evidence does not establish runtime
-behavior.
+and a physical launch exposed the disabled saved-manager recovery defect
+described above. That bounded installation evidence does not establish
+enrollment, extension runtime, or packet behavior.
 
 ## Deliberately unresolved
 
