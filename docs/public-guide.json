@@ -3,7 +3,7 @@
   "title": "Mesh documentation",
   "subtitle": "Safe operating procedures for private Nebula networks.",
   "description": "A practical guide for network operators, administrators, and read-only reviewers using the Mesh control plane.",
-  "reviewed_at": "2026-07-25",
+  "reviewed_at": "2026-07-26",
   "quick_start": [
     {
       "title": "Create the network",
