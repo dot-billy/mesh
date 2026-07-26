@@ -782,27 +782,96 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "try await enableManager(",
         "manager.isEnabled = true",
         "if let manager = matches.first {",
+        "prepareManagerBeforeAuthorization(",
+        "confirmStaleManagerReplacement(",
+        'title: "Replace disabled VPN configuration?"',
+        'title: "Replace VPN configuration"',
+        "try requireNoLocalIdentity()",
+        "TunnelConfigurationStore.currentSlot",
+        "TunnelConfigurationStore.candidateSlot",
+        "TunnelConfigurationStore.recoverySlot",
+        "guard !manager.isEnabled else {",
+        "replaceStaleManager(",
+        "try await remove(currentManager)",
+        "return try await createManager(",
         "stage = .preparingManager",
+        "stage = .verifyingManager",
         "guard setupTask == nil else {",
         "if completed {",
     ):
         if required not in sources["host_controller"]:
             raise ReceiptError("Mesh Tunnel host enrollment handoff is incomplete")
-    existing_manager_index = sources["host_controller"].index(
-        "if let manager = matches.first {"
+    setup_index = sources["host_controller"].index(
+        "private func runAutomaticSetup("
     )
-    new_manager_index = sources["host_controller"].index(
-        "let manager = NETunnelProviderManager()",
-        existing_manager_index,
+    setup_end = sources["host_controller"].index(
+        "private func beginAuthorizationBrowser(",
+        setup_index,
     )
-    if (
-        "save(manager)"
-        in sources["host_controller"][
-            existing_manager_index:new_manager_index
-        ]
+    setup_source = sources["host_controller"][setup_index:setup_end]
+    if not (
+        setup_source.index("prepareManagerBeforeAuthorization(")
+        < setup_source.index("TunnelUserEnrollmentClient(")
+        < setup_source.index("startAuthorization()")
+        < setup_source.index("createSelfEnrollment(")
     ):
         raise ReceiptError(
-            "Mesh Tunnel rewrites an existing valid manager before enrollment"
+            "Mesh Tunnel does not stage manager readiness before authorization"
+        )
+    if not (
+        setup_source.index("guard try validatedOrigin(for: manager) == origin")
+        < setup_source.index("createSelfEnrollment(")
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel can request enrollment before manager readiness"
+        )
+    preflight_index = sources["host_controller"].index(
+        "private func prepareManagerBeforeAuthorization("
+    )
+    preflight_end = sources["host_controller"].index(
+        "private func confirmStaleManagerReplacement(",
+        preflight_index,
+    )
+    preflight_source = sources["host_controller"][
+        preflight_index:preflight_end
+    ]
+    if (
+        "save(manager)" in preflight_source
+        or "remove(" in preflight_source
+        or not (
+            preflight_source.index("guard !manager.isEnabled else {")
+            < preflight_source.index("confirmStaleManagerReplacement(")
+            < preflight_source.index("replaceStaleManager(")
+        )
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel stale-manager preflight is not confirmation-gated"
+        )
+    replacement_index = sources["host_controller"].index(
+        "private func replaceStaleManager("
+    )
+    replacement_end = sources["host_controller"].index(
+        "private func createManager(",
+        replacement_index,
+    )
+    replacement_source = sources["host_controller"][
+        replacement_index:replacement_end
+    ]
+    remove_index = replacement_source.index(
+        "try await remove(currentManager)"
+    )
+    if not (
+        replacement_source.index("try requireNoLocalIdentity()")
+        < remove_index
+        and replacement_source.index("guard !expectedManager.isEnabled")
+        < remove_index
+        and "guard matches.count == 1" in replacement_source
+        and "guard remaining.isEmpty else {" in replacement_source
+        and replacement_source.count("try requireNoLocalIdentity()") >= 2
+        and replacement_source.count("requireEnabled: false") >= 2
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel stale-manager replacement is not fail-closed"
         )
     for forbidden in (
         '"token":',
@@ -902,6 +971,9 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "extension_logging": "fixed-reviewed-18-event-codes-only",
         "host_runtime_controls": (
             "request-bound-real-evidence-start-stop-inspect-source-proven"
+        ),
+        "host_manager_recovery": (
+            "preauth-confirmed-disabled-no-identity-exact-replacement-source-proven"
         ),
         "physical_device_validated": False,
         "source_sha256": {

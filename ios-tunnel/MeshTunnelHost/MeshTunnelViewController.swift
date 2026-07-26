@@ -218,16 +218,26 @@ final class MeshTunnelViewController: UIViewController {
             }
         }
         do {
-            guard try loadLocalConfiguration() == nil else {
-                throw TunnelHostError.localIdentityAlreadyInstalled
-            }
+            try requireNoLocalIdentity()
             let origin = try TunnelEnrollmentRequest.normalizedOrigin(
                 rawOrigin
             )
             originField.text = origin
             originField.isEnabled = false
             statusLabel.text = (
-                "Opening \(origin) so you can sign in with your own account."
+                "Checking the Apple VPN configuration before sign-in. No "
+                    + "enrollment token has been requested."
+            )
+            stage = .preparingManager
+            let manager = try await prepareManagerBeforeAuthorization(
+                origin: origin
+            )
+            preparedManager = manager
+            preparedOrigin = origin
+
+            statusLabel.text = (
+                "The VPN configuration is ready. Opening \(origin) so you can "
+                    + "sign in with your own account."
             )
 
             let enrollmentClient = try TunnelUserEnrollmentClient(
@@ -256,17 +266,12 @@ final class MeshTunnelViewController: UIViewController {
             let networks = try await enrollmentClient.networks()
             let network = try await selectNetwork(networks)
 
+            stage = .verifyingManager
+            guard try validatedOrigin(for: manager) == origin else {
+                throw TunnelHostError.savedConfigurationMismatch
+            }
             statusLabel.text = (
-                "Allow Mesh Tunnel to add the Apple VPN configuration when "
-                    + "iOS asks. No enrollment token has been created yet."
-            )
-            stage = .preparingManager
-            let manager = try await prepareManager(origin: origin)
-            preparedManager = manager
-            preparedOrigin = origin
-
-            statusLabel.text = (
-                "VPN configuration added. Requesting a one-time enrollment "
+                "Sign-in and VPN checks passed. Requesting a one-time enrollment "
                     + "for \(network.name)."
             )
             stage = .requestingEnrollment
@@ -448,6 +453,8 @@ final class MeshTunnelViewController: UIViewController {
                     self.preparedManager = nil
                     self.preparedOrigin = nil
                     self.originField.isEnabled = true
+                    self.signInButton.configuration?.title =
+                        "Sign in and set up VPN"
                     self.signInButton.isEnabled = true
                     self.startButton.isEnabled = false
                     self.stopButton.isEnabled = false
@@ -659,11 +666,15 @@ final class MeshTunnelViewController: UIViewController {
         removeIdentityButton.isEnabled = hasLocalIdentity
         originField.isEnabled = false
         if !manager.isEnabled {
+            signInButton.configuration?.title = hasLocalIdentity
+                ? "Sign in and set up VPN"
+                : "Replace VPN and sign in"
             startButton.isEnabled = hasLocalIdentity
             stopButton.isEnabled = false
             signInButton.isEnabled = !hasLocalIdentity
             return
         }
+        signInButton.configuration?.title = "Sign in and set up VPN"
         switch manager.connection.status {
         case .disconnected:
             startButton.isEnabled = hasLocalIdentity
@@ -698,7 +709,9 @@ final class MeshTunnelViewController: UIViewController {
             if current == nil {
                 statusLabel.text = (
                     "A saved Mesh Tunnel VPN configuration is disabled. "
-                        + "Sign in to restore it and enroll this device."
+                        + "Replace it before sign-in, then enroll this device. "
+                        + "Mesh Tunnel will ask for confirmation and will not "
+                        + "remove an enabled configuration or local identity."
                 )
             } else {
                 statusLabel.text = (
@@ -944,6 +957,17 @@ final class MeshTunnelViewController: UIViewController {
                 "This device already has an authenticated Mesh identity. "
                     + "Start the existing tunnel or remove that identity first."
             )
+        case TunnelHostError.localIdentityStateUnavailable:
+            return (
+                "Mesh Tunnel could not prove that local identity storage is "
+                    + "empty. No VPN configuration was replaced and no "
+                    + "enrollment token was requested."
+            )
+        case TunnelHostError.staleManagerReplacementCancelled:
+            return (
+                "The disabled VPN configuration was not replaced. Sign-in was "
+                    + "not opened and no enrollment token was requested."
+            )
         case TunnelHostError.originMismatch:
             return (
                 "The installed VPN configuration belongs to a different Mesh "
@@ -979,6 +1003,27 @@ final class MeshTunnelViewController: UIViewController {
         return try store.readCurrent()
     }
 
+    private func requireNoLocalIdentity() throws {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier:
+                "group.io.rw0.mesh.tunnel.mobile"
+        ) else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        for slot in [
+            TunnelConfigurationStore.currentSlot,
+            TunnelConfigurationStore.candidateSlot,
+            TunnelConfigurationStore.recoverySlot,
+        ] where FileManager.default.fileExists(
+            atPath: container.appendingPathComponent(slot).path
+        ) {
+            throw TunnelHostError.localIdentityAlreadyInstalled
+        }
+        guard try loadLocalConfiguration() == nil else {
+            throw TunnelHostError.localIdentityAlreadyInstalled
+        }
+    }
+
     private func sendProviderMessage(
         _ data: Data,
         session: NETunnelProviderSession
@@ -1011,7 +1056,8 @@ final class MeshTunnelViewController: UIViewController {
         throw TunnelHostError.identityRemovalTimeout
     }
 
-    private func prepareManager(
+    @MainActor
+    private func prepareManagerBeforeAuthorization(
         origin: String
     ) async throws -> NETunnelProviderManager {
         let managers = try await loadManagers()
@@ -1031,14 +1077,100 @@ final class MeshTunnelViewController: UIViewController {
             ) == origin else {
                 throw TunnelHostError.originMismatch
             }
-            if !manager.isEnabled {
-                try await enableManager(
-                    manager,
-                    expectedOrigin: origin
-                )
+            guard !manager.isEnabled else {
+                return manager
             }
-            return manager
+            try requireNoLocalIdentity()
+            guard await confirmStaleManagerReplacement(origin: origin) else {
+                throw TunnelHostError.staleManagerReplacementCancelled
+            }
+            return try await replaceStaleManager(
+                manager,
+                expectedOrigin: origin
+            )
         }
+        return try await createManager(origin: origin)
+    }
+
+    @MainActor
+    private func confirmStaleManagerReplacement(
+        origin: String
+    ) async -> Bool {
+        await withCheckedContinuation { continuation in
+            let alert = UIAlertController(
+                title: "Replace disabled VPN configuration?",
+                message: (
+                    "iOS retained one disabled Mesh Tunnel configuration for "
+                        + "\(origin), but this app has no local Mesh identity. "
+                        + "Replace only that saved VPN configuration before "
+                        + "sign-in? This does not delete a server-side node."
+                ),
+                preferredStyle: .alert
+            )
+            alert.addAction(
+                UIAlertAction(title: "Cancel", style: .cancel) { _ in
+                    continuation.resume(returning: false)
+                }
+            )
+            alert.addAction(
+                UIAlertAction(
+                    title: "Replace VPN configuration",
+                    style: .destructive
+                ) { _ in
+                    continuation.resume(returning: true)
+                }
+            )
+            present(alert, animated: true)
+        }
+    }
+
+    private func replaceStaleManager(
+        _ expectedManager: NETunnelProviderManager,
+        expectedOrigin: String
+    ) async throws -> NETunnelProviderManager {
+        try requireNoLocalIdentity()
+        let managers = try await loadManagers()
+        let matches = managers.filter { manager in
+            (manager.protocolConfiguration as? NETunnelProviderProtocol)?
+                .providerBundleIdentifier
+                == Self.providerBundleIdentifier
+        }
+        guard matches.count == 1,
+              let currentManager = matches.first
+        else {
+            throw TunnelHostError.ambiguousManager
+        }
+        try await reload(expectedManager)
+        try await reload(currentManager)
+        try requireNoLocalIdentity()
+        guard !expectedManager.isEnabled,
+              !currentManager.isEnabled,
+              try validatedOrigin(
+                for: expectedManager,
+                requireEnabled: false
+              ) == expectedOrigin,
+              try validatedOrigin(
+                for: currentManager,
+                requireEnabled: false
+              ) == expectedOrigin
+        else {
+            throw TunnelHostError.savedConfigurationMismatch
+        }
+        try await remove(currentManager)
+        let remaining = (try await loadManagers()).filter { manager in
+            (manager.protocolConfiguration as? NETunnelProviderProtocol)?
+                .providerBundleIdentifier
+                == Self.providerBundleIdentifier
+        }
+        guard remaining.isEmpty else {
+            throw TunnelHostError.ambiguousManager
+        }
+        return try await createManager(origin: expectedOrigin)
+    }
+
+    private func createManager(
+        origin: String
+    ) async throws -> NETunnelProviderManager {
         let manager = NETunnelProviderManager()
         let tunnelProtocol = NETunnelProviderProtocol()
         tunnelProtocol.providerBundleIdentifier =
@@ -1331,6 +1463,8 @@ private enum TunnelHostError: Error {
     case identityRemovalMismatch
     case identityRemovalTimeout
     case localIdentityAlreadyInstalled
+    case localIdentityStateUnavailable
+    case staleManagerReplacementCancelled
     case authenticationCookiesUnavailable
     case invalidServerResponse
     case httpStatus(Int)
@@ -1341,6 +1475,7 @@ private enum TunnelAutomaticSetupStage {
     case authorizing
     case readingNetworks
     case preparingManager
+    case verifyingManager
     case requestingEnrollment
     case handingOffEnrollment
 
@@ -1359,8 +1494,13 @@ private enum TunnelAutomaticSetupStage {
             )
         case .preparingManager:
             return (
-                "Sign-in succeeded, but Apple did not make the VPN "
-                    + "configuration ready. No enrollment token was requested."
+                "Apple did not make the VPN configuration ready. Sign-in was "
+                    + "not opened and no enrollment token was requested."
+            )
+        case .verifyingManager:
+            return (
+                "Sign-in succeeded, but the ready VPN configuration changed. "
+                    + "No enrollment token was requested."
             )
         case .requestingEnrollment:
             return (

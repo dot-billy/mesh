@@ -624,19 +624,79 @@ class AppleProjectTest(unittest.TestCase):
             "try await enableManager(",
             "manager.isEnabled = true",
             "if let manager = matches.first {",
+            "prepareManagerBeforeAuthorization(",
+            "confirmStaleManagerReplacement(",
+            'title: "Replace disabled VPN configuration?"',
+            'title: "Replace VPN configuration"',
+            "try requireNoLocalIdentity()",
+            "TunnelConfigurationStore.currentSlot",
+            "TunnelConfigurationStore.candidateSlot",
+            "TunnelConfigurationStore.recoverySlot",
+            "guard !manager.isEnabled else {",
+            "replaceStaleManager(",
+            "try await remove(currentManager)",
+            "return try await createManager(",
             "stage = .preparingManager",
+            "stage = .verifyingManager",
             "guard setupTask == nil else {",
             "if completed {",
         ):
             self.assertIn(required, host)
-        existing_manager = host.index("if let manager = matches.first {")
-        new_manager = host.index(
-            "let manager = NETunnelProviderManager()",
-            existing_manager,
+        setup_start = host.index("private func runAutomaticSetup(")
+        setup_end = host.index(
+            "private func beginAuthorizationBrowser(",
+            setup_start,
         )
-        self.assertNotIn(
-            "save(manager)",
-            host[existing_manager:new_manager],
+        setup = host[setup_start:setup_end]
+        self.assertLess(
+            setup.index("prepareManagerBeforeAuthorization("),
+            setup.index("TunnelUserEnrollmentClient("),
+        )
+        self.assertLess(
+            setup.index("guard try validatedOrigin(for: manager) == origin"),
+            setup.index("createSelfEnrollment("),
+        )
+        preflight_start = host.index(
+            "private func prepareManagerBeforeAuthorization("
+        )
+        preflight_end = host.index(
+            "private func confirmStaleManagerReplacement(",
+            preflight_start,
+        )
+        preflight = host[preflight_start:preflight_end]
+        self.assertNotIn("save(manager)", preflight)
+        self.assertNotIn("remove(", preflight)
+        self.assertLess(
+            preflight.index("guard !manager.isEnabled else {"),
+            preflight.index("confirmStaleManagerReplacement("),
+        )
+        self.assertLess(
+            preflight.index("confirmStaleManagerReplacement("),
+            preflight.index("replaceStaleManager("),
+        )
+        replacement_start = host.index("private func replaceStaleManager(")
+        replacement_end = host.index(
+            "private func createManager(",
+            replacement_start,
+        )
+        replacement = host[replacement_start:replacement_end]
+        self.assertLess(
+            replacement.index("try requireNoLocalIdentity()"),
+            replacement.index("try await remove(currentManager)"),
+        )
+        self.assertLess(
+            replacement.index("guard !expectedManager.isEnabled"),
+            replacement.index("try await remove(currentManager)"),
+        )
+        self.assertIn("guard matches.count == 1", replacement)
+        self.assertIn("guard remaining.isEmpty else {", replacement)
+        self.assertGreaterEqual(
+            replacement.count("try requireNoLocalIdentity()"),
+            2,
+        )
+        self.assertGreaterEqual(
+            replacement.count("requireEnabled: false"),
+            2,
         )
         for required in (
             "func protectForInactivity()",

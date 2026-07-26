@@ -257,6 +257,11 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
             boundary["extension_logging"],
             "fixed-reviewed-18-event-codes-only",
         )
+        self.assertEqual(
+            boundary["host_manager_recovery"],
+            "preauth-confirmed-disabled-no-identity-exact-replacement-"
+            "source-proven",
+        )
         self.assertFalse(boundary["physical_device_validated"])
         source_names = set(boundary["source_sha256"])
         self.assertTrue(

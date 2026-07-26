@@ -10,10 +10,13 @@ on 2026-07-26, approved its Beta App Review, and placed it in external testing.
 Build `3` adds disabled-manager recovery and is also approved and in external
 testing. A development-signed physical execution of the exact build-3 source
 completed OIDC and desktop authorization, read the user's network inventory,
-and then stopped in a redundant existing-manager save/reload before requesting
-self-enrollment. No token, node, local identity, extension start, or packet path
-was proved. The successor source reuses an already-valid enabled manager without
-rewriting it and preserves a fixed-stage failure message. None of these builds
+and then stopped while writing the retained disabled manager before requesting
+self-enrollment. A development-signed build 4 avoided rewriting an enabled
+manager, but two physical attempts reached the same disabled-manager write path
+after OIDC and again sent no self-enrollment request. No token, node, local
+identity, extension start, or packet path was proved. Current successor source
+prepares the manager before OIDC and offers a confirmation-gated replacement
+only for the exact disabled/no-identity recovery fixture. None of these builds
 is a supported application, proven working VPN, production enrollment path, or
 public App Store release.
 
@@ -39,11 +42,17 @@ public App Store release.
   reply or end-to-end connectivity. The onboarding view scrolls so the
   controls remain reachable on compact iPhones and with larger text. The
   current source also accepts one structurally valid but disabled saved manager
-  after reinstall, presents recovery rather than disabling the UI, and enables
-  it only after an explicit sign-in or start action. An already-valid enabled
-  manager is reloaded and reused without rewriting preferences. Automatic setup
-  preserves a fixed, non-secret failure stage instead of allowing an
-  asynchronous VPN-status notification to replace the result.
+  after reinstall and presents a `Replace VPN and sign in` recovery action.
+  Before opening OIDC, it proves that there is exactly one same-origin,
+  structurally valid disabled Mesh manager and no current, candidate, or
+  recovery identity slot, asks explicit destructive confirmation, revalidates
+  those conditions, removes only that manager, and creates/reloads a fresh
+  enabled manager. It never automatically removes an enabled manager, any
+  manager with identity state, a mismatched manager, or duplicates. An
+  already-valid enabled manager is reloaded and reused without rewriting
+  preferences. Automatic setup preserves a fixed, non-secret failure stage
+  instead of allowing an asynchronous VPN-status notification to replace the
+  result, and it cannot request a token before manager readiness.
 - `MeshPacketTunnel`: a Packet Tunnel Provider that authenticates the selected
   App Group configuration, or, when no current configuration exists, strictly
   decodes the single start-option enrollment request and performs enrollment
@@ -149,12 +158,9 @@ app-delete/reinstall cycle. The app-group container contained no current,
 candidate, or recovery identity slot, and no enrollment, browser return,
 extension start, packet callback, or packet-path result was established.
 
-The successor source now treats that disabled manager as recoverable state:
-inspection accepts it without claiming a running tunnel, the host enables,
-saves, and reloads it before start, and a user without local identity can sign
-in again. The provider also serializes duplicate starts and latches stop across
-an in-flight start. These changes remain source-tested until a successor build
-is installed and exercised.
+The build-3 source treated that disabled manager as recoverable state by
+enabling, saving, and reloading it after sign-in. The provider also serializes
+duplicate starts and latches stop across an in-flight start.
 
 Build `0.1.0 (3)` contains that recovery source, is approved, and is in external
 testing. A development-signed physical execution from the same source completed
@@ -162,10 +168,22 @@ OIDC and desktop authorization and reached the authenticated network-list
 request. The server observed no self-enrollment request, and the app-group
 container retained no current, candidate, or recovery identity. The bounded
 evidence places the stop in an unnecessary save/reload of the already-valid
-enabled Apple VPN manager, before token issuance. The next source revision
-validates and reuses that manager without rewriting it, enables only a disabled
-manager, and keeps a fixed-stage setup failure visible. It still requires
-physical execution and does not establish enrollment or tunnel behavior.
+Apple VPN manager, before token issuance. Development-signed build 4 validates
+and reuses an enabled manager without rewriting it, but the established
+physical fixture is disabled. Two build-4 attempts completed OIDC and read the
+single network, then stopped while enabling/saving that disabled manager; no
+self-enrollment or mobile-runtime request was sent.
+
+Current successor source moves all manager preparation before OIDC. With
+exactly one structurally valid same-origin disabled Mesh manager and no current,
+candidate, or recovery identity slot, it displays an explicit replacement
+confirmation, revalidates the singleton/disabled/origin/identity conditions,
+removes only that manager, and saves/reloads a fresh manager. Duplicate,
+enabled, identity-bearing, or mismatched configurations fail closed and are
+never automatically removed. A cancellation or Apple failure occurs before
+login, and token issuance remains impossible until the fresh manager is ready.
+This behavior is source/simulator tested only and does not establish physical
+enrollment or tunnel behavior.
 
 ## TestFlight publishing
 
@@ -207,31 +225,34 @@ framework never returns the private key or agent bearer.
 The source enrollment ceremony separates user authority from
 extension-owned node authority:
 
-1. the containing app starts device authorization, opens only the
+1. the containing app proves local identity slots are absent, validates or
+   creates and reloads the Apple VPN manager, and completes any explicitly
+   confirmed disabled-manager replacement before opening login;
+2. the containing app starts device authorization, opens only the
    server-returned same-origin verification URL, and polls with a secret that
    never enters the browser;
-2. after the user signs in and approves, the app requires an OIDC Mesh session
-   carrying `nodes.enroll.self`, selects one visible network, and asks Apple to
-   save only the HTTPS origin;
-3. only after Apple confirms the VPN preference does the app request a
+3. after the user signs in and approves, the app requires an OIDC Mesh session
+   carrying `nodes.enroll.self`, selects one visible network, and revalidates
+   the already-ready same-origin manager without another preference write;
+4. only after Apple confirms the VPN preference does the app request a
    server-fixed member/mobile/`all,members` enrollment; the app has no field
    for an IP, route, lighthouse, topology label, or alternate group;
-4. it sends one canonical, bounded request containing a request ID, that
+5. it sends one canonical, bounded request containing a request ID, that
    origin, and a canonical 32-byte one-use token as the sole start option;
-5. before creating or reading either local credential, the extension performs
+6. before creating or reading either local credential, the extension performs
    the strict no-store token preflight, requires an unexpired member plan with
    at least one lighthouse, resolves every planned lighthouse locally, and
    rejects unusable or overlay-captured results;
-6. only then does the framework create or load the stable extension-only
+7. only then does the framework create or load the stable extension-only
    identity and agent credential, sending the enrollment token, public key,
    and agent-bearer hash to Mesh;
-7. an ambiguous consuming response permits one byte-identical replay followed
+8. an ambiguous consuming response permits one byte-identical replay followed
    by node-authenticated bootstrap recovery;
-8. the framework strictly validates the returned node/network identity,
+9. the framework strictly validates the returned node/network identity,
    certificate and local-key match, CA and configuration digests, signature,
    lifecycle times, generation/revision, member role, preflight network and
    lighthouse binding, routes, native DNS policy, and underlay endpoint; and
-9. the extension stages and atomically activates only the resulting verified
+10. the extension stages and atomically activates only the resulting verified
    v4 configuration above the current Keychain/App Group high-water floor.
 
 Before every later start, the extension loads the existing private key and
@@ -371,9 +392,12 @@ enrollment, extension runtime, or packet behavior.
 Build `0.1.0 (3)` contains the recovery source and is approved for external
 testing. A development-signed run of the exact source proved OIDC completion
 and authenticated network inventory, but stopped before self-enrollment while
-rewriting an already-valid enabled manager. The current successor source avoids
-that rewrite and preserves stage-specific failure status; it has not yet proved
-enrollment, extension runtime, or packet behavior.
+writing the retained disabled manager. Development-signed build 4 avoided
+rewriting enabled managers, but two attempts necessarily re-entered the same
+disabled-manager write path after OIDC. Current successor source stages manager
+readiness before login and uses the bounded confirmation-gated replacement
+described above; it has not yet proved enrollment, extension runtime, or packet
+behavior.
 
 ## Deliberately unresolved
 
