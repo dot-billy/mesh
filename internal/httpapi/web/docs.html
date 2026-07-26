@@ -191,9 +191,10 @@
           </article>
           <article class="docs-topic">
             <h3>Health and heartbeat meaning</h3>
-            <p>A fresh authenticated heartbeat proves lifecycle contact with the managed agent. It does not by itself prove that arbitrary peers can exchange application traffic.</p>
+            <p>A fresh authenticated heartbeat proves lifecycle contact with the managed agent. The current runtime state is running or stopped only while that heartbeat remains current; after five minutes it becomes unknown, while the separate Nebula-running field remains only the last reported historical value. None of this by itself proves that arbitrary peers can exchange application traffic.</p>
             <ul class="docs-list">
               <li>Operational means desired signed state, certificate generation, agent status, and Nebula runtime have converged.</li>
+              <li>A quarantined agent keeps Nebula stopped while it uses a bounded recovery poll to validate and fetch fresh signed configuration.</li>
               <li>Active probes provide stronger evidence but still cover only the configured probe relationship.</li>
               <li>Use real packet and application checks for production acceptance.</li>
             </ul>

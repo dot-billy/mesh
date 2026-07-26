@@ -94,10 +94,13 @@ func TestFleetHealthDerivesDeterministicSecretFreeSnapshotWithoutWrites(t *testi
 		t.Fatalf("node order = %v, want %v", gotOrder, wantOrder)
 	}
 	awaitingHealth := fleetProjectedNode(t, report, awaiting.ID)
-	if awaitingHealth.Phase != "setup" || awaitingHealth.Severity != FleetHealthHealthy || len(awaitingHealth.Alerts) != 0 {
+	if awaitingHealth.Phase != "setup" || awaitingHealth.Severity != FleetHealthHealthy || awaitingHealth.RuntimeState != FleetRuntimeUnknown || len(awaitingHealth.Alerts) != 0 {
 		t.Fatalf("fresh enrolled node was not setup grace: %#v", awaitingHealth)
 	}
 	offlineHealth := fleetProjectedNode(t, report, offline.ID)
+	if offlineHealth.RuntimeState != FleetRuntimeUnknown {
+		t.Fatalf("offline heartbeat exposed historical runtime telemetry as current: %#v", offlineHealth)
+	}
 	wantCodes := []string{
 		"agent_degraded", "certificate_expired", "certificate_fingerprint_drift", "heartbeat_offline", "nebula_stopped",
 		"agent_error", "certificate_generation_drift", "config_drift", "credential_expiring",
@@ -108,6 +111,10 @@ func TestFleetHealthDerivesDeterministicSecretFreeSnapshotWithoutWrites(t *testi
 	nebulaStopped, ok := fleetFindAlert(offlineHealth.Alerts, "nebula_stopped")
 	if !ok || nebulaStopped.Evidence.NebulaRunning == nil || *nebulaStopped.Evidence.NebulaRunning {
 		t.Fatalf("nebula stopped evidence did not preserve an explicit false value: %#v", nebulaStopped)
+	}
+	healthyHealth := fleetProjectedNode(t, report, firstLighthouse.ID)
+	if healthyHealth.RuntimeState != FleetRuntimeRunning {
+		t.Fatalf("fresh running runtime state = %q, want %q", healthyHealth.RuntimeState, FleetRuntimeRunning)
 	}
 
 	encoded, err := json.Marshal(report)

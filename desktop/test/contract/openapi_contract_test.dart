@@ -657,6 +657,7 @@ const List<_SchemaContract> _schemas = <_SchemaContract>[
     'name': _string,
     'desired_config_revision': _integer,
     'severity': _string,
+    'runtime_state': _string,
   }),
   _SchemaContract('FleetHealthAlert', <String, _PropertyContract>{
     'code': _string,

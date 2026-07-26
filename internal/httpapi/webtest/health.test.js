@@ -38,6 +38,7 @@ function healthyNode(id, name, role = 'member') {
     rollout_current: true,
     last_seen_at: iso(-30 * 1000),
     agent_status: 'healthy',
+    runtime_state: 'running',
     nebula_running: true,
     desired_config_revision: 1,
     applied_config_revision: 1,
@@ -86,6 +87,12 @@ function recompute(snapshot) {
   for (const report of snapshot.networks) {
     report.nodes.sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
     for (const node of report.nodes) {
+      const generatedAtMS = Date.parse(snapshot.generated_at);
+      const lastSeenAtMS = node.last_seen_at ? Date.parse(node.last_seen_at) : Number.NaN;
+      const heartbeatCurrent = node.lifecycle_status === 'active' && Number.isFinite(lastSeenAtMS) &&
+        lastSeenAtMS <= generatedAtMS &&
+        generatedAtMS - lastSeenAtMS < snapshot.policy.heartbeat_offline_after_seconds * 1000;
+      node.runtime_state = heartbeatCurrent ? (node.nebula_running ? 'running' : 'stopped') : 'unknown';
       node.alerts.sort(alertOrder);
       node.severity = severity(node.alerts);
     }
@@ -354,6 +361,30 @@ test('rejects rollout_current for offline or future heartbeat evidence', () => {
   }
 });
 
+test('qualifies runtime state with heartbeat freshness', () => {
+  const snapshot = healthySnapshot();
+  const node = healthyNode('node-3', 'member-a');
+  node.last_seen_at = iso(-6 * minute);
+  node.operational = false;
+  node.rollout_current = false;
+  node.alerts.push({
+    severity: 'critical',
+    code: 'heartbeat_offline',
+    scope: 'node',
+    node_id: node.id,
+    evidence: { since_at: iso(-6 * minute), age_seconds: 360, threshold_seconds: 300 },
+  });
+  snapshot.networks[0].nodes.push(node);
+  recompute(snapshot);
+  const result = health.validateFleetSnapshot(snapshot, nowMS);
+  const projected = result.reports[0].nodes.find((entry) => entry.id === node.id);
+  assert.equal(projected.runtime_state, 'unknown');
+  assert.equal(projected.nebula_running, true);
+
+  node.runtime_state = 'running';
+  assert.throws(() => health.validateFleetSnapshot(snapshot, nowMS), /runtime_state conflicts with heartbeat freshness/u);
+});
+
 test('accepts API rollout state for stopped, expired, and degraded agents', () => {
   const cases = [
     {
@@ -434,7 +465,7 @@ test('rejects duplicate global network and node IDs before Map construction', ()
 
 test('rejects false-operational and expired false-green reports', () => {
   const stopped = healthySnapshot(); stopped.networks[0].nodes[0].nebula_running = false;
-  assert.throws(() => health.validateFleetSnapshot(stopped, nowMS), /nebula_stopped|operational/);
+  assert.throws(() => health.validateFleetSnapshot(stopped, nowMS), /runtime_state|nebula_stopped|operational/);
   const expired = healthySnapshot(); expired.networks[0].nodes[0].certificate_expires_at = iso(-minute); expired.networks[0].nodes[0].certificate_renew_after = iso(-day);
   assert.throws(() => health.validateFleetSnapshot(expired, nowMS), /certificate lifecycle|operational|falsely healthy/);
 });

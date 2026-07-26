@@ -404,8 +404,9 @@ func TestStaleSyncFailureQuarantinesBeforeRetry(t *testing.T) {
 	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
 	store := saveLifecycleState(t, now, now.Add(-5*time.Minute))
 	runtime := &freshnessRuntime{}
+	agent := &recordingLifecycleAgent{syncErr: errors.New("control plane unavailable")}
 	runner := &agentRunner{
-		agent: &recordingLifecycleAgent{syncErr: errors.New("control plane unavailable")},
+		agent: agent,
 		store: store, runtime: runtime, now: func() time.Time { return now },
 		startup: false, maxConfigStaleness: 5 * time.Minute,
 	}
@@ -414,6 +415,33 @@ func TestStaleSyncFailureQuarantinesBeforeRetry(t *testing.T) {
 	}
 	if runtime.quarantineCalls != 1 || !runner.quarantined {
 		t.Fatalf("stale quarantine calls=%d state=%v", runtime.quarantineCalls, runner.quarantined)
+	}
+	if agent.syncContextErr != nil {
+		t.Fatalf("quarantined recovery sync inherited an expired context: %v", agent.syncContextErr)
+	}
+}
+
+func TestExpiredFreshnessUsesBoundedParentContextForRecovery(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	parent, cancelParent := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelParent()
+	runner := &agentRunner{
+		now:                func() time.Time { return now },
+		maxConfigStaleness: 5 * time.Minute,
+		quarantined:        true,
+	}
+	syncCtx, cancelSync := runner.configSyncContext(parent, nodeagent.State{
+		LastSuccessfulConfigAt: now.Add(-6 * time.Minute),
+	})
+	defer cancelSync()
+	if err := syncCtx.Err(); err != nil {
+		t.Fatalf("recovery context is already expired: %v", err)
+	}
+	parentDeadline, parentHasDeadline := parent.Deadline()
+	syncDeadline, syncHasDeadline := syncCtx.Deadline()
+	if !parentHasDeadline || !syncHasDeadline || !syncDeadline.Equal(parentDeadline) {
+		t.Fatalf("recovery deadline = %v/%v, parent = %v/%v", syncDeadline, syncHasDeadline, parentDeadline, parentHasDeadline)
 	}
 }
 
@@ -1006,9 +1034,10 @@ func testBearer(value byte) string {
 }
 
 type recordingLifecycleAgent struct {
-	calls   []string
-	syncErr error
-	events  *[]string
+	calls          []string
+	syncErr        error
+	syncContextErr error
+	events         *[]string
 }
 
 type recordingRuntimeTelemetryAgent struct {
@@ -1036,8 +1065,9 @@ func (a *recordingRuntimeTelemetryAgent) ReportRuntimeTelemetry(_ context.Contex
 	return a.reportErr
 }
 
-func (a *recordingLifecycleAgent) Sync(context.Context) (nodeagent.SyncResult, error) {
+func (a *recordingLifecycleAgent) Sync(ctx context.Context) (nodeagent.SyncResult, error) {
 	a.calls = append(a.calls, "sync")
+	a.syncContextErr = ctx.Err()
 	if a.events != nil {
 		*a.events = append(*a.events, "sync")
 	}

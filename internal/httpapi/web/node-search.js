@@ -24,7 +24,9 @@
       node.id, node.name, node.ip, node.role, node.site, node.failure_domain,
       node.status, node.lifecycleStatus, node.phase, node.severity,
       node.operational ? 'online operational healthy' : '',
-      node.nebula_running ? 'nebula running' : '',
+      node.runtime_state === 'running' ? 'nebula running' : '',
+      node.runtime_state === 'stopped' ? 'nebula stopped' : '',
+      node.runtime_state === 'unknown' ? 'nebula state unknown' : '',
     ];
     if (Array.isArray(node.groups)) values.push(...node.groups);
     if (Array.isArray(node.routed_subnets)) values.push(...node.routed_subnets);

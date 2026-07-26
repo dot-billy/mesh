@@ -2123,6 +2123,9 @@
             },
             "type": "array"
           },
+          "runtime_state": {
+            "type": "string"
+          },
           "severity": {
             "type": "string"
           },
@@ -2148,6 +2151,7 @@
           "role",
           "rollout_current",
           "routed_subnets",
+          "runtime_state",
           "severity",
           "site"
         ],
@@ -8071,7 +8075,7 @@
     "/api/v1/fleet/health": {
       "get": {
         "deprecated": false,
-        "description": "Returns one authoritative fleet snapshot across every network.",
+        "description": "Returns one authoritative fleet snapshot across every network. Runtime state is freshness-qualified; the Nebula-running boolean is only the last authenticated reported value.",
         "operationId": "getFleetHealth",
         "responses": {
           "200": {
@@ -8188,6 +8192,7 @@
                           "routed_subnets": [
                             "10.80.0.0/24"
                           ],
+                          "runtime_state": "example",
                           "severity": "example",
                           "site": "example"
                         }
@@ -10742,7 +10747,7 @@
     "/api/v1/networks/{networkID}/health": {
       "get": {
         "deprecated": false,
-        "description": "Returns lifecycle, redundancy, rollout, and revocation health for one network.",
+        "description": "Returns lifecycle, redundancy, rollout, and revocation health for one network, including a freshness-qualified runtime state.",
         "operationId": "getNetworkHealth",
         "parameters": [
           {
@@ -10870,6 +10875,7 @@
                       "routed_subnets": [
                         "10.80.0.0/24"
                       ],
+                      "runtime_state": "example",
                       "severity": "example",
                       "site": "example"
                     }

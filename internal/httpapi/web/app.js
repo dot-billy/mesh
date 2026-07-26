@@ -780,7 +780,11 @@ function heartbeatEvidence(node, className) {
     ? received.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
     : received.toLocaleString();
   const agent = node.agent_status === 'healthy' ? 'Agent healthy' : node.agent_status === 'degraded' ? 'Agent degraded' : 'Agent status unavailable';
-  const nebula = node.nebula_running ? 'Nebula running' : 'Nebula stopped';
+  const nebula = node.runtime_state === 'running'
+    ? 'Nebula running'
+    : node.runtime_state === 'stopped'
+      ? 'Nebula stopped'
+      : `Nebula state unknown · last reported ${node.nebula_running ? 'running' : 'stopped'}`;
   const primary = document.createElement('span');
   primary.className = 'heartbeat-primary';
   primary.append(
@@ -1778,7 +1782,13 @@ async function openNodeSecurity(network, node) {
 	$('#node-security-ip').textContent = node.ip;
 	$('#node-security-config').textContent = `r${node.applied_config_revision}/r${network.config_revision}`;
 	$('#node-security-certificate').textContent = `g${node.applied_certificate_generation || 0}/g${node.certificate_generation || 0}`;
-	$('#node-security-runtime').textContent = node.operational ? 'Current' : node.nebula_running ? 'Converging' : 'Stopped';
+	$('#node-security-runtime').textContent = node.operational
+		? 'Current'
+		: node.runtime_state === 'running'
+			? 'Running; other evidence is not current'
+			: node.runtime_state === 'stopped'
+				? 'Stopped'
+				: `Unknown; last reported ${node.nebula_running ? 'running' : 'stopped'}`;
 	$('#node-security-confirmation-name').textContent = node.name;
 	$('#node-security-confirmation').value = '';
 	$('#node-security-groups-error').textContent = '';

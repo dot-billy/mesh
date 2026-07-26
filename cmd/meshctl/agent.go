@@ -488,6 +488,13 @@ func (r *agentRunner) configSyncContext(ctx context.Context, state nodeagent.Sta
 		return context.WithCancel(ctx)
 	}
 	deadline := state.LastSuccessfulConfigAt.Add(r.maxConfigStaleness)
+	// The freshness deadline limits how long a still-running runtime may wait
+	// for the control plane. Once the runtime is quarantined, recovery must use
+	// the bounded cycle context instead of an already-expired freshness
+	// context; otherwise the agent can never validate or fetch fresh config.
+	if r.quarantined || !r.currentTime().Before(deadline) {
+		return context.WithCancel(ctx)
+	}
 	if parentDeadline, ok := ctx.Deadline(); ok && parentDeadline.Before(deadline) {
 		deadline = parentDeadline
 	}

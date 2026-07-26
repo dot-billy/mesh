@@ -11,14 +11,14 @@ const nodes = [
     id: 'node-alpha', name: 'web-prod-01', ip: '10.40.0.10', role: 'member',
     site: 'New York', failure_domain: 'rack-a', status: 'active',
     lifecycleStatus: 'active', phase: 'online', severity: 'healthy',
-    operational: true, nebula_running: true, routed_subnets: ['172.20.0.0/16'],
+    operational: true, runtime_state: 'running', nebula_running: true, routed_subnets: ['172.20.0.0/16'],
     alerts: [],
   },
   {
     id: 'node-beta', name: 'lighthouse-west', ip: '10.40.0.2', role: 'lighthouse',
     site: 'Los Angeles', failure_domain: 'zone-2', status: 'pending',
     lifecycleStatus: 'pending', phase: 'setup', severity: 'warning',
-    operational: false, nebula_running: false, routed_subnets: [],
+    operational: false, runtime_state: 'unknown', nebula_running: false, routed_subnets: [],
     alerts: [{ code: 'heartbeat_missing', severity: 'critical', message: 'No heartbeat yet' }],
   },
 ];
