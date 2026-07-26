@@ -458,7 +458,8 @@ void main() {
       await _waitUntil(
         () =>
             fixture.controller.value.accessContext != null &&
-            fixture.storage.values.isNotEmpty,
+            fixture.storage.values.isNotEmpty &&
+            fixture.controller.value.fleet.phase == LoadPhase.empty,
       );
       fixture.controller.value = _withOneTimeSecret(fixture.controller.value);
 
