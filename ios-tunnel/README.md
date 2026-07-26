@@ -7,10 +7,15 @@ TestFlight. Version `0.1.0` build `2` contains the framework-v5 lifecycle,
 runtime-evidence, identity-removal, host-control, and self-service OIDC
 onboarding changes; Apple accepted its upload and export-compliance declaration
 on 2026-07-26, approved its Beta App Review, and placed it in external testing.
-A physical iPhone launch on 2026-07-26 confirmed that OIDC UI and exposed a
-disabled saved-manager recovery defect after app deletion and reinstall. No
-enrollment or packet path was proved. Neither build is a supported application,
-proven working VPN, production enrollment path, or public App Store release.
+Build `3` adds disabled-manager recovery and is also approved and in external
+testing. A development-signed physical execution of the exact build-3 source
+completed OIDC and desktop authorization, read the user's network inventory,
+and then stopped in a redundant existing-manager save/reload before requesting
+self-enrollment. No token, node, local identity, extension start, or packet path
+was proved. The successor source reuses an already-valid enabled manager without
+rewriting it and preserves a fixed-stage failure message. None of these builds
+is a supported application, proven working VPN, production enrollment path, or
+public App Store release.
 
 ## What exists
 
@@ -33,10 +38,12 @@ proven working VPN, production enrollment path, or public App Store release.
   callback counters. Neither those counters nor `NEVPNStatus` proves a peer
   reply or end-to-end connectivity. The onboarding view scrolls so the
   controls remain reachable on compact iPhones and with larger text. The
-  successor source also accepts one structurally valid but disabled saved
-  manager after reinstall, presents recovery rather than disabling the UI, and
-  reloads, re-enables, saves, and reloads the manager only after an explicit
-  sign-in or start action.
+  current source also accepts one structurally valid but disabled saved manager
+  after reinstall, presents recovery rather than disabling the UI, and enables
+  it only after an explicit sign-in or start action. An already-valid enabled
+  manager is reloaded and reused without rewriting preferences. Automatic setup
+  preserves a fixed, non-secret failure stage instead of allowing an
+  asynchronous VPN-status notification to replace the result.
 - `MeshPacketTunnel`: a Packet Tunnel Provider that authenticates the selected
   App Group configuration, or, when no current configuration exists, strictly
   decodes the single start-option enrollment request and performs enrollment
@@ -148,6 +155,17 @@ saves, and reloads it before start, and a user without local identity can sign
 in again. The provider also serializes duplicate starts and latches stop across
 an in-flight start. These changes remain source-tested until a successor build
 is installed and exercised.
+
+Build `0.1.0 (3)` contains that recovery source, is approved, and is in external
+testing. A development-signed physical execution from the same source completed
+OIDC and desktop authorization and reached the authenticated network-list
+request. The server observed no self-enrollment request, and the app-group
+container retained no current, candidate, or recovery identity. The bounded
+evidence places the stop in an unnecessary save/reload of the already-valid
+enabled Apple VPN manager, before token issuance. The next source revision
+validates and reuses that manager without rewriting it, enables only a disabled
+manager, and keeps a fixed-stage setup failure visible. It still requires
+physical execution and does not establish enrollment or tunnel behavior.
 
 ## TestFlight publishing
 
@@ -349,6 +367,12 @@ these newer host runtime controls or the framework-v5 source changes.
 Build `0.1.0 (2)` contains those changes and is approved for external testing,
 and a physical launch exposed the disabled saved-manager recovery defect
 described above. That bounded installation evidence does not establish
+enrollment, extension runtime, or packet behavior.
+Build `0.1.0 (3)` contains the recovery source and is approved for external
+testing. A development-signed run of the exact source proved OIDC completion
+and authenticated network inventory, but stopped before self-enrollment while
+rewriting an already-valid enabled manager. The current successor source avoids
+that rewrite and preserves stage-specific failure status; it has not yet proved
 enrollment, extension runtime, or packet behavior.
 
 ## Deliberately unresolved

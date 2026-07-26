@@ -194,14 +194,20 @@ final class MeshTunnelViewController: UIViewController {
             guard let self else {
                 return
             }
-            await self.runAutomaticSetup(rawOrigin: rawOrigin)
+            let completed = await self.runAutomaticSetup(
+                rawOrigin: rawOrigin
+            )
             self.setupTask = nil
+            if completed {
+                self.inspectConfiguration()
+            }
         }
     }
 
     @MainActor
-    private func runAutomaticSetup(rawOrigin: String) async {
+    private func runAutomaticSetup(rawOrigin: String) async -> Bool {
         var client: TunnelUserEnrollmentClient?
+        var stage = TunnelAutomaticSetupStage.starting
         defer {
             isCompletingAuthorization = true
             authorizationSession?.cancel()
@@ -229,6 +235,7 @@ final class MeshTunnelViewController: UIViewController {
             )
             client = enrollmentClient
             self.enrollmentClient = enrollmentClient
+            stage = .authorizing
             let authorization = try await enrollmentClient
                 .startAuthorization()
             let verificationURL = try authorization
@@ -245,6 +252,7 @@ final class MeshTunnelViewController: UIViewController {
             statusLabel.text = (
                 "Signed in. Reading the networks available to your account."
             )
+            stage = .readingNetworks
             let networks = try await enrollmentClient.networks()
             let network = try await selectNetwork(networks)
 
@@ -252,6 +260,7 @@ final class MeshTunnelViewController: UIViewController {
                 "Allow Mesh Tunnel to add the Apple VPN configuration when "
                     + "iOS asks. No enrollment token has been created yet."
             )
+            stage = .preparingManager
             let manager = try await prepareManager(origin: origin)
             preparedManager = manager
             preparedOrigin = origin
@@ -260,11 +269,13 @@ final class MeshTunnelViewController: UIViewController {
                 "VPN configuration added. Requesting a one-time enrollment "
                     + "for \(network.name)."
             )
+            stage = .requestingEnrollment
             let nodeName = try deviceEnrollmentNodeName()
             let enrollment = try await enrollmentClient.createSelfEnrollment(
                 networkID: network.id,
                 nodeName: nodeName
             )
+            stage = .handingOffEnrollment
             try handOffEnrollment(
                 manager: manager,
                 origin: origin,
@@ -279,9 +290,11 @@ final class MeshTunnelViewController: UIViewController {
                     + "saved by the app. Runtime status must still be verified "
                     + "before treating the tunnel as connected."
             )
+            return true
         } catch {
             setControlsBusy(false)
-            statusLabel.text = setupFailureText(error)
+            statusLabel.text = setupFailureText(error, stage: stage)
+            return false
         }
     }
 
@@ -470,6 +483,9 @@ final class MeshTunnelViewController: UIViewController {
     }
 
     @objc private func vpnStatusDidChange() {
+        guard setupTask == nil else {
+            return
+        }
         inspectConfiguration()
     }
 
@@ -899,7 +915,10 @@ final class MeshTunnelViewController: UIViewController {
         return name
     }
 
-    private func setupFailureText(_ error: Error) -> String {
+    private func setupFailureText(
+        _ error: Error,
+        stage: TunnelAutomaticSetupStage
+    ) -> String {
         switch error {
         case _ as CancellationError:
             return (
@@ -936,11 +955,7 @@ final class MeshTunnelViewController: UIViewController {
                     + "that self-service enrollment is enabled for your account."
             )
         default:
-            return (
-                "Setup did not finish. Mesh Tunnel did not display or persist "
-                    + "a one-time token. You can safely retry with the same "
-                    + "account and device."
-            )
+            return stage.failureText
         }
     }
 
@@ -1008,15 +1023,23 @@ final class MeshTunnelViewController: UIViewController {
         guard matches.count <= 1 else {
             throw TunnelHostError.ambiguousManager
         }
-        let manager = matches.first ?? NETunnelProviderManager()
-        if let existing = manager.protocolConfiguration
-            as? NETunnelProviderProtocol,
-           let serverAddress = existing.serverAddress,
-           !serverAddress.isEmpty,
-           serverAddress != origin
-        {
-            throw TunnelHostError.originMismatch
+        if let manager = matches.first {
+            try await reload(manager)
+            guard try validatedOrigin(
+                for: manager,
+                requireEnabled: false
+            ) == origin else {
+                throw TunnelHostError.originMismatch
+            }
+            if !manager.isEnabled {
+                try await enableManager(
+                    manager,
+                    expectedOrigin: origin
+                )
+            }
+            return manager
         }
+        let manager = NETunnelProviderManager()
         let tunnelProtocol = NETunnelProviderProtocol()
         tunnelProtocol.providerBundleIdentifier =
             Self.providerBundleIdentifier
@@ -1311,4 +1334,45 @@ private enum TunnelHostError: Error {
     case authenticationCookiesUnavailable
     case invalidServerResponse
     case httpStatus(Int)
+}
+
+private enum TunnelAutomaticSetupStage {
+    case starting
+    case authorizing
+    case readingNetworks
+    case preparingManager
+    case requestingEnrollment
+    case handingOffEnrollment
+
+    var failureText: String {
+        switch self {
+        case .starting, .authorizing:
+            return (
+                "Sign-in setup did not finish. No one-time enrollment token "
+                    + "was requested or retained."
+            )
+        case .readingNetworks:
+            return (
+                "Sign-in succeeded, but Mesh Tunnel could not read the "
+                    + "networks available to this account. No enrollment token "
+                    + "was requested."
+            )
+        case .preparingManager:
+            return (
+                "Sign-in succeeded, but Apple did not make the VPN "
+                    + "configuration ready. No enrollment token was requested."
+            )
+        case .requestingEnrollment:
+            return (
+                "The VPN configuration is ready, but Mesh did not issue a "
+                    + "one-time enrollment. No token was retained."
+            )
+        case .handingOffEnrollment:
+            return (
+                "Mesh issued a one-time enrollment, but the Packet Tunnel "
+                    + "extension did not accept the handoff. Retry to replace "
+                    + "the still-pending enrollment safely."
+            )
+        }
+    }
 }

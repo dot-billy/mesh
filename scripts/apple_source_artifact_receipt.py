@@ -781,9 +781,29 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "requireEnabled: false",
         "try await enableManager(",
         "manager.isEnabled = true",
+        "if let manager = matches.first {",
+        "stage = .preparingManager",
+        "guard setupTask == nil else {",
+        "if completed {",
     ):
         if required not in sources["host_controller"]:
             raise ReceiptError("Mesh Tunnel host enrollment handoff is incomplete")
+    existing_manager_index = sources["host_controller"].index(
+        "if let manager = matches.first {"
+    )
+    new_manager_index = sources["host_controller"].index(
+        "let manager = NETunnelProviderManager()",
+        existing_manager_index,
+    )
+    if (
+        "save(manager)"
+        in sources["host_controller"][
+            existing_manager_index:new_manager_index
+        ]
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel rewrites an existing valid manager before enrollment"
+        )
     for forbidden in (
         '"token":',
         '"enrollmentToken":',

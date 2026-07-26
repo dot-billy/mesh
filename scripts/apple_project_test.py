@@ -623,8 +623,21 @@ class AppleProjectTest(unittest.TestCase):
             "requireEnabled: false",
             "try await enableManager(",
             "manager.isEnabled = true",
+            "if let manager = matches.first {",
+            "stage = .preparingManager",
+            "guard setupTask == nil else {",
+            "if completed {",
         ):
             self.assertIn(required, host)
+        existing_manager = host.index("if let manager = matches.first {")
+        new_manager = host.index(
+            "let manager = NETunnelProviderManager()",
+            existing_manager,
+        )
+        self.assertNotIn(
+            "save(manager)",
+            host[existing_manager:new_manager],
+        )
         for required in (
             "func protectForInactivity()",
             "func protectForBackground()",
