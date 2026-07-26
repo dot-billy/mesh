@@ -416,6 +416,9 @@ func TestStaleSyncFailureQuarantinesBeforeRetry(t *testing.T) {
 	if runtime.quarantineCalls != 1 || !runner.quarantined {
 		t.Fatalf("stale quarantine calls=%d state=%v", runtime.quarantineCalls, runner.quarantined)
 	}
+	if runtime.reloadCalls != 0 {
+		t.Fatalf("failed recovery reloaded quarantined runtime %d times", runtime.reloadCalls)
+	}
 	if agent.syncContextErr != nil {
 		t.Fatalf("quarantined recovery sync inherited an expired context: %v", agent.syncContextErr)
 	}
@@ -442,6 +445,62 @@ func TestExpiredFreshnessUsesBoundedParentContextForRecovery(t *testing.T) {
 	syncDeadline, syncHasDeadline := syncCtx.Deadline()
 	if !parentHasDeadline || !syncHasDeadline || !syncDeadline.Equal(parentDeadline) {
 		t.Fatalf("recovery deadline = %v/%v, parent = %v/%v", syncDeadline, syncHasDeadline, parentDeadline, parentHasDeadline)
+	}
+}
+
+func TestExpiredFreshnessRecoversThroughSyncReloadAndHeartbeat(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	store := saveLifecycleState(t, now, now.Add(-6*time.Minute))
+	fingerprint := strings.Repeat("f", 64)
+	command := &recordingCommandRunner{outputs: [][]byte{
+		[]byte("Version: 1.10.3\n"),
+		[]byte(`[{"fingerprint":"` + fingerprint + `","details":{"notAfter":"` + now.Add(24*time.Hour).Format(time.RFC3339) + `"}}]`),
+		[]byte("Version: 1.10.3\n"),
+	}}
+	agent := &recordingLifecycleAgent{
+		syncResult: nodeagent.SyncResult{Revision: 7},
+		syncHook: func() error {
+			state, err := store.Load()
+			if err != nil {
+				return err
+			}
+			state.LastSuccessfulConfigAt = now
+			state.AppliedConfigRevision = 7
+			state.AppliedConfigSHA256 = strings.Repeat("a", 64)
+			return store.Save(state)
+		},
+	}
+	runtime := &freshnessRuntime{}
+	runner := &agentRunner{
+		agent: agent, store: store,
+		validator: nodeagent.BundleValidator{NebulaBinary: "nebula", NebulaCertBinary: "nebula-cert", Runner: command},
+		runtime:   runtime, runner: command, nebulaBinary: "nebula",
+		now: func() time.Time { return now }, maxConfigStaleness: 5 * time.Minute,
+	}
+
+	result, err := runner.cycle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agent.syncContextErr != nil {
+		t.Fatalf("recovery sync inherited an expired context: %v", agent.syncContextErr)
+	}
+	if runtime.quarantineCalls != 1 || runtime.reloadCalls != 1 || runner.quarantined {
+		t.Fatalf("recovery runtime quarantine=%d reload=%d state=%v", runtime.quarantineCalls, runtime.reloadCalls, runner.quarantined)
+	}
+	if want := []string{"sync", "heartbeat"}; !reflect.DeepEqual(agent.calls, want) {
+		t.Fatalf("recovery lifecycle calls=%v want=%v", agent.calls, want)
+	}
+	if result.Revision != 7 || result.HeartbeatSequence != 1 || result.CertificateIdentity != fingerprint {
+		t.Fatalf("recovery result = %#v", result)
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.LastSuccessfulConfigAt.Equal(now) || state.AppliedConfigRevision != 7 {
+		t.Fatalf("recovery state config time=%s revision=%d", state.LastSuccessfulConfigAt, state.AppliedConfigRevision)
 	}
 }
 
@@ -1036,6 +1095,8 @@ func testBearer(value byte) string {
 type recordingLifecycleAgent struct {
 	calls          []string
 	syncErr        error
+	syncResult     nodeagent.SyncResult
+	syncHook       func() error
 	syncContextErr error
 	events         *[]string
 }
@@ -1071,7 +1132,15 @@ func (a *recordingLifecycleAgent) Sync(ctx context.Context) (nodeagent.SyncResul
 	if a.events != nil {
 		*a.events = append(*a.events, "sync")
 	}
-	return nodeagent.SyncResult{}, a.syncErr
+	if a.syncErr != nil {
+		return a.syncResult, a.syncErr
+	}
+	if a.syncHook != nil {
+		if err := a.syncHook(); err != nil {
+			return a.syncResult, err
+		}
+	}
+	return a.syncResult, nil
 }
 
 func (a *recordingLifecycleAgent) RenewCertificate(context.Context) (nodeagent.SyncResult, error) {

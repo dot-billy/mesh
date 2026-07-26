@@ -143,6 +143,38 @@ func TestFleetHealthDerivesDeterministicSecretFreeSnapshotWithoutWrites(t *testi
 	}
 }
 
+func TestFleetHealthTreatsStaleRunningTelemetryAsHistorical(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 19, 20, 0, 0, 0, time.UTC)
+	network := Network{ID: "network-stale-runtime", Name: "stale-runtime", ConfigRevision: 3, ConfigUpdatedAt: now.Add(-time.Hour)}
+	node := fleetHealthyNode("node-stale-runtime", "stale-runtime-member", "member", network, now)
+	stale := now.Add(-fleetHeartbeatOfflineAfter)
+	node.LastSeenAt = &stale
+	node.NebulaRunning = true
+	backend := &fakeStateStore{state: State{Networks: []Network{network}, Nodes: []Node{node}}}
+	fleetFillDesiredDigests(&backend.state, now)
+	service, err := NewServiceWithStateStore(backend, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return now }
+
+	report, err := service.FleetHealth(network.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected := fleetProjectedNode(t, report, node.ID)
+	if projected.RuntimeState != FleetRuntimeUnknown || !projected.NebulaRunning {
+		t.Fatalf("stale running telemetry was presented as current: %#v", projected)
+	}
+	if projected.Operational || projected.RolloutCurrent {
+		t.Fatalf("stale running telemetry passed health or rollout gates: %#v", projected)
+	}
+	if _, ok := fleetFindAlert(projected.Alerts, "heartbeat_offline"); !ok {
+		t.Fatalf("stale running telemetry omitted heartbeat_offline: %#v", projected.Alerts)
+	}
+}
+
 func TestFleetHealthAllUsesOneSnapshotAndDeterministicAggregation(t *testing.T) {
 	now := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
 	alpha := Network{ID: "network-alpha", Name: "alpha", CIDR: "10.60.0.0/24", ListenPort: 4242, ConfigRevision: 2, ConfigUpdatedAt: now.Add(-time.Hour)}
