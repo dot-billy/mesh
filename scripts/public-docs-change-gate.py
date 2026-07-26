@@ -16,15 +16,41 @@ USER_FACING_PREFIXES = (
     "cmd/meshctl/",
     "config/",
     "deploy/",
+    "desktop/lib/",
+    "desktop/ios/",
+    "desktop/linux/",
+    "desktop/macos/",
+    "desktop/windows/",
     "internal/control/",
     "internal/httpapi/",
     "internal/identity/",
     "internal/nodeagent/",
     "internal/runtimetelemetry/",
+    "ios-tunnel/MeshTunnelHost/",
+    "ios-tunnel/MeshTunnel.xcodeproj/",
+    "ios-tunnel/PacketTunnel/",
+    "ios-tunnel/Shared/",
+    "ios-tunnel/engine/",
     "packaging/",
 )
-USER_FACING_FILES = {"README.md"}
-IGNORED_SUFFIXES = ("_test.go", "_test.py")
+USER_FACING_FILES = {
+    "README.md",
+    "desktop/pubspec.lock",
+    "desktop/pubspec.yaml",
+    "ios-tunnel/Package.swift",
+}
+IGNORED_PREFIXES = (
+    "desktop/test/",
+    "desktop/ios/RunnerTests/",
+    "desktop/macos/RunnerTests/",
+    "ios-tunnel/ContractTests/",
+)
+IGNORED_SUFFIXES = (
+    "_test.dart",
+    "_test.go",
+    "_test.py",
+    "_test.swift",
+)
 DOC_AUTOMATION_FILES = {
     PUBLIC_OUTPUT,
     "internal/httpapi/web/docs.css",
@@ -43,7 +69,11 @@ def normalize_paths(paths: list[str]) -> list[str]:
 
 
 def is_user_facing(path: str) -> bool:
-    if path in DOC_AUTOMATION_FILES or path.endswith(IGNORED_SUFFIXES):
+    if (
+        path in DOC_AUTOMATION_FILES
+        or path.startswith(IGNORED_PREFIXES)
+        or path.endswith(IGNORED_SUFFIXES)
+    ):
         return False
     return path in USER_FACING_FILES or path.startswith(USER_FACING_PREFIXES)
 

@@ -71,9 +71,66 @@ class PublicDocumentationTest(unittest.TestCase):
         self.assertTrue(passed)
         self.assertEqual(affected, ["internal/control/service.go"])
 
+    def test_change_gate_requires_docs_for_ios_tunnel_production(self):
+        production = "ios-tunnel/MeshTunnelHost/MeshTunnelViewController.swift"
+        passed, affected = gate.evaluate([production])
+        self.assertFalse(passed)
+        self.assertEqual(affected, [production])
+        passed, affected = gate.evaluate([
+            production,
+            "docs/public-guide.json",
+            "internal/httpapi/web/docs.html",
+        ])
+        self.assertTrue(passed)
+        self.assertEqual(affected, [production])
+        for production_config in (
+            "ios-tunnel/MeshTunnel.xcodeproj/project.pbxproj",
+            "ios-tunnel/PacketTunnel/Development.entitlements",
+            "ios-tunnel/Shared/TunnelContract.swift",
+            "ios-tunnel/engine/mobile.go",
+            "ios-tunnel/Package.swift",
+        ):
+            passed, affected = gate.evaluate([production_config])
+            self.assertFalse(passed)
+            self.assertEqual(affected, [production_config])
+
+    def test_change_gate_requires_docs_for_desktop_production(self):
+        production = "desktop/lib/features/network/network_screen.dart"
+        passed, affected = gate.evaluate([production])
+        self.assertFalse(passed)
+        self.assertEqual(affected, [production])
+        passed, affected = gate.evaluate([
+            production,
+            "docs/public-guide.json",
+            "internal/httpapi/web/docs.html",
+        ])
+        self.assertTrue(passed)
+        self.assertEqual(affected, [production])
+        for production_config in (
+            "desktop/ios/Runner/AppDelegate.swift",
+            "desktop/macos/Runner/MainFlutterWindow.swift",
+            "desktop/linux/runner/my_application.cc",
+            "desktop/windows/runner/flutter_window.cpp",
+            "desktop/ios/Runner.xcodeproj/project.pbxproj",
+            "desktop/macos/Runner.xcodeproj/project.pbxproj",
+            "desktop/linux/CMakeLists.txt",
+            "desktop/windows/CMakeLists.txt",
+            "desktop/pubspec.lock",
+            "desktop/pubspec.yaml",
+        ):
+            passed, affected = gate.evaluate([production_config])
+            self.assertFalse(passed)
+            self.assertEqual(affected, [production_config])
+
     def test_change_gate_ignores_tests_and_docs_automation(self):
         passed, affected = gate.evaluate([
             "internal/control/service_test.go",
+            "desktop/lib/core/auth/native_login_test.dart",
+            "desktop/test/widget/app_shell_test.dart",
+            "desktop/ios/RunnerTests/RunnerTests.swift",
+            "desktop/macos/RunnerTests/RunnerTests.swift",
+            "ios-tunnel/ContractTests/TunnelContractTests.swift",
+            "ios-tunnel/engine/mobile_test.go",
             "scripts/generate-public-docs.py",
             "internal/httpapi/web/docs.css",
         ])
