@@ -229,10 +229,11 @@ final class MeshTunnelViewController: UIViewController {
                     + "enrollment token has been requested."
             )
             stage = .preparingManager
-            let manager = try await prepareManagerBeforeAuthorization(
+            let preauthorizationManager =
+                try await prepareManagerBeforeAuthorization(
                 origin: origin
             )
-            preparedManager = manager
+            preparedManager = preauthorizationManager
             preparedOrigin = origin
 
             statusLabel.text = (
@@ -267,9 +268,11 @@ final class MeshTunnelViewController: UIViewController {
             let network = try await selectNetwork(networks)
 
             stage = .verifyingManager
-            guard try validatedOrigin(for: manager) == origin else {
-                throw TunnelHostError.savedConfigurationMismatch
-            }
+            let currentManager =
+                try await reloadReadyManagerAfterAuthorization(
+                    expectedOrigin: origin
+                )
+            preparedManager = currentManager
             statusLabel.text = (
                 "Sign-in and VPN checks passed. Requesting a one-time enrollment "
                     + "for \(network.name)."
@@ -282,7 +285,7 @@ final class MeshTunnelViewController: UIViewController {
             )
             stage = .handingOffEnrollment
             try handOffEnrollment(
-                manager: manager,
+                manager: currentManager,
                 origin: origin,
                 token: enrollment.enrollmentToken
             )
@@ -1090,6 +1093,28 @@ final class MeshTunnelViewController: UIViewController {
             )
         }
         return try await createManager(origin: origin)
+    }
+
+    private func reloadReadyManagerAfterAuthorization(
+        expectedOrigin: String
+    ) async throws -> NETunnelProviderManager {
+        let managers = try await loadManagers()
+        let matches = managers.filter { manager in
+            (manager.protocolConfiguration as? NETunnelProviderProtocol)?
+                .providerBundleIdentifier
+                == Self.providerBundleIdentifier
+        }
+        guard matches.count == 1,
+              let currentManager = matches.first
+        else {
+            throw TunnelHostError.ambiguousManager
+        }
+        try await reload(currentManager)
+        try requireNoLocalIdentity()
+        guard try validatedOrigin(for: currentManager) == expectedOrigin else {
+            throw TunnelHostError.originMismatch
+        }
+        return currentManager
     }
 
     @MainActor

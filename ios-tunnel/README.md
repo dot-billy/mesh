@@ -52,7 +52,11 @@ public App Store release.
   already-valid enabled manager is reloaded and reused without rewriting
   preferences. Automatic setup preserves a fixed, non-secret failure stage
   instead of allowing an asynchronous VPN-status notification to replace the
-  result, and it cannot request a token before manager readiness.
+  result. After OIDC and network selection, it re-enumerates exactly one
+  current Mesh manager, reloads preferences, rechecks identity-slot absence,
+  validates enabled/origin/schema/on-demand state, and uses only that fresh
+  manager for enrollment handoff. It cannot request a token before those
+  checks pass.
 - `MeshPacketTunnel`: a Packet Tunnel Provider that authenticates the selected
   App Group configuration, or, when no current configuration exists, strictly
   decodes the single start-option enrollment request and performs enrollment
@@ -181,7 +185,9 @@ confirmation, revalidates the singleton/disabled/origin/identity conditions,
 removes only that manager, and saves/reloads a fresh manager. Duplicate,
 enabled, identity-bearing, or mismatched configurations fail closed and are
 never automatically removed. A cancellation or Apple failure occurs before
-login, and token issuance remains impossible until the fresh manager is ready.
+login. After login, the current manager and identity absence are checked again,
+and only that fresh manager is used for handoff. Token issuance remains
+impossible until those checks pass.
 This behavior is source/simulator tested only and does not establish physical
 enrollment or tunnel behavior.
 
@@ -232,8 +238,10 @@ extension-owned node authority:
    server-returned same-origin verification URL, and polls with a secret that
    never enters the browser;
 3. after the user signs in and approves, the app requires an OIDC Mesh session
-   carrying `nodes.enroll.self`, selects one visible network, and revalidates
-   the already-ready same-origin manager without another preference write;
+   carrying `nodes.enroll.self`, selects one visible network, re-enumerates
+   exactly one Mesh manager, reloads current preferences, rechecks identity
+   absence, and validates enabled/origin/schema/on-demand state without another
+   preference write;
 4. only after Apple confirms the VPN preference does the app request a
    server-fixed member/mobile/`all,members` enrollment; the app has no field
    for an IP, route, lighthouse, topology label, or alternate group;

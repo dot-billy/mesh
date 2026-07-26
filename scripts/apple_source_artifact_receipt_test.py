@@ -260,7 +260,7 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
         self.assertEqual(
             boundary["host_manager_recovery"],
             "preauth-confirmed-disabled-no-identity-exact-replacement-"
-            "source-proven",
+            "postauth-fresh-manager-source-proven",
         )
         self.assertFalse(boundary["physical_device_validated"])
         source_names = set(boundary["source_sha256"])

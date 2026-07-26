@@ -625,6 +625,7 @@ class AppleProjectTest(unittest.TestCase):
             "manager.isEnabled = true",
             "if let manager = matches.first {",
             "prepareManagerBeforeAuthorization(",
+            "reloadReadyManagerAfterAuthorization(",
             "confirmStaleManagerReplacement(",
             'title: "Replace disabled VPN configuration?"',
             'title: "Replace VPN configuration"',
@@ -653,8 +654,31 @@ class AppleProjectTest(unittest.TestCase):
             setup.index("TunnelUserEnrollmentClient("),
         )
         self.assertLess(
-            setup.index("guard try validatedOrigin(for: manager) == origin"),
+            setup.index("networks()"),
+            setup.index("reloadReadyManagerAfterAuthorization("),
+        )
+        self.assertLess(
+            setup.index("reloadReadyManagerAfterAuthorization("),
             setup.index("createSelfEnrollment("),
+        )
+        self.assertIn("manager: currentManager", setup)
+        postauth_start = host.index(
+            "private func reloadReadyManagerAfterAuthorization("
+        )
+        postauth_end = host.index(
+            "private func confirmStaleManagerReplacement(",
+            postauth_start,
+        )
+        postauth = host[postauth_start:postauth_end]
+        self.assertIn("let managers = try await loadManagers()", postauth)
+        self.assertIn("guard matches.count == 1", postauth)
+        self.assertLess(
+            postauth.index("try await reload(currentManager)"),
+            postauth.index("try requireNoLocalIdentity()"),
+        )
+        self.assertLess(
+            postauth.index("try requireNoLocalIdentity()"),
+            postauth.index("validatedOrigin(for: currentManager)"),
         )
         preflight_start = host.index(
             "private func prepareManagerBeforeAuthorization("

@@ -783,6 +783,7 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "manager.isEnabled = true",
         "if let manager = matches.first {",
         "prepareManagerBeforeAuthorization(",
+        "reloadReadyManagerAfterAuthorization(",
         "confirmStaleManagerReplacement(",
         'title: "Replace disabled VPN configuration?"',
         'title: "Replace VPN configuration"',
@@ -819,11 +820,33 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
             "Mesh Tunnel does not stage manager readiness before authorization"
         )
     if not (
-        setup_source.index("guard try validatedOrigin(for: manager) == origin")
+        setup_source.index("networks()")
+        < setup_source.index("reloadReadyManagerAfterAuthorization(")
         < setup_source.index("createSelfEnrollment(")
+        < setup_source.index("manager: currentManager")
     ):
         raise ReceiptError(
-            "Mesh Tunnel can request enrollment before manager readiness"
+            "Mesh Tunnel can request enrollment against a cached manager"
+        )
+    postauth_index = sources["host_controller"].index(
+        "private func reloadReadyManagerAfterAuthorization("
+    )
+    postauth_end = sources["host_controller"].index(
+        "private func confirmStaleManagerReplacement(",
+        postauth_index,
+    )
+    postauth_source = sources["host_controller"][
+        postauth_index:postauth_end
+    ]
+    if not (
+        "guard matches.count == 1" in postauth_source
+        and postauth_source.index("let managers = try await loadManagers()")
+        < postauth_source.index("try await reload(currentManager)")
+        < postauth_source.index("try requireNoLocalIdentity()")
+        < postauth_source.index("validatedOrigin(for: currentManager)")
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel does not refresh manager readiness after authorization"
         )
     preflight_index = sources["host_controller"].index(
         "private func prepareManagerBeforeAuthorization("
@@ -973,7 +996,8 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
             "request-bound-real-evidence-start-stop-inspect-source-proven"
         ),
         "host_manager_recovery": (
-            "preauth-confirmed-disabled-no-identity-exact-replacement-source-proven"
+            "preauth-confirmed-disabled-no-identity-exact-replacement-"
+            "postauth-fresh-manager-source-proven"
         ),
         "physical_device_validated": False,
         "source_sha256": {
