@@ -1,15 +1,15 @@
 # Mesh Tunnel iOS source proof
 
 This directory is the source and controlled-beta qualification boundary for a
-future Mesh Tunnel application on iPhone and iPad. Signed version `0.1.0`
-build `1`, containing the earlier framework-v4 pre-start lifecycle source, is
-uploaded to TestFlight for external review. Current framework-v5 lifecycle,
-runtime-evidence, identity-removal, and host-control changes are prepared as
-version `0.1.0` build `2` but remain unsigned source evidence only. Neither
-boundary is a supported application, proven working VPN, production enrollment
-path, or public App Store release. The self-service OIDC onboarding described
-below is a subsequent unsigned source delta and is not present in either
-TestFlight build or the earlier build-2 source receipts.
+future Mesh Tunnel application on iPhone and iPad. Version `0.1.0` build `1`
+contains the earlier framework-v4 pre-start lifecycle source and remains in
+TestFlight. Version `0.1.0` build `2` contains the framework-v5 lifecycle,
+runtime-evidence, identity-removal, and host-control changes; Apple accepted
+its upload and export-compliance declaration on 2026-07-26, approved its Beta
+App Review, and placed it in external testing. Neither build is a supported
+application, proven working VPN, production enrollment path, or public App
+Store release. The self-service OIDC onboarding described below is a subsequent
+unsigned source delta and is not present in either uploaded build.
 
 ## What exists
 
@@ -121,6 +121,44 @@ Connect showed no sessions, crashes, or feedback. This upload and installation
 are controlled TestFlight qualification, not public App Store, Custom App,
 supported release, or packet-path evidence. Build `0.1.0 (1)` is the earlier
 framework-v4 artifact, not the current framework-v5 host and extension.
+
+The successor framework-v5 archive and strictly verified IPA were uploaded as
+`0.1.0 (2)` on 2026-07-26. App Store Connect reports the binary as valid and
+the checked-in exempt-encryption declaration as accepted. The build is attached
+to the external tester group, its Beta App Review is approved, and its external
+state is `IN_BETA_TESTING`. It has not yet been installed or exercised on a
+device.
+
+## TestFlight publishing
+
+Mesh uses the same trusted-Mac release model as the Catalyst and Nodebyte
+applications. Put the App Store Connect key identifiers, owner-only private-key
+path, tester email, and optional external group name in the owner-only local
+file `~/.config/mesh/testflight.env`. Never commit that file or the private key.
+
+From a clean committed checkout, one command determines the next build number
+from App Store Connect, runs the Apple source gates, reproduces and statically
+links `MeshMobile.xcframework`, archives with the TestFlight configuration,
+exports and strictly verifies the IPA, uploads it, waits for processing,
+applies the checked-in export-compliance declaration, attaches the tester and
+build to the external group, and submits Beta App Review:
+
+```text
+make ios-tunnel-testflight
+```
+
+Read or repair an already uploaded build without creating another binary:
+
+```text
+scripts/publish-ios-tunnel-testflight.sh status 2
+scripts/publish-ios-tunnel-testflight.sh distribute 2
+```
+
+The release client signs short-lived ES256 API tokens locally and never places
+the token or private key in command arguments, logs, repository files, or
+release evidence. A failed upload does not advance a checked-in build number;
+the next invocation reconciles the project floor with App Store Connect and
+chooses the next unused integer.
 
 The App Group stores authenticated configuration, never the node private key.
 The handoff HMAC key is device-only Keychain data shared by the two targets.
@@ -288,6 +326,9 @@ applied settings, signature, physical-device validation, and distribution
 validation remain false.
 The uploaded TestFlight `0.1.0 (1)` framework-v4 artifact does not contain
 these newer host runtime controls or the framework-v5 source changes.
+Build `0.1.0 (2)` contains those changes and is approved for external testing,
+but the absence of installed-device evidence does not establish runtime
+behavior.
 
 ## Deliberately unresolved
 
@@ -310,9 +351,8 @@ source-defined enrollment and identity-removal ceremonies, an Apple-supported
 transport review, physical-device network-settings, Keychain, UDP, packet, and
 resource measurements, roaming/suspension/crash/reboot evidence,
 heartbeat/renewal/rotation/revocation convergence, cutoff, response-loss,
-reinstall, and transfer coverage, privacy and legal review, Apple Beta App
-Review and installed TestFlight execution for a corrected build `2`, and
-Custom App distribution evidence. The earlier framework-v4 build `0.1.0 (1)`
-entered `Testing` and was installed on 2026-07-25. Its launch and VPN
-permission screens do not prove that an enrollment request reached Mesh or
-that any packet traversed the tunnel.
+reinstall, and transfer coverage, privacy and legal review, installed
+TestFlight execution for build `2`, and Custom App distribution evidence. The
+earlier framework-v4 build `0.1.0 (1)` entered `Testing` and was installed on
+2026-07-25. Its launch and VPN permission screens do not prove that an
+enrollment request reached Mesh or that any packet traversed the tunnel.

@@ -561,6 +561,15 @@ not the current framework-v5 additions. The registered Devices inventory
 contains the development Mac but no iPhone or iPad; TestFlight installation
 does not require development-device registration.
 
+The strictly reverified framework-v5 successor was uploaded as `0.1.0 (2)` on
+2026-07-26. App Store Connect reports processing `VALID`,
+`usesNonExemptEncryption=false`, internal state `READY_FOR_BETA_TESTING`, and a
+Beta App Review submission in `APPROVED`. The build and one tester are attached
+to the `Mesh Tunnel External Testers` group, and the external state is
+`IN_BETA_TESTING`. These states prove only distribution control-plane
+transitions; build `2` has not been installed or exercised on a physical
+device.
+
 A create-only security gate now binds the exact ten-file unsigned
 static-engine simulator product and its nested extension tree. SwiftPM
 independently reports an empty external dependency graph. Syft and SPDX recover

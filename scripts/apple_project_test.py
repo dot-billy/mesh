@@ -574,6 +574,12 @@ class AppleProjectTest(unittest.TestCase):
         self.assertIn("<string>AppIcon</string>", (
             IOS_TUNNEL / "MeshTunnelHost" / "Info.plist"
         ).read_text())
+        self.assertIs(
+            plist(IOS_TUNNEL / "MeshTunnelHost" / "Info.plist")[
+                "ITSAppUsesNonExemptEncryption"
+            ],
+            False,
+        )
         go_adapter = (
             IOS_TUNNEL / "PacketTunnel" / "GoTunnelEngineSession.swift"
         ).read_text()

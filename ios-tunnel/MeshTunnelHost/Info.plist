@@ -24,6 +24,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>MeshHandoffKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.handoff</string>
 	<key>UIApplicationSceneManifest</key>
