@@ -313,6 +313,61 @@ func authorizedUserSessionMustCarrySelfEnrollmentPermission() throws {
 }
 
 @Test
+func enrollmentSessionRetainsOnlyItsPrivateEphemeralCookiePair() throws {
+  let configuration =
+    try TunnelUserEnrollmentSessionFactory.ephemeralConfiguration()
+  let storage = try #require(configuration.httpCookieStorage)
+  #expect(storage !== HTTPCookieStorage.shared)
+  #expect(configuration.httpShouldSetCookies)
+  #expect(configuration.urlCache == nil)
+
+  let completionURL = try #require(
+    URL(
+      string:
+        "https://mesh.example/api/v1/auth/desktop/complete"
+    )
+  )
+  let enrollmentURL = try #require(
+    URL(
+      string:
+        "https://mesh.example/api/v1/networks/network_1/self-enrollment"
+    )
+  )
+  let session = HTTPCookie.cookies(
+    withResponseHeaderFields: [
+      "Set-Cookie":
+        "__Host-mesh_session=session-value; Path=/; Secure; "
+        + "HttpOnly; SameSite=Strict",
+    ],
+    for: completionURL
+  )
+  let csrf = HTTPCookie.cookies(
+    withResponseHeaderFields: [
+      "Set-Cookie":
+        "__Host-mesh_csrf=csrf-value; Path=/; Secure; "
+        + "SameSite=Strict",
+    ],
+    for: completionURL
+  )
+  #expect(session.count == 1)
+  #expect(csrf.count == 1)
+  storage.setCookies(
+    session + csrf,
+    for: completionURL,
+    mainDocumentURL: nil
+  )
+  let available = try #require(storage.cookies(for: enrollmentURL))
+  #expect(
+    Set(available.map(\.name))
+      == Set(["__Host-mesh_session", "__Host-mesh_csrf"])
+  )
+  for cookie in available {
+    storage.deleteCookie(cookie)
+  }
+  #expect(storage.cookies(for: enrollmentURL)?.isEmpty != false)
+}
+
+@Test
 func selfEnrollmentResponseIsFixedPolicyAndTokenNeverEntersRequest() throws {
   let request = try TunnelUserSelfEnrollmentRequest(name: "ios-7f3a9c2d")
   let encodedRequest = try request.encoded()

@@ -8,8 +8,13 @@ final class MeshTunnelViewController: UIViewController {
     private static let postAuthorizationManagerReadinessAttempts = 6
     private static let postAuthorizationManagerReadinessDelay =
         Duration.milliseconds(500)
+    private static let lastSetupStageKey =
+        "mesh.selfEnrollment.lastSetupStage"
+    private static let lastSetupResultKey =
+        "mesh.selfEnrollment.lastSetupResult"
 
     private let statusLabel = UILabel()
+    private let diagnosticLabel = UILabel()
     private let originField = UITextField()
     private let signInButton = UIButton(type: .system)
     private let startButton = UIButton(type: .system)
@@ -24,6 +29,10 @@ final class MeshTunnelViewController: UIViewController {
     private var isCompletingAuthorization = false
     private var setupFailureIsVisible = false
     private var setupTask: Task<Void, Never>?
+    private var inspectionTask: Task<Void, Never>?
+    private var inspectionGeneration = 0
+    private var activeSetupStage = TunnelAutomaticSetupStage.starting
+    private var backgroundCancelledSetup = false
     private var enrollmentClient: TunnelUserEnrollmentClient?
 
     override func viewDidLoad() {
@@ -44,6 +53,13 @@ final class MeshTunnelViewController: UIViewController {
         prepare the Apple VPN configuration and pass a server-issued one-time \
         enrollment token directly to the Packet Tunnel extension.
         """
+
+        diagnosticLabel.font = .preferredFont(forTextStyle: .caption1)
+        diagnosticLabel.adjustsFontForContentSizeCategory = true
+        diagnosticLabel.numberOfLines = 0
+        diagnosticLabel.textColor = .secondaryLabel
+        diagnosticLabel.accessibilityLabel = "Mesh Tunnel build and setup stage"
+        updateDiagnosticLabel()
 
         originField.borderStyle = .roundedRect
         originField.placeholder = "https://mesh.example"
@@ -117,6 +133,7 @@ final class MeshTunnelViewController: UIViewController {
         let stack = UIStackView(arrangedSubviews: [
             titleLabel,
             statusLabel,
+            diagnosticLabel,
             originField,
             signInButton,
             startButton,
@@ -181,10 +198,11 @@ final class MeshTunnelViewController: UIViewController {
             name: .NEVPNStatusDidChange,
             object: nil
         )
-        inspectConfiguration()
+        startInspection(clearsFailure: false)
     }
 
     deinit {
+        inspectionTask?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -192,7 +210,10 @@ final class MeshTunnelViewController: UIViewController {
         guard setupTask == nil else {
             return
         }
+        cancelInspection()
         setupFailureIsVisible = false
+        backgroundCancelledSetup = false
+        recordSetup(stage: .starting, result: "running")
         setControlsBusy(true)
         let rawOrigin = originField.text ?? ""
         setupTask = Task { @MainActor [weak self] in
@@ -203,8 +224,9 @@ final class MeshTunnelViewController: UIViewController {
                 rawOrigin: rawOrigin
             )
             self.setupTask = nil
+            self.setControlsBusy(false)
             if completed {
-                self.inspectConfiguration()
+                self.startInspection(clearsFailure: false)
             }
         }
     }
@@ -223,6 +245,7 @@ final class MeshTunnelViewController: UIViewController {
             }
         }
         do {
+            try Task.checkCancellation()
             try requireNoLocalIdentity()
             let origin = try TunnelEnrollmentRequest.normalizedOrigin(
                 rawOrigin
@@ -234,10 +257,12 @@ final class MeshTunnelViewController: UIViewController {
                     + "enrollment token has been requested."
             )
             stage = .preparingManager
+            recordSetup(stage: stage, result: "running")
             let preauthorizationManager =
                 try await prepareManagerBeforeAuthorization(
                 origin: origin
             )
+            try Task.checkCancellation()
             preparedManager = preauthorizationManager
             preparedOrigin = origin
 
@@ -246,14 +271,16 @@ final class MeshTunnelViewController: UIViewController {
                     + "sign in with your own account."
             )
 
+            stage = .authorizing
+            recordSetup(stage: stage, result: "running")
             let enrollmentClient = try TunnelUserEnrollmentClient(
                 origin: origin
             )
             client = enrollmentClient
             self.enrollmentClient = enrollmentClient
-            stage = .authorizing
             let authorization = try await enrollmentClient
                 .startAuthorization()
+            try Task.checkCancellation()
             let verificationURL = try authorization
                 .validatedVerificationURL(serverOrigin: origin)
             try beginAuthorizationBrowser(url: verificationURL)
@@ -261,6 +288,7 @@ final class MeshTunnelViewController: UIViewController {
                 authorization,
                 client: enrollmentClient
             )
+            try Task.checkCancellation()
 
             isCompletingAuthorization = true
             authorizationSession?.cancel()
@@ -269,26 +297,34 @@ final class MeshTunnelViewController: UIViewController {
                 "Signed in. Reading the networks available to your account."
             )
             stage = .readingNetworks
+            recordSetup(stage: stage, result: "running")
             let networks = try await enrollmentClient.networks()
+            try Task.checkCancellation()
             let network = try await selectNetwork(networks)
+            try Task.checkCancellation()
 
             stage = .verifyingManager
+            recordSetup(stage: stage, result: "running")
             let currentManager =
                 try await reloadReadyManagerAfterAuthorization(
                     expectedOrigin: origin
                 )
+            try Task.checkCancellation()
             preparedManager = currentManager
             statusLabel.text = (
                 "Sign-in and VPN checks passed. Requesting a one-time enrollment "
                     + "for \(network.name)."
             )
             stage = .requestingEnrollment
+            recordSetup(stage: stage, result: "running")
             let nodeName = try deviceEnrollmentNodeName()
             let enrollment = try await enrollmentClient.createSelfEnrollment(
                 networkID: network.id,
                 nodeName: nodeName
             )
+            try Task.checkCancellation()
             stage = .handingOffEnrollment
+            recordSetup(stage: stage, result: "running")
             try handOffEnrollment(
                 manager: currentManager,
                 origin: origin,
@@ -303,10 +339,22 @@ final class MeshTunnelViewController: UIViewController {
                     + "saved by the app. Runtime status must still be verified "
                     + "before treating the tunnel as connected."
             )
+            recordSetup(stage: stage, result: "handoff-requested")
             return true
         } catch {
-            setControlsBusy(false)
-            statusLabel.text = setupFailureText(error, stage: stage)
+            let result: String
+            if backgroundCancelledSetup {
+                result = "cancelled-background"
+            } else if error is CancellationError {
+                result = "cancelled"
+            } else {
+                result = "failed"
+            }
+            recordSetup(stage: stage, result: result)
+            statusLabel.text = setupFailureText(
+                backgroundCancelledSetup ? CancellationError() : error,
+                stage: stage
+            )
             setupFailureIsVisible = true
             return false
         }
@@ -437,13 +485,28 @@ final class MeshTunnelViewController: UIViewController {
     }
 
     @objc private func inspectConfiguration() {
-        setupFailureIsVisible = false
-        Task { @MainActor [weak self] in
+        startInspection(clearsFailure: true)
+    }
+
+    private func startInspection(clearsFailure: Bool) {
+        if clearsFailure {
+            setupFailureIsVisible = false
+        }
+        inspectionGeneration += 1
+        let generation = inspectionGeneration
+        inspectionTask?.cancel()
+        inspectionTask = Task { @MainActor [weak self] in
             guard let self else {
                 return
             }
+            defer {
+                if generation == self.inspectionGeneration {
+                    self.inspectionTask = nil
+                }
+            }
             do {
                 let managers = try await self.loadManagers()
+                try self.requireCurrentInspection(generation)
                 let matches = managers.filter { manager in
                     (manager.protocolConfiguration
                         as? NETunnelProviderProtocol)?
@@ -451,6 +514,7 @@ final class MeshTunnelViewController: UIViewController {
                         == Self.providerBundleIdentifier
                 }
                 guard matches.count <= 1 else {
+                    try self.requireCurrentInspection(generation)
                     self.disableRuntimeControls()
                     self.statusLabel.text = (
                         "Multiple Mesh Tunnel configurations exist. Runtime "
@@ -460,6 +524,7 @@ final class MeshTunnelViewController: UIViewController {
                     return
                 }
                 guard let manager = matches.first else {
+                    try self.requireCurrentInspection(generation)
                     self.preparedManager = nil
                     self.preparedOrigin = nil
                     self.originField.isEnabled = true
@@ -479,17 +544,27 @@ final class MeshTunnelViewController: UIViewController {
                     for: manager,
                     requireEnabled: false
                 )
+                let current = try self.loadLocalConfiguration()
+                let status = try await self.configurationStatusText(
+                    manager: manager,
+                    current: current
+                )
+                try self.requireCurrentInspection(generation)
                 self.preparedManager = manager
                 self.preparedOrigin = origin
                 self.originField.text = origin
                 self.originField.isEnabled = false
-                let current = try self.loadLocalConfiguration()
                 self.updateControls(
                     manager: manager,
                     hasLocalIdentity: current != nil
                 )
-                try await self.presentRuntimeStatus(manager: manager)
+                self.statusLabel.text = status
+            } catch is CancellationError {
+                return
             } catch {
+                guard self.inspectionMayCommit(generation) else {
+                    return
+                }
                 self.disableRuntimeControls()
                 self.statusLabel.text = (
                     "Mesh Tunnel status is unavailable. No VPN configuration "
@@ -499,17 +574,36 @@ final class MeshTunnelViewController: UIViewController {
         }
     }
 
+    private func cancelInspection() {
+        inspectionGeneration += 1
+        inspectionTask?.cancel()
+        inspectionTask = nil
+    }
+
+    private func inspectionMayCommit(_ generation: Int) -> Bool {
+        generation == inspectionGeneration
+            && setupTask == nil
+            && !setupFailureIsVisible
+    }
+
+    private func requireCurrentInspection(_ generation: Int) throws {
+        guard inspectionMayCommit(generation) else {
+            throw CancellationError()
+        }
+    }
+
     @objc private func vpnStatusDidChange() {
         guard setupTask == nil, !setupFailureIsVisible else {
             return
         }
-        inspectConfiguration()
+        startInspection(clearsFailure: false)
     }
 
     @objc private func startExistingTunnel() {
         guard setupTask == nil else {
             return
         }
+        cancelInspection()
         guard preparedManager != nil, preparedOrigin != nil else {
             statusLabel.text = (
                 "Inspect the installed Mesh Tunnel configuration before "
@@ -640,8 +734,17 @@ final class MeshTunnelViewController: UIViewController {
         authorizationSession = nil
         enrollmentClient?.invalidate()
         enrollmentClient = nil
+        if setupTask != nil {
+            backgroundCancelledSetup = true
+            recordSetup(
+                stage: activeSetupStage,
+                result: "cancelled-background"
+            )
+        }
         setupTask?.cancel()
-        setControlsBusy(false)
+        if setupTask == nil {
+            setControlsBusy(false)
+        }
     }
 
     private func validatedOrigin(
@@ -711,26 +814,25 @@ final class MeshTunnelViewController: UIViewController {
         inspectButton.isEnabled = true
     }
 
-    private func presentRuntimeStatus(
-        manager: NETunnelProviderManager
-    ) async throws {
-        let current = try loadLocalConfiguration()
+    private func configurationStatusText(
+        manager: NETunnelProviderManager,
+        current: TunnelConfigurationPayload?
+    ) async throws -> String {
         if !manager.isEnabled {
             if current == nil {
-                statusLabel.text = (
+                return (
                     "A saved Mesh Tunnel VPN configuration is disabled. "
                         + "Replace it before sign-in, then enroll this device. "
                         + "Mesh Tunnel will ask for confirmation and will not "
                         + "remove an enabled configuration or local identity."
                 )
             } else {
-                statusLabel.text = (
+                return (
                     "The saved Mesh Tunnel VPN configuration is disabled. "
                         + "Start the existing tunnel to restore it without "
                         + "creating another identity."
                 )
             }
-            return
         }
         switch manager.connection.status {
         case .connected, .reasserting:
@@ -750,34 +852,34 @@ final class MeshTunnelViewController: UIViewController {
             guard outcome.requestID == request.requestID else {
                 throw TunnelHostError.statusResponseMismatch
             }
-            statusLabel.text = try runtimeStatusText(
+            return try runtimeStatusText(
                 outcome.evidence
             )
         case .connecting:
-            statusLabel.text = (
+            return (
                 "The Packet Tunnel is starting. Runtime and packet evidence "
                     + "is not available yet."
             )
         case .disconnecting:
-            statusLabel.text = (
+            return (
                 "The Packet Tunnel is stopping. Wait for the disconnected "
                     + "state before changing the local identity."
             )
         case .disconnected:
             if current == nil {
-                statusLabel.text = (
+                return (
                     "The VPN configuration is prepared but no authenticated "
                         + "local identity is present. Sign in to enroll this "
                         + "device."
                 )
             } else {
-                statusLabel.text = (
+                return (
                     "An authenticated local identity is installed and the "
                         + "Packet Tunnel is stopped. No packet path is active."
                 )
             }
         case .invalid:
-            statusLabel.text = (
+            return (
                 "The Mesh Tunnel VPN configuration is invalid. Runtime "
                     + "actions remain disabled."
             )
@@ -983,14 +1085,55 @@ final class MeshTunnelViewController: UIViewController {
                 "The installed VPN configuration belongs to a different Mesh "
                     + "server. Remove it before switching servers."
             )
-        case TunnelHostError.httpStatus(let status):
+        case TunnelHostError.authenticationCookiesUnavailable,
+             TunnelUserEnrollmentError.sessionStorageUnavailable:
             return (
-                "The Mesh server rejected setup (HTTP \(status)). Confirm "
-                    + "that self-service enrollment is enabled for your account."
+                "Sign-in completed, but Mesh Tunnel could not retain the "
+                    + "private authenticated app session. No enrollment token "
+                    + "was requested."
             )
+        case TunnelHostError.httpStatus(let status):
+            return stage.httpFailureText(status: status)
         default:
             return stage.failureText
         }
+    }
+
+    private func recordSetup(
+        stage: TunnelAutomaticSetupStage,
+        result: String
+    ) {
+        activeSetupStage = stage
+        UserDefaults.standard.set(
+            stage.rawValue,
+            forKey: Self.lastSetupStageKey
+        )
+        UserDefaults.standard.set(
+            result,
+            forKey: Self.lastSetupResultKey
+        )
+        updateDiagnosticLabel()
+    }
+
+    private func updateDiagnosticLabel() {
+        let shortVersion =
+            Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleShortVersionString"
+            ) as? String ?? "unknown"
+        let build =
+            Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleVersion"
+            ) as? String ?? "unknown"
+        let stage = UserDefaults.standard.string(
+            forKey: Self.lastSetupStageKey
+        ) ?? "not-run"
+        let result = UserDefaults.standard.string(
+            forKey: Self.lastSetupResultKey
+        ) ?? "not-run"
+        diagnosticLabel.text = (
+            "Build \(shortVersion) (\(build)) · Last setup: "
+                + "\(result)-\(stage)"
+        )
     }
 
     private func loadLocalConfiguration()
@@ -1346,26 +1489,21 @@ extension MeshTunnelViewController:
 
 private final class TunnelUserEnrollmentClient {
     private let origin: String
-    private let baseURL: URL
     private let cookieStorage: HTTPCookieStorage
     private let session: URLSession
     private var invalidated = false
 
     init(origin: String) throws {
         self.origin = try TunnelEnrollmentRequest.normalizedOrigin(origin)
-        guard let baseURL = URL(string: self.origin) else {
+        guard URL(string: self.origin) != nil else {
             throw TunnelHostError.invalidServerResponse
         }
-        self.baseURL = baseURL
-        cookieStorage = HTTPCookieStorage()
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.httpCookieAcceptPolicy = .always
-        configuration.httpCookieStorage = cookieStorage
-        configuration.httpShouldSetCookies = true
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.urlCache = nil
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 60
+        let configuration = try TunnelUserEnrollmentSessionFactory
+            .ephemeralConfiguration()
+        guard let privateCookieStorage = configuration.httpCookieStorage else {
+            throw TunnelUserEnrollmentError.sessionStorageUnavailable
+        }
+        cookieStorage = privateCookieStorage
         session = URLSession(configuration: configuration)
     }
 
@@ -1414,7 +1552,14 @@ private final class TunnelUserEnrollmentClient {
             expectedStatus: 200,
             requiresCSRF: false
         )
-        return try TunnelUserAuthorizationCompletionResponse.decode(data)
+        let completion =
+            try TunnelUserAuthorizationCompletionResponse.decode(data)
+        if completion.state == .authorized {
+            _ = try csrfToken(
+                for: try endpoint(path: "/api/v1/networks")
+            )
+        }
+        return completion
     }
 
     func networks() async throws -> [TunnelUserNetwork] {
@@ -1454,11 +1599,7 @@ private final class TunnelUserEnrollmentClient {
         expectedStatus: Int,
         requiresCSRF: Bool
     ) async throws -> Data {
-        guard path.hasPrefix("/"),
-              let url = URL(string: origin + path)
-        else {
-            throw TunnelHostError.invalidServerResponse
-        }
+        let url = try endpoint(path: path)
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
@@ -1473,19 +1614,10 @@ private final class TunnelUserEnrollmentClient {
             request.setValue(origin, forHTTPHeaderField: "Origin")
         }
         if requiresCSRF {
-            let cookies = cookieStorage.cookies(for: baseURL) ?? []
-            guard cookies.contains(where: {
-                $0.name == "mesh_session"
-                    || $0.name == "__Host-mesh_session"
-            }),
-            let csrf = cookies.filter({
-                $0.name == "mesh_csrf" || $0.name == "__Host-mesh_csrf"
-            }).only,
-            !csrf.value.isEmpty
-            else {
-                throw TunnelHostError.authenticationCookiesUnavailable
-            }
-            request.setValue(csrf.value, forHTTPHeaderField: "X-Mesh-CSRF")
+            request.setValue(
+                try csrfToken(for: url),
+                forHTTPHeaderField: "X-Mesh-CSRF"
+            )
         }
         let (data, response) = try await session.data(for: request)
         guard data.count <= 4 * 1024 * 1024,
@@ -1498,11 +1630,35 @@ private final class TunnelUserEnrollmentClient {
         }
         return data
     }
-}
 
-private extension Collection {
-    var only: Element? {
-        count == 1 ? first : nil
+    private func endpoint(path: String) throws -> URL {
+        guard path.hasPrefix("/"),
+              let url = URL(string: origin + path)
+        else {
+            throw TunnelHostError.invalidServerResponse
+        }
+        return url
+    }
+
+    private func csrfToken(for url: URL) throws -> String {
+        let cookies = cookieStorage.cookies(for: url) ?? []
+        let sessions = cookies.filter {
+            $0.name == "mesh_session"
+                || $0.name == "__Host-mesh_session"
+        }
+        let csrfCookies = cookies.filter {
+            $0.name == "mesh_csrf"
+                || $0.name == "__Host-mesh_csrf"
+        }
+        guard sessions.count == 1,
+              !sessions[0].value.isEmpty,
+              csrfCookies.count == 1,
+              !csrfCookies[0].value.isEmpty,
+              sessions[0].value != csrfCookies[0].value
+        else {
+            throw TunnelHostError.authenticationCookiesUnavailable
+        }
+        return csrfCookies[0].value
     }
 }
 
@@ -1534,7 +1690,7 @@ private enum TunnelHostError: Error {
     case httpStatus(Int)
 }
 
-private enum TunnelAutomaticSetupStage {
+private enum TunnelAutomaticSetupStage: String {
     case starting
     case authorizing
     case readingNetworks
@@ -1578,6 +1734,29 @@ private enum TunnelAutomaticSetupStage {
                     + "extension did not accept the handoff. Retry to replace "
                     + "the still-pending enrollment safely."
             )
+        }
+    }
+
+    func httpFailureText(status: Int) -> String {
+        switch self {
+        case .starting, .authorizing:
+            return (
+                "The Mesh server rejected the sign-in exchange (HTTP "
+                    + "\(status)). No enrollment token was requested."
+            )
+        case .readingNetworks:
+            return (
+                "Sign-in completed, but the Mesh server rejected the "
+                    + "authenticated network read (HTTP \(status)). No "
+                    + "enrollment token was requested."
+            )
+        case .requestingEnrollment:
+            return (
+                "The Mesh server rejected self-enrollment (HTTP \(status)). "
+                    + "No one-time token was retained."
+            )
+        case .preparingManager, .verifyingManager, .handingOffEnrollment:
+            return failureText
         }
     }
 }

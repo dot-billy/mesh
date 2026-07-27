@@ -611,8 +611,10 @@ class AppleProjectTest(unittest.TestCase):
             "TunnelEnrollmentRequest.normalizedOrigin(",
             "request.encoded()",
             "ASWebAuthenticationSession",
-            "URLSessionConfiguration.ephemeral",
-            "HTTPCookieStorage()",
+            "TunnelUserEnrollmentSessionFactory",
+            ".ephemeralConfiguration()",
+            "configuration.httpCookieStorage",
+            "cookieStorage.cookies(for: url)",
             'path: "/api/v1/auth/desktop/start"',
             "createSelfEnrollment(",
             "NETunnelProviderSession",
@@ -644,9 +646,24 @@ class AppleProjectTest(unittest.TestCase):
             "stage = .verifyingManager",
             "setupFailureIsVisible = true",
             "guard setupTask == nil else {",
+            "cancelInspection()",
+            "requireCurrentInspection(",
+            "startInspection(clearsFailure: false)",
+            "Last setup:",
             "if completed {",
         ):
             self.assertIn(required, host)
+        self.assertNotIn("HTTPCookieStorage()", host)
+        enrollment_contract = (
+            IOS_TUNNEL / "Shared" / "TunnelUserEnrollment.swift"
+        ).read_text()
+        for required in (
+            "URLSessionConfiguration.ephemeral",
+            "configuration.httpCookieStorage != nil",
+            "configuration.httpShouldSetCookies = true",
+            "configuration.urlCache = nil",
+        ):
+            self.assertIn(required, enrollment_contract)
         self.assertIn(
             "private static let postAuthorizationManagerReadinessAttempts = 6",
             host,
@@ -655,17 +672,17 @@ class AppleProjectTest(unittest.TestCase):
             "Duration.milliseconds(500)",
             host,
         )
-        self.assertEqual(
-            len(re.findall(
-                r"(?m)^\s{8}setupFailureIsVisible = false$",
-                host,
-            )),
-            2,
-        )
         sign_in = host.split(
             "private func signInAndSetUpVPN()", 1
         )[1].split("private func runAutomaticSetup(", 1)[0]
         self.assertIn("setupFailureIsVisible = false", sign_in)
+        inspection_start = host.split(
+            "private func startInspection(clearsFailure: Bool)", 1
+        )[1].split("private func cancelInspection()", 1)[0]
+        self.assertIn(
+            "if clearsFailure {\n            setupFailureIsVisible = false",
+            inspection_start,
+        )
         setup_start = host.index("private func runAutomaticSetup(")
         setup_end = host.index(
             "private func beginAuthorizationBrowser(",
@@ -810,7 +827,9 @@ class AppleProjectTest(unittest.TestCase):
         inspect = host.split(
             "private func inspectConfiguration()", 1
         )[1].split("private func vpnStatusDidChange()", 1)[0]
-        self.assertIn("setupFailureIsVisible = false", inspect)
+        self.assertIn("startInspection(clearsFailure: true)", inspect)
+        self.assertIn("setupTask == nil", inspect)
+        self.assertIn("!setupFailureIsVisible", inspect)
         for forbidden in ("startVPNTunnel",):
             self.assertNotIn(forbidden, host)
 

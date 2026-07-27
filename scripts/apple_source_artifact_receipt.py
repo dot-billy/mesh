@@ -803,6 +803,13 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "setupFailureIsVisible = true",
         "guard setupTask == nil, !setupFailureIsVisible",
         "guard setupTask == nil else {",
+        "cancelInspection()",
+        "requireCurrentInspection(",
+        "startInspection(clearsFailure: false)",
+        "TunnelUserEnrollmentSessionFactory",
+        "configuration.httpCookieStorage",
+        "cookieStorage.cookies(for: url)",
+        "Last setup:",
         "if completed {",
     ):
         if required not in sources["host_controller"]:
@@ -815,10 +822,6 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         raise ReceiptError(
             "Mesh Tunnel post-authorization manager retry bound changed"
         )
-    failure_latch_clears = re.findall(
-        r"(?m)^\s{8}setupFailureIsVisible = false$",
-        sources["host_controller"],
-    )
     sign_in_index = sources["host_controller"].index(
         "private func signInAndSetUpVPN()"
     )
@@ -833,15 +836,32 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "private func vpnStatusDidChange()",
         inspect_index,
     )
+    inspection_start_index = sources["host_controller"].index(
+        "private func startInspection(clearsFailure: Bool)"
+    )
+    inspection_start_end = sources["host_controller"].index(
+        "private func cancelInspection()",
+        inspection_start_index,
+    )
     if (
-        len(failure_latch_clears) != 2
-        or "setupFailureIsVisible = false"
+        "setupFailureIsVisible = false"
         not in sources["host_controller"][sign_in_index:sign_in_end]
-        or "setupFailureIsVisible = false"
+        or "startInspection(clearsFailure: true)"
         not in sources["host_controller"][inspect_index:inspect_end]
+        or (
+            "if clearsFailure {\n"
+            "            setupFailureIsVisible = false"
+        )
+        not in sources["host_controller"][
+            inspection_start_index:inspection_start_end
+        ]
     ):
         raise ReceiptError(
             "Mesh Tunnel terminal setup failure has an unreviewed clear path"
+        )
+    if "HTTPCookieStorage()" in sources["host_controller"]:
+        raise ReceiptError(
+            "Mesh Tunnel replaced the configuration-provided cookie store"
         )
     setup_index = sources["host_controller"].index(
         "private func runAutomaticSetup("

@@ -8,18 +8,25 @@ runtime-evidence, identity-removal, host-control, and self-service OIDC
 onboarding changes; Apple accepted its upload and export-compliance declaration
 on 2026-07-26, approved its Beta App Review, and placed it in external testing.
 Build `3` adds disabled-manager recovery and is also approved and in external
-testing. A development-signed physical execution of the exact build-3 source
-completed OIDC and desktop authorization, read the user's network inventory,
-and sent no self-enrollment request. Two development-signed build-4 attempts
-reached the same observed API boundary. The app-group container retained no
-local identity, and a later physical screen showed one enabled, structurally
-valid saved manager with no identity. Those observations do not identify the
-manager state or exact failure stage during the earlier attempts. No attempt
-proved token issuance, node creation, extension start, or a packet path.
-Current successor source prepares the manager before OIDC and offers a
-confirmation-gated replacement only for the exact disabled/no-identity
-recovery fixture. None of these builds is a supported application, proven
-working VPN, production enrollment path, or public App Store release.
+testing. Build `4` adds pre-authorization manager readiness and is approved and
+in external testing. Development-signed physical executions of the build-3 and
+build-4 source completed OIDC and desktop authorization. The server observed
+an attempted network-list request but no self-enrollment request; retained
+evidence did not record the network-list response status or prove an
+authenticated inventory read. The app-group container retained no local
+identity, and a later physical screen showed one enabled, structurally valid
+saved manager with no identity. Those observations do not identify the manager
+state or exact failure stage during the earlier attempts. Local Darwin
+diagnosis subsequently reproduced that the manually constructed cookie store
+used by those sources discarded the server-issued session and CSRF cookies.
+Current unshipped successor source retains Apple's configuration-provided
+private ephemeral store and rejects authorization completion unless the exact
+cookie pair is available for the server URL. It also generation-gates
+asynchronous manager inspection so stale status cannot overwrite an active or
+terminal setup stage. No attempt proved token issuance, node creation,
+extension start, or a packet path. None of these builds is a supported
+application, proven working VPN, production enrollment path, or public App
+Store release.
 
 ## What exists
 
@@ -169,14 +176,17 @@ duplicate starts and latches stop across an in-flight start.
 
 Build `0.1.0 (3)` contains that recovery source, is approved, and is in external
 testing. A development-signed physical execution from the same source completed
-OIDC and desktop authorization and reached the authenticated network-list
-request. The server observed no self-enrollment request, and the app-group
-container retained no current, candidate, or recovery identity.
-Development-signed build 4 validates and reuses an enabled manager without
-rewriting it. Two build-4 attempts completed OIDC and read the single network;
-no self-enrollment or mobile-runtime request was sent. A later screen showed
-one enabled, structurally valid saved manager with no identity. That later state
-does not establish the manager state or exact stop during any earlier attempt.
+OIDC and desktop authorization and attempted the network-list request. The
+server observed no self-enrollment request, and the app-group container
+retained no current, candidate, or recovery identity. Retained evidence did not
+record the network-list response status or prove that the request was
+authenticated.
+TestFlight build `0.1.0 (4)` validates and reuses an enabled manager without
+rewriting it and prepares manager readiness before OIDC. Two development-signed
+build-4 attempts completed OIDC and desktop authorization; no self-enrollment
+or mobile-runtime request was sent. A later screen showed one enabled,
+structurally valid saved manager with no identity. That later state does not
+establish the manager state or exact stop during any earlier attempt.
 
 Current successor source moves all manager preparation before OIDC. With
 exactly one structurally valid same-origin disabled Mesh manager and no current,
@@ -187,7 +197,13 @@ enabled, identity-bearing, or mismatched configurations fail closed and are
 never automatically removed. A cancellation or Apple failure occurs before
 login. After login, the current manager and identity absence are checked again,
 and only that fresh manager is used for handoff. Token issuance remains
-impossible until those checks pass.
+impossible until those checks pass. It preserves the private ephemeral cookie
+store supplied by `URLSessionConfiguration`, requires exactly one session
+cookie and one distinct CSRF cookie for the exact server URL after
+authorization, and cancels or generation-rejects stale configuration
+inspection before it can replace setup-stage text. The UI reports the build and
+last fixed non-secret setup stage without persisting server data, identities,
+cookies, tokens, or raw errors.
 This behavior is source/simulator tested only and does not establish physical
 enrollment or tunnel behavior.
 
@@ -399,14 +415,18 @@ described above. That bounded installation evidence does not establish
 enrollment, extension runtime, or packet behavior.
 Build `0.1.0 (3)` contains the recovery source and is approved for external
 testing. A development-signed run of the exact source proved OIDC completion
-and authenticated network inventory, but the server observed no self-enrollment
-request and the app-group container retained no identity. Two
-development-signed build-4 attempts reached that same observed boundary. A
-later physical screen showed one enabled, structurally valid manager without an
-identity; it does not prove the manager state or exact stop during the earlier
-attempts. Current successor source stages manager readiness before login and
-uses the bounded confirmation-gated replacement described above; it has not yet
-proved enrollment, extension runtime, or packet behavior.
+and desktop authorization, but the server observed no self-enrollment request
+and the app-group container retained no identity. Retained evidence did not
+record the attempted network-list response status or prove an authenticated
+inventory read. TestFlight build `0.1.0 (4)` contains the manager-readiness
+successor; two development-signed attempts reached the same bounded
+pre-enrollment result. A later physical screen showed one enabled,
+structurally valid manager without an identity; it does not prove the manager
+state or exact stop during the earlier attempts. Current unshipped successor
+source fixes the locally reproduced private ephemeral cookie-store loss and
+generation-gates status inspection in addition to the bounded manager flow
+described above. It has not yet proved enrollment, extension runtime, or packet
+behavior.
 
 ## Deliberately unresolved
 

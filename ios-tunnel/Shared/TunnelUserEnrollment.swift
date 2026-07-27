@@ -3,11 +3,30 @@ import Foundation
 public enum TunnelUserEnrollmentError: Error, Equatable {
   case invalidDocument
   case invalidField(String)
+  case sessionStorageUnavailable
   case authorizationDenied
   case authorizationExpired
   case authorizationCancelled
   case authorizationUnavailable
   case networkSelectionRequired
+}
+
+public enum TunnelUserEnrollmentSessionFactory {
+  public static func ephemeralConfiguration() throws
+    -> URLSessionConfiguration
+  {
+    let configuration = URLSessionConfiguration.ephemeral
+    guard configuration.httpCookieStorage != nil else {
+      throw TunnelUserEnrollmentError.sessionStorageUnavailable
+    }
+    configuration.httpCookieAcceptPolicy = .always
+    configuration.httpShouldSetCookies = true
+    configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+    configuration.urlCache = nil
+    configuration.timeoutIntervalForRequest = 30
+    configuration.timeoutIntervalForResource = 60
+    return configuration
+  }
 }
 
 public struct TunnelUserAuthorizationStartResponse:
