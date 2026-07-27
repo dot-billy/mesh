@@ -726,7 +726,7 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "try await coordinator.start()"
     )
     provider_completion_index = sources["provider"].index(
-        "completionHandler(nil)",
+        "complete(nil)",
         provider_start_index,
     )
     if not (
@@ -810,6 +810,20 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "configuration.httpCookieStorage",
         "cookieStorage.cookies(for: url)",
         "Last setup:",
+        "waitForProviderStart(",
+        "fetchLastDisconnectError",
+        "providerStartObservationAttempts",
+        "providerStartObservationDelay",
+        "TunnelProviderStartObservation()",
+        "TunnelProviderObservationBudget()",
+        "TunnelProviderStartProof.accepts(",
+        "TunnelProviderFailureClassifier.classify(",
+        "TunnelProviderFailureContract.requestIDKey",
+        "TunnelOneShotResult<Error?>",
+        "providerStartObservationInProgress",
+        "requireDisconnectedProvider(",
+        "providerConnectedWithoutIdentity",
+        "providerStartFailed(String)",
         "if completed {",
     ):
         if required not in sources["host_controller"]:
@@ -822,6 +836,113 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         raise ReceiptError(
             "Mesh Tunnel post-authorization manager retry bound changed"
         )
+    if (
+        "private static let providerStartObservationAttempts = 180"
+        not in sources["host_controller"]
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel provider-start observation bound changed"
+        )
+    handoff_index = sources["host_controller"].index(
+        "private func handOffEnrollment("
+    )
+    handoff_end = sources["host_controller"].index(
+        "private func waitForProviderStart(",
+        handoff_index,
+    )
+    handoff_source = sources["host_controller"][handoff_index:handoff_end]
+    if not (
+        handoff_source.index("session.startTunnel(options:")
+        < handoff_source.index("try await waitForProviderStart(")
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel claims handoff before observing provider startup"
+        )
+    observation_start = sources["host_controller"].index(
+        "private func waitForProviderStart("
+    )
+    observation_end = sources["host_controller"].index(
+        "private func lastDisconnectCode(",
+        observation_start,
+    )
+    observation_source = sources["host_controller"][
+        observation_start:observation_end
+    ]
+    disconnect_end = sources["host_controller"].index(
+        "private func requireDisconnectedProvider(",
+        observation_end,
+    )
+    disconnect_source = sources["host_controller"][
+        observation_end:disconnect_end
+    ]
+    if (
+        "case .connected, .reasserting:" in observation_source
+        or "let clock = ContinuousClock()" not in observation_source
+        or "observationStartedAt.duration(to: clock.now)"
+        not in observation_source
+        or "min(Self.providerStartObservationDelay, remaining)"
+        not in observation_source
+        or "sameOriginIdentity: current?.controlPlaneOrigin == origin"
+        not in handoff_source
+        or "connectionDateChanged: connectedAt != previousConnectedAt"
+        not in handoff_source
+        or "Self.disconnectErrorFetchTimeout" not in disconnect_source
+        or "resolver.resolve(nil)" not in disconnect_source
+        or "NSLocalizedDescriptionKey" in disconnect_source
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel provider success is not identity-bound connected state"
+        )
+    for required in (
+        "correlateEnrollmentFailure(",
+        "TunnelProviderFailureContract.schemaKey",
+        "TunnelProviderFailureContract.codeKey",
+        "TunnelProviderFailureContract.requestIDKey",
+    ):
+        if required not in sources["provider"]:
+            raise ReceiptError(
+                "Mesh Tunnel provider failure is not request-correlated"
+            )
+    already_running = sources["provider"].split(
+        "case .alreadyRunning:", 1
+    )[1].split("case .alreadyStarting:", 1)[0]
+    if (
+        "if enrollmentRequestID != nil" not in already_running
+        or 'complete(Self.failure("enrollment-request-rejected"))'
+        not in already_running
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel running provider can discard enrollment"
+        )
+    provider_codes = set(
+        re.findall(
+            r'(?:Self\.failure\(\s*|code:\s*)"([a-z0-9-]+)"',
+            sources["provider"],
+        )
+    )
+    allowlist_source = sources["host_controller"].split(
+        "private static let providerFailureCodes: Set<String> = [",
+        1,
+    )[1].split("]", 1)[0]
+    if set(re.findall(r'"([a-z0-9-]+)"', allowlist_source)) != provider_codes:
+        raise ReceiptError(
+            "Mesh Tunnel provider failure allowlist does not match provider"
+        )
+    for required in (
+        "TunnelProviderStartObservation",
+        "TunnelProviderObservedStatus",
+        "case .connecting, .reasserting:",
+        "return .connected",
+        "return observedProgress ? .disconnectedAfterProgress : .pending",
+        "TunnelProviderObservationBudget",
+        "TunnelProviderStartProof",
+        "TunnelProviderFailureClassifier",
+        "TunnelOneShotResult",
+    ):
+        if required not in sources["contract"]:
+            raise ReceiptError(
+                "Mesh Tunnel provider observation contract is incomplete"
+            )
     sign_in_index = sources["host_controller"].index(
         "private func signInAndSetUpVPN()"
     )

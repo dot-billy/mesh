@@ -55,17 +55,30 @@ final class PacketTunnelProvider:
       }
       return
     }
+    let enrollmentRequestID = Self.enrollmentRequestID(options)
+    let complete: (Error?) -> Void = { error in
+      completionHandler(
+        Self.correlateEnrollmentFailure(
+          error,
+          requestID: enrollmentRequestID
+        )
+      )
+    }
     switch lifecycleGate.beginStart() {
     case .begin:
       break
     case .alreadyRunning:
-      completionHandler(nil)
+      if enrollmentRequestID != nil {
+        complete(Self.failure("enrollment-request-rejected"))
+      } else {
+        complete(nil)
+      }
       return
     case .alreadyStarting:
-      completionHandler(Self.failure("start-already-in-progress"))
+      complete(Self.failure("start-already-in-progress"))
       return
     case .stopped:
-      completionHandler(Self.failure("start-cancelled"))
+      complete(Self.failure("start-cancelled"))
       return
     }
     TunnelLog.record(.startRequested)
@@ -82,27 +95,27 @@ final class PacketTunnelProvider:
         )
       } catch let failure as TunnelStartupFailure {
         if self.lifecycleGate.isStopped() {
-          self.completeCancelledStart(completionHandler)
+          self.completeCancelledStart(complete)
           return
         }
         self.errorCode = failure.code
         self.state = .extensionError
         TunnelLog.record(failure.event)
-        completionHandler(Self.failure(failure.code))
+        complete(Self.failure(failure.code))
         return
       } catch {
         if self.lifecycleGate.isStopped() {
-          self.completeCancelledStart(completionHandler)
+          self.completeCancelledStart(complete)
           return
         }
         self.errorCode = "configuration-invalid"
         self.state = .extensionError
         TunnelLog.record(.configurationInvalid)
-        completionHandler(Self.failure("configuration-invalid"))
+        complete(Self.failure("configuration-invalid"))
         return
       }
       guard self.lifecycleGate.mayContinueStart() else {
-        self.completeCancelledStart(completionHandler)
+        self.completeCancelledStart(complete)
         return
       }
       let reporter: TunnelMobileRuntimeReporter
@@ -123,30 +136,30 @@ final class PacketTunnelProvider:
         self.runtimeReporter = reporter
       } catch let failure as TunnelStartupFailure {
         if self.lifecycleGate.isStopped() {
-          self.completeCancelledStart(completionHandler)
+          self.completeCancelledStart(complete)
           return
         }
         self.errorCode = failure.code
         self.state = failure.state
         TunnelLog.record(failure.event)
-        completionHandler(Self.failure(failure.code))
+        complete(Self.failure(failure.code))
         return
       } catch {
         if self.lifecycleGate.isStopped() {
-          self.completeCancelledStart(completionHandler)
+          self.completeCancelledStart(complete)
           return
         }
         self.errorCode = "mobile-runtime-evidence-failed"
         self.state = .quarantined
         TunnelLog.record(.lifecycleRefreshFailed)
-        completionHandler(
+        complete(
           Self.failure("mobile-runtime-evidence-failed")
         )
         return
       }
       guard self.lifecycleGate.mayContinueStart() else {
         self.runtimeReporter = nil
-        self.completeCancelledStart(completionHandler)
+        self.completeCancelledStart(complete)
         return
       }
       do {
@@ -186,7 +199,7 @@ final class PacketTunnelProvider:
               self.runtime = nil
             }
             self.runtimeReporter = nil
-            self.completeCancelledStart(completionHandler)
+            self.completeCancelledStart(complete)
             return
           }
           self.startPathMonitoring(coordinator: coordinator)
@@ -194,7 +207,7 @@ final class PacketTunnelProvider:
             coordinator: coordinator,
             reporter: reporter
           )
-          completionHandler(nil)
+          complete(nil)
           self.startPacketLoops(
             coordinator: coordinator,
             packetFlow: packetFlow
@@ -204,35 +217,35 @@ final class PacketTunnelProvider:
           self.runtime = nil
           self.runtimeReporter = nil
           if self.lifecycleGate.isStopped() {
-            self.completeCancelledStart(completionHandler)
+            self.completeCancelledStart(complete)
             return
           }
           self.errorCode = failure.code
           self.state = failure.state
           TunnelLog.record(failure.event)
-          completionHandler(Self.failure(failure.code))
+          complete(Self.failure(failure.code))
         } catch {
           await coordinator.stop()
           self.runtime = nil
           self.runtimeReporter = nil
           if self.lifecycleGate.isStopped() {
-            self.completeCancelledStart(completionHandler)
+            self.completeCancelledStart(complete)
             return
           }
           self.errorCode = "engine-unavailable"
           self.state = .extensionError
           TunnelLog.record(.engineUnavailable)
-          completionHandler(Self.failure("engine-unavailable"))
+          complete(Self.failure("engine-unavailable"))
         }
       } catch {
         if self.lifecycleGate.isStopped() {
-          self.completeCancelledStart(completionHandler)
+          self.completeCancelledStart(complete)
           return
         }
         self.errorCode = "configuration-invalid"
         self.state = .extensionError
         TunnelLog.record(.configurationInvalid)
-        completionHandler(Self.failure("configuration-invalid"))
+        complete(Self.failure("configuration-invalid"))
       }
     }
   }
@@ -851,13 +864,57 @@ final class PacketTunnelProvider:
     )
   }
 
-  private static func failure(_ code: String) -> NSError {
-    NSError(
-      domain: "io.rw0.mesh.tunnel.mobile",
+  private static func enrollmentRequestID(
+    _ options: [String: NSObject]?
+  ) -> String? {
+    guard
+      let options,
+      options.count == 1,
+      let data = options[TunnelEnrollmentRequest.startOptionKey] as? Data,
+      let request = try? TunnelEnrollmentRequest.decodeExact(data)
+    else {
+      return nil
+    }
+    return request.requestID
+  }
+
+  private static func correlateEnrollmentFailure(
+    _ error: Error?,
+    requestID: String?
+  ) -> Error? {
+    guard let error, let requestID else {
+      return error
+    }
+    let value = error as NSError
+    guard
+      value.domain == TunnelProviderFailureContract.domain,
+      value.userInfo[TunnelProviderFailureContract.schemaKey] as? String
+        == TunnelProviderFailureContract.schema,
+      let code =
+        value.userInfo[TunnelProviderFailureContract.codeKey] as? String
+    else {
+      return error
+    }
+    return failure(code, requestID: requestID)
+  }
+
+  private static func failure(
+    _ code: String,
+    requestID: String? = nil
+  ) -> NSError {
+    var userInfo: [String: Any] = [
+      NSLocalizedDescriptionKey: code,
+      TunnelProviderFailureContract.schemaKey:
+        TunnelProviderFailureContract.schema,
+      TunnelProviderFailureContract.codeKey: code,
+    ]
+    if let requestID {
+      userInfo[TunnelProviderFailureContract.requestIDKey] = requestID
+    }
+    return NSError(
+      domain: TunnelProviderFailureContract.domain,
       code: 1,
-      userInfo: [
-        NSLocalizedDescriptionKey: code
-      ]
+      userInfo: userInfo
     )
   }
 }

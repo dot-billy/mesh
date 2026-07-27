@@ -650,6 +650,20 @@ class AppleProjectTest(unittest.TestCase):
             "requireCurrentInspection(",
             "startInspection(clearsFailure: false)",
             "Last setup:",
+            "waitForProviderStart(",
+            "fetchLastDisconnectError",
+            "providerStartObservationAttempts",
+            "providerStartObservationDelay",
+            "TunnelProviderStartObservation()",
+            "TunnelProviderObservationBudget()",
+            "TunnelProviderStartProof.accepts(",
+            "TunnelProviderFailureClassifier.classify(",
+            "TunnelProviderFailureContract.requestIDKey",
+            "TunnelOneShotResult<Error?>",
+            "providerStartObservationInProgress",
+            "requireDisconnectedProvider(",
+            "providerConnectedWithoutIdentity",
+            "providerStartFailed(String)",
             "if completed {",
         ):
             self.assertIn(required, host)
@@ -672,6 +686,91 @@ class AppleProjectTest(unittest.TestCase):
             "Duration.milliseconds(500)",
             host,
         )
+        self.assertIn(
+            "private static let providerStartObservationAttempts = 180",
+            host,
+        )
+        handoff = host.split(
+            "private func handOffEnrollment(", 1
+        )[1].split("private func waitForProviderStart(", 1)[0]
+        self.assertLess(
+            handoff.index("session.startTunnel(options:"),
+            handoff.index("try await waitForProviderStart("),
+        )
+        observation = host.split(
+            "private func waitForProviderStart(", 1
+        )[1].split("private func lastDisconnectCode(", 1)[0]
+        self.assertNotIn("case .connected, .reasserting:", observation)
+        self.assertIn("let clock = ContinuousClock()", observation)
+        self.assertIn(
+            "observationStartedAt.duration(to: clock.now)",
+            observation,
+        )
+        self.assertIn(
+            "min(Self.providerStartObservationDelay, remaining)",
+            observation,
+        )
+        disconnect = host.split(
+            "private func lastDisconnectCode(", 1
+        )[1].split("private func requireDisconnectedProvider(", 1)[0]
+        self.assertIn("Self.disconnectErrorFetchTimeout", disconnect)
+        self.assertIn("resolver.resolve(nil)", disconnect)
+        self.assertNotIn("NSLocalizedDescriptionKey", disconnect)
+        self.assertIn(
+            "sameOriginIdentity: current?.controlPlaneOrigin == origin",
+            handoff,
+        )
+        self.assertIn(
+            "connectionDateChanged: connectedAt != previousConnectedAt",
+            handoff,
+        )
+        provider = (
+            IOS_TUNNEL / "PacketTunnel" / "PacketTunnelProvider.swift"
+        ).read_text()
+        for required in (
+            "correlateEnrollmentFailure(",
+            "TunnelProviderFailureContract.schemaKey",
+            "TunnelProviderFailureContract.codeKey",
+            "TunnelProviderFailureContract.requestIDKey",
+        ):
+            self.assertIn(required, provider)
+        already_running = provider.split(
+            "case .alreadyRunning:", 1
+        )[1].split("case .alreadyStarting:", 1)[0]
+        self.assertIn("if enrollmentRequestID != nil", already_running)
+        self.assertIn(
+            'complete(Self.failure("enrollment-request-rejected"))',
+            already_running,
+        )
+        provider_codes = set(
+            re.findall(
+                r'(?:Self\.failure\(\s*|code:\s*)"([a-z0-9-]+)"',
+                provider,
+            )
+        )
+        allowlist_source = host.split(
+            "private static let providerFailureCodes: Set<String> = [",
+            1,
+        )[1].split("]", 1)[0]
+        self.assertEqual(
+            set(re.findall(r'"([a-z0-9-]+)"', allowlist_source)),
+            provider_codes,
+        )
+        contract = (
+            IOS_TUNNEL / "Shared" / "TunnelContract.swift"
+        ).read_text()
+        for required in (
+            "TunnelProviderStartObservation",
+            "TunnelProviderObservedStatus",
+            "case .connecting, .reasserting:",
+            "return .connected",
+            "return observedProgress ? .disconnectedAfterProgress : .pending",
+            "TunnelProviderObservationBudget",
+            "TunnelProviderStartProof",
+            "TunnelProviderFailureClassifier",
+            "TunnelOneShotResult",
+        ):
+            self.assertIn(required, contract)
         sign_in = host.split(
             "private func signInAndSetUpVPN()", 1
         )[1].split("private func runAutomaticSetup(", 1)[0]

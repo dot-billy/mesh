@@ -8,6 +8,32 @@ final class MeshTunnelViewController: UIViewController {
     private static let postAuthorizationManagerReadinessAttempts = 6
     private static let postAuthorizationManagerReadinessDelay =
         Duration.milliseconds(500)
+    private static let providerStartObservationAttempts = 180
+    private static let providerStartObservationDelay =
+        Duration.milliseconds(500)
+    private static let disconnectErrorFetchTimeout = 2.0
+    private static let providerFailureCodes: Set<String> = [
+        "agent-authorization-rejected",
+        "configuration-container-unavailable",
+        "configuration-invalid",
+        "configuration-unavailable",
+        "engine-unavailable",
+        "enrollment-failed",
+        "enrollment-request-rejected",
+        "identity-removal-context-mismatch",
+        "identity-removal-failed",
+        "identity-removal-request-invalid",
+        "identity-removed",
+        "lifecycle-refresh-failed",
+        "mobile-runtime-evidence-failed",
+        "mobile-runtime-evidence-invalid",
+        "mobile-runtime-evidence-stale",
+        "mobile-runtime-refresh-required",
+        "network-rebind-failed",
+        "packet-flow-failed",
+        "start-already-in-progress",
+        "start-cancelled",
+    ]
     private static let lastSetupStageKey =
         "mesh.selfEnrollment.lastSetupStage"
     private static let lastSetupResultKey =
@@ -33,6 +59,7 @@ final class MeshTunnelViewController: UIViewController {
     private var inspectionGeneration = 0
     private var activeSetupStage = TunnelAutomaticSetupStage.starting
     private var backgroundCancelledSetup = false
+    private var providerStartObservationInProgress = false
     private var enrollmentClient: TunnelUserEnrollmentClient?
 
     override func viewDidLoad() {
@@ -311,6 +338,7 @@ final class MeshTunnelViewController: UIViewController {
                 )
             try Task.checkCancellation()
             preparedManager = currentManager
+            try requireDisconnectedProvider(currentManager)
             statusLabel.text = (
                 "Sign-in and VPN checks passed. Requesting a one-time enrollment "
                     + "for \(network.name)."
@@ -325,7 +353,7 @@ final class MeshTunnelViewController: UIViewController {
             try Task.checkCancellation()
             stage = .handingOffEnrollment
             recordSetup(stage: stage, result: "running")
-            try handOffEnrollment(
+            try await handOffEnrollment(
                 manager: currentManager,
                 origin: origin,
                 token: enrollment.enrollmentToken
@@ -334,12 +362,12 @@ final class MeshTunnelViewController: UIViewController {
             stopButton.isEnabled = true
             removeIdentityButton.isEnabled = true
             statusLabel.text = (
-                "Signed in and handed enrollment to the Packet Tunnel "
-                    + "extension. The one-time token was never displayed or "
-                    + "saved by the app. Runtime status must still be verified "
-                    + "before treating the tunnel as connected."
+                "Signed in and installed the local tunnel identity. Apple reports "
+                    + "the Packet Tunnel connected. The one-time token was never "
+                    + "displayed or saved by the app. Runtime and packet status "
+                    + "still require inspection."
             )
-            recordSetup(stage: stage, result: "handoff-requested")
+            recordSetup(stage: stage, result: "provider-connected")
             return true
         } catch {
             let result: String
@@ -347,6 +375,18 @@ final class MeshTunnelViewController: UIViewController {
                 result = "cancelled-background"
             } else if error is CancellationError {
                 result = "cancelled"
+            } else if case let TunnelHostError.providerStartFailed(code) =
+                error
+            {
+                result = "failed-\(code)"
+            } else if case TunnelHostError.providerStartTimedOut = error {
+                result = "failed-provider-start-timeout"
+            } else if case TunnelHostError.providerNotReady = error {
+                result = "failed-provider-not-ready"
+            } else if case TunnelHostError.providerConnectedWithoutIdentity =
+                error
+            {
+                result = "failed-provider-connected-without-identity"
             } else {
                 result = "failed"
             }
@@ -467,7 +507,8 @@ final class MeshTunnelViewController: UIViewController {
         manager: NETunnelProviderManager,
         origin: String,
         token: String
-    ) throws {
+    ) async throws {
+        try requireDisconnectedProvider(manager)
         let request = try TunnelEnrollmentRequest(
             requestID: UUID().uuidString.lowercased(),
             serverOrigin: origin,
@@ -479,9 +520,144 @@ final class MeshTunnelViewController: UIViewController {
         else {
             throw TunnelHostError.providerSessionUnavailable
         }
+        let previousConnectedAt = session.connectedDate
+        providerStartObservationInProgress = true
+        defer {
+            providerStartObservationInProgress = false
+        }
         try session.startTunnel(options: [
             TunnelEnrollmentRequest.startOptionKey: data as NSData,
         ])
+        try await waitForProviderStart(
+            session,
+            requestID: request.requestID
+        )
+        let current = try loadLocalConfiguration()
+        guard
+            let connectedAt = session.connectedDate,
+            TunnelProviderStartProof.accepts(
+                finalStatus: providerObservedStatus(session.status),
+                connectionDateChanged: connectedAt != previousConnectedAt,
+                sameOriginIdentity: current?.controlPlaneOrigin == origin
+            )
+        else {
+            throw TunnelHostError.providerConnectedWithoutIdentity
+        }
+    }
+
+    private func waitForProviderStart(
+        _ session: NETunnelProviderSession,
+        requestID: String
+    ) async throws {
+        var observation = TunnelProviderStartObservation()
+        let budget = TunnelProviderObservationBudget()
+        let clock = ContinuousClock()
+        let observationStartedAt = clock.now
+        for _ in 1...Self.providerStartObservationAttempts {
+            try Task.checkCancellation()
+            guard budget.remaining(
+                after: observationStartedAt.duration(to: clock.now)
+            ) != nil else {
+                throw TunnelHostError.providerStartTimedOut
+            }
+            let status = providerObservedStatus(session.status)
+            switch observation.observe(status) {
+            case .connected:
+                return
+            case .disconnectedAfterProgress:
+                try await Task.sleep(for: .milliseconds(250))
+                throw TunnelHostError.providerStartFailed(
+                    await lastDisconnectCode(
+                        session,
+                        requestID: requestID
+                    ) ?? "provider-start-failed"
+                )
+            case .invalid:
+                throw TunnelHostError.providerStartFailed(
+                    await lastDisconnectCode(
+                        session,
+                        requestID: requestID
+                    ) ?? "apple-vpn-disconnected"
+                )
+            case .pending:
+                break
+            }
+            guard let remaining = budget.remaining(
+                after: observationStartedAt.duration(to: clock.now)
+            ) else {
+                throw TunnelHostError.providerStartTimedOut
+            }
+            try await Task.sleep(
+                for: min(Self.providerStartObservationDelay, remaining)
+            )
+        }
+        throw TunnelHostError.providerStartTimedOut
+    }
+
+    private func providerObservedStatus(
+        _ status: NEVPNStatus
+    ) -> TunnelProviderObservedStatus {
+        switch status {
+        case .disconnected:
+            return .disconnected
+        case .connecting:
+            return .connecting
+        case .connected:
+            return .connected
+        case .reasserting:
+            return .reasserting
+        case .disconnecting:
+            return .disconnecting
+        case .invalid:
+            return .invalid
+        @unknown default:
+            return .invalid
+        }
+    }
+
+    private func lastDisconnectCode(
+        _ connection: NEVPNConnection,
+        requestID: String
+    ) async -> String? {
+        let error: Error? = await withCheckedContinuation { continuation in
+            let resolver = TunnelOneShotResult<Error?> { error in
+                continuation.resume(returning: error)
+            }
+            connection.fetchLastDisconnectError { error in
+                resolver.resolve(error)
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(
+                deadline: .now() + Self.disconnectErrorFetchTimeout
+            ) {
+                resolver.resolve(nil)
+            }
+        }
+        guard let error else {
+            return nil
+        }
+        let value = error as NSError
+        return TunnelProviderFailureClassifier.classify(
+            domain: value.domain,
+            schema: value.userInfo[
+                TunnelProviderFailureContract.schemaKey
+            ] as? String,
+            code: value.userInfo[
+                TunnelProviderFailureContract.codeKey
+            ] as? String,
+            requestID: value.userInfo[
+                TunnelProviderFailureContract.requestIDKey
+            ] as? String,
+            expectedRequestID: requestID,
+            allowedCodes: Self.providerFailureCodes
+        )
+    }
+
+    private func requireDisconnectedProvider(
+        _ manager: NETunnelProviderManager
+    ) throws {
+        guard manager.connection.status == .disconnected else {
+            throw TunnelHostError.providerNotReady
+        }
     }
 
     @objc private func inspectConfiguration() {
@@ -734,6 +910,13 @@ final class MeshTunnelViewController: UIViewController {
         authorizationSession = nil
         enrollmentClient?.invalidate()
         enrollmentClient = nil
+        if providerStartObservationInProgress {
+            recordSetup(
+                stage: activeSetupStage,
+                result: "provider-observation-backgrounded"
+            )
+            return
+        }
         if setupTask != nil {
             backgroundCancelledSetup = true
             recordSetup(
@@ -1091,6 +1274,37 @@ final class MeshTunnelViewController: UIViewController {
                 "Sign-in completed, but Mesh Tunnel could not retain the "
                     + "private authenticated app session. No enrollment token "
                     + "was requested."
+            )
+        case TunnelHostError.providerStartFailed(let code):
+            return (
+                "The Packet Tunnel stopped during enrollment at fixed stage "
+                    + "\(code). The app did not retain the one-time token. "
+                    + "Inspect the installed configuration before retrying."
+            )
+        case TunnelHostError.providerStartTimedOut:
+            return (
+                "The Packet Tunnel did not reach connected or a fixed failure "
+                    + "stage within 90 seconds. Enrollment may still be running; "
+                    + "inspect the installed configuration before retrying."
+            )
+        case TunnelHostError.providerNotReady:
+            if stage == .handingOffEnrollment {
+                return (
+                    "Mesh issued a one-time enrollment, but the Apple VPN "
+                        + "connection changed before dispatch. The app did not "
+                        + "retain the token and did not start another provider."
+                )
+            }
+            return (
+                "The Apple VPN connection changed before enrollment could "
+                    + "start. No new enrollment was requested while another "
+                    + "provider transition may be active."
+            )
+        case TunnelHostError.providerConnectedWithoutIdentity:
+            return (
+                "Apple reported the Packet Tunnel connected, but Mesh could "
+                    + "not verify the new local identity for this server. No "
+                    + "working tunnel is claimed."
             )
         case TunnelHostError.httpStatus(let status):
             return stage.httpFailureText(status: status)
@@ -1686,6 +1900,10 @@ private enum TunnelHostError: Error {
     case staleManagerReplacementCancelled
     case managerNotReady
     case authenticationCookiesUnavailable
+    case providerStartFailed(String)
+    case providerStartTimedOut
+    case providerNotReady
+    case providerConnectedWithoutIdentity
     case invalidServerResponse
     case httpStatus(Int)
 }

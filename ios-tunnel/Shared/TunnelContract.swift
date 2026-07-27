@@ -29,6 +29,123 @@ public enum TunnelIdentityScope {
   public static let primaryID = "primary"
 }
 
+public enum TunnelProviderFailureContract {
+  public static let domain = "io.rw0.mesh.tunnel.mobile"
+  public static let schema = "mesh-ios-provider-failure-v1"
+  public static let schemaKey = "MeshProviderFailureSchema"
+  public static let codeKey = "MeshProviderFailureCode"
+  public static let requestIDKey = "MeshEnrollmentRequestID"
+}
+
+public enum TunnelProviderObservedStatus: Equatable, Sendable {
+  case disconnected
+  case connecting
+  case connected
+  case reasserting
+  case disconnecting
+  case invalid
+}
+
+public enum TunnelProviderStartDecision: Equatable, Sendable {
+  case pending
+  case connected
+  case disconnectedAfterProgress
+  case invalid
+}
+
+public struct TunnelProviderStartObservation: Sendable {
+  private var observedProgress = false
+
+  public init() {}
+
+  public mutating func observe(
+    _ status: TunnelProviderObservedStatus
+  ) -> TunnelProviderStartDecision {
+    switch status {
+    case .connected:
+      return .connected
+    case .connecting, .reasserting:
+      observedProgress = true
+      return .pending
+    case .disconnected:
+      return observedProgress ? .disconnectedAfterProgress : .pending
+    case .disconnecting, .invalid:
+      return .invalid
+    }
+  }
+}
+
+public struct TunnelProviderObservationBudget: Sendable {
+  public static let limit = Duration.seconds(90)
+
+  public init() {}
+
+  public func remaining(after elapsed: Duration) -> Duration? {
+    guard elapsed >= .zero, elapsed < Self.limit else {
+      return nil
+    }
+    return Self.limit - elapsed
+  }
+}
+
+public enum TunnelProviderStartProof {
+  public static func accepts(
+    finalStatus: TunnelProviderObservedStatus,
+    connectionDateChanged: Bool,
+    sameOriginIdentity: Bool
+  ) -> Bool {
+    finalStatus == .connected
+      && connectionDateChanged
+      && sameOriginIdentity
+  }
+}
+
+public enum TunnelProviderFailureClassifier {
+  public static let genericCode = "apple-vpn-disconnected"
+
+  public static func classify(
+    domain: String,
+    schema: String?,
+    code: String?,
+    requestID: String?,
+    expectedRequestID: String,
+    allowedCodes: Set<String>
+  ) -> String {
+    guard
+      domain == TunnelProviderFailureContract.domain,
+      schema == TunnelProviderFailureContract.schema,
+      requestID == expectedRequestID,
+      let code,
+      allowedCodes.contains(code)
+    else {
+      return genericCode
+    }
+    return code
+  }
+}
+
+public final class TunnelOneShotResult<Value>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var handler: ((Value) -> Void)?
+
+  public init(_ handler: @escaping (Value) -> Void) {
+    self.handler = handler
+  }
+
+  @discardableResult
+  public func resolve(_ value: Value) -> Bool {
+    lock.lock()
+    let handler = handler
+    self.handler = nil
+    lock.unlock()
+    guard let handler else {
+      return false
+    }
+    handler(value)
+    return true
+  }
+}
+
 public struct TunnelEnrollmentRequest: Codable, Equatable, Sendable {
   public static let schema = "mesh-ios-tunnel-enrollment-v1"
   public static let startOptionKey = "meshEnrollmentRequest"

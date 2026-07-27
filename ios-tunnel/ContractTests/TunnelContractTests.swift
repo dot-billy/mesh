@@ -1354,6 +1354,145 @@ func providerLifecycleGateAllowsRetryAfterStartFailure() {
 }
 
 @Test
+func providerStartObservationRequiresConnected() {
+  var observation = TunnelProviderStartObservation()
+  #expect(observation.observe(.disconnected) == .pending)
+  #expect(observation.observe(.connecting) == .pending)
+  #expect(observation.observe(.reasserting) == .pending)
+  #expect(observation.observe(.connected) == .connected)
+}
+
+@Test
+func providerStartObservationAttributesOnlyPostProgressDisconnect() {
+  var neverStarted = TunnelProviderStartObservation()
+  #expect(neverStarted.observe(.disconnected) == .pending)
+
+  var stopped = TunnelProviderStartObservation()
+  #expect(stopped.observe(.connecting) == .pending)
+  #expect(
+    stopped.observe(.disconnected) == .disconnectedAfterProgress
+  )
+
+  var invalid = TunnelProviderStartObservation()
+  #expect(invalid.observe(.reasserting) == .pending)
+  #expect(invalid.observe(.disconnecting) == .invalid)
+  #expect(invalid.observe(.invalid) == .invalid)
+}
+
+@Test
+func providerObservationBudgetExpiresAcrossSuspension() {
+  let budget = TunnelProviderObservationBudget()
+  #expect(budget.remaining(after: .seconds(89)) != nil)
+  #expect(budget.remaining(after: .seconds(90)) == nil)
+  #expect(budget.remaining(after: .seconds(600)) == nil)
+}
+
+@Test
+func providerStartProofRejectsConnectedThenDisconnectedRace() {
+  #expect(
+    TunnelProviderStartProof.accepts(
+      finalStatus: .connected,
+      connectionDateChanged: true,
+      sameOriginIdentity: true
+    )
+  )
+  #expect(
+    !TunnelProviderStartProof.accepts(
+      finalStatus: .disconnected,
+      connectionDateChanged: true,
+      sameOriginIdentity: true
+    )
+  )
+  #expect(
+    !TunnelProviderStartProof.accepts(
+      finalStatus: .connected,
+      connectionDateChanged: false,
+      sameOriginIdentity: true
+    )
+  )
+  #expect(
+    !TunnelProviderStartProof.accepts(
+      finalStatus: .connected,
+      connectionDateChanged: true,
+      sameOriginIdentity: false
+    )
+  )
+}
+
+@Test
+func providerFailureClassificationRequiresExactRequestAndAllowlist() {
+  let requestID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+  let allowed = Set(["enrollment-failed"])
+  let exact = TunnelProviderFailureClassifier.classify(
+    domain: TunnelProviderFailureContract.domain,
+    schema: TunnelProviderFailureContract.schema,
+    code: "enrollment-failed",
+    requestID: requestID,
+    expectedRequestID: requestID,
+    allowedCodes: allowed
+  )
+  #expect(exact == "enrollment-failed")
+  #expect(exact != requestID)
+
+  for result in [
+    TunnelProviderFailureClassifier.classify(
+      domain: "arbitrary",
+      schema: TunnelProviderFailureContract.schema,
+      code: "enrollment-failed",
+      requestID: requestID,
+      expectedRequestID: requestID,
+      allowedCodes: allowed
+    ),
+    TunnelProviderFailureClassifier.classify(
+      domain: TunnelProviderFailureContract.domain,
+      schema: "wrong",
+      code: "enrollment-failed",
+      requestID: requestID,
+      expectedRequestID: requestID,
+      allowedCodes: allowed
+    ),
+    TunnelProviderFailureClassifier.classify(
+      domain: TunnelProviderFailureContract.domain,
+      schema: TunnelProviderFailureContract.schema,
+      code: "raw-provider-text",
+      requestID: requestID,
+      expectedRequestID: requestID,
+      allowedCodes: allowed
+    ),
+    TunnelProviderFailureClassifier.classify(
+      domain: TunnelProviderFailureContract.domain,
+      schema: TunnelProviderFailureContract.schema,
+      code: "enrollment-failed",
+      requestID: "ffffffff-1111-2222-3333-444444444444",
+      expectedRequestID: requestID,
+      allowedCodes: allowed
+    ),
+  ] {
+    #expect(result == TunnelProviderFailureClassifier.genericCode)
+    #expect(result != requestID)
+  }
+}
+
+@Test
+func disconnectCallbackAndTimeoutResolveExactlyOnce() {
+  var callbackFirst: [String] = []
+  let callbackGate = TunnelOneShotResult<String> {
+    callbackFirst.append($0)
+  }
+  #expect(callbackGate.resolve("callback"))
+  #expect(!callbackGate.resolve("timeout"))
+  #expect(callbackFirst == ["callback"])
+
+  var timeoutFirst: [String] = []
+  let timeoutGate = TunnelOneShotResult<String> {
+    timeoutFirst.append($0)
+  }
+  #expect(timeoutGate.resolve("timeout"))
+  #expect(!timeoutGate.resolve("callback"))
+  #expect(timeoutFirst == ["timeout"])
+}
+
+@Test
 func configurationSlotsActivateMonotonicallyAndPreserveRecovery() throws {
   let root = FileManager.default.temporaryDirectory.appending(
     path: "mesh-tunnel-store-\(UUID().uuidString)",

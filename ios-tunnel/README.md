@@ -7,24 +7,22 @@ TestFlight. Version `0.1.0` build `2` contains the framework-v5 lifecycle,
 runtime-evidence, identity-removal, host-control, and self-service OIDC
 onboarding changes; Apple accepted its upload and export-compliance declaration
 on 2026-07-26, approved its Beta App Review, and placed it in external testing.
-Build `3` adds disabled-manager recovery and is also approved and in external
-testing. Build `4` adds pre-authorization manager readiness and is approved and
-in external testing. Development-signed physical executions of the build-3 and
-build-4 source completed OIDC and desktop authorization. The server observed
-an attempted network-list request but no self-enrollment request; retained
-evidence did not record the network-list response status or prove an
-authenticated inventory read. The app-group container retained no local
-identity, and a later physical screen showed one enabled, structurally valid
-saved manager with no identity. Those observations do not identify the manager
-state or exact failure stage during the earlier attempts. Local Darwin
-diagnosis subsequently reproduced that the manually constructed cookie store
-used by those sources discarded the server-issued session and CSRF cookies.
-Current unshipped successor source retains Apple's configuration-provided
-private ephemeral store and rejects authorization completion unless the exact
-cookie pair is available for the server URL. It also generation-gates
-asynchronous manager inspection so stale status cannot overwrite an active or
-terminal setup stage. No attempt proved token issuance, node creation,
-extension start, or a packet path. None of these builds is a supported
+Build `3` adds disabled-manager recovery and build `4` adds
+pre-authorization manager readiness. Build `5` retains Apple's
+configuration-provided private ephemeral cookie store and generation-gates
+manager inspection. All are approved and in external testing. A physical
+build-5 run completed OIDC, authenticated network selection, and fixed-policy
+self-enrollment: the server created a new pending mobile node and the host
+decoded the response. Its token-bearing Network Extension start call returned
+without a synchronous error. The node remained pending with certificate and
+agent generations zero, no mobile-runtime document, no local identity, and a
+disconnected manager. This proves the host and server path but not that the
+options reached the Packet Tunnel provider or that an extension preflight
+reached the server. Current unshipped successor source observes Apple provider
+status within one absolute 90-second budget, claims success only for a final
+connected state with a changed connection date and same-origin local identity,
+and accepts a fixed provider failure only
+when it is bound to the exact enrollment request. None of these builds is a supported
 application, proven working VPN, production enrollment path, or public App
 Store release.
 
@@ -188,7 +186,16 @@ or mobile-runtime request was sent. A later screen showed one enabled,
 structurally valid saved manager with no identity. That later state does not
 establish the manager state or exact stop during any earlier attempt.
 
-Current successor source moves all manager preparation before OIDC. With
+TestFlight build `0.1.0 (5)` contains the cookie-store and inspection-race
+corrections. Its physical run completed OIDC, read the authenticated network,
+created one fixed-policy pending mobile node, decoded the server response, and
+submitted token-bearing start options to Network Extension without a
+synchronous error. The node remained pending with no certificate, agent
+credential, local identity, or mobile runtime, while iOS returned the manager
+to disconnected. Provider option delivery, token consumption, and extension
+enrollment remain unproved.
+
+Current successor source keeps all manager preparation before OIDC. With
 exactly one structurally valid same-origin disabled Mesh manager and no current,
 candidate, or recovery identity slot, it displays an explicit replacement
 confirmation, revalidates the singleton/disabled/origin/identity conditions,
@@ -196,14 +203,23 @@ removes only that manager, and saves/reloads a fresh manager. Duplicate,
 enabled, identity-bearing, or mismatched configurations fail closed and are
 never automatically removed. A cancellation or Apple failure occurs before
 login. After login, the current manager and identity absence are checked again,
-and only that fresh manager is used for handoff. Token issuance remains
-impossible until those checks pass. It preserves the private ephemeral cookie
-store supplied by `URLSessionConfiguration`, requires exactly one session
-cookie and one distinct CSRF cookie for the exact server URL after
-authorization, and cancels or generation-rejects stale configuration
-inspection before it can replace setup-stage text. The UI reports the build and
-last fixed non-secret setup stage without persisting server data, identities,
-cookies, tokens, or raw errors.
+and only that fresh manager is used for handoff. It also requires Apple to be
+disconnected immediately before requesting a token and immediately before
+dispatch. It preserves the private ephemeral cookie store supplied by
+`URLSessionConfiguration`, requires exactly one session cookie and one distinct
+CSRF cookie for the exact server URL after authorization, and cancels or
+generation-rejects stale configuration inspection before it can replace
+setup-stage text. The UI reports the build and last fixed non-secret setup
+stage without persisting server data, identities, cookies, tokens, request
+identifiers, or raw errors. After dispatch it observes the provider for 180
+half-second samples within one absolute 90-second budget. Reasserting remains
+pending; success requires a final connected state, a changed connection date,
+and a same-origin local identity. A post-progress
+disconnect accepts a fixed provider code only when its schema and request
+identifier match this enrollment. Disconnect-error retrieval has a separate
+two-second bound and stale, unmatched, or arbitrary errors become one generic
+code. Backgrounding after dispatch keeps the observation active without
+extending its budget and does not enable a conflicting retry.
 This behavior is source/simulator tested only and does not establish physical
 enrollment or tunnel behavior.
 
@@ -420,13 +436,14 @@ and the app-group container retained no identity. Retained evidence did not
 record the attempted network-list response status or prove an authenticated
 inventory read. TestFlight build `0.1.0 (4)` contains the manager-readiness
 successor; two development-signed attempts reached the same bounded
-pre-enrollment result. A later physical screen showed one enabled,
-structurally valid manager without an identity; it does not prove the manager
-state or exact stop during the earlier attempts. Current unshipped successor
-source fixes the locally reproduced private ephemeral cookie-store loss and
-generation-gates status inspection in addition to the bounded manager flow
-described above. It has not yet proved enrollment, extension runtime, or packet
-behavior.
+pre-enrollment result. TestFlight build `0.1.0 (5)` contains the cookie-store
+correction and physically created a self-enrollment node before submitting its
+token-bearing options to Network Extension without a synchronous error. That
+node stayed pending and the manager disconnected, with no local identity or
+mobile runtime. Current unshipped successor waits for the real provider
+outcome and surfaces a request-correlated fixed provider code or one generic
+Apple code instead of calling an asynchronous dispatch successful. It has not
+yet proved provider enrollment, extension runtime, or packet behavior.
 
 ## Deliberately unresolved
 
