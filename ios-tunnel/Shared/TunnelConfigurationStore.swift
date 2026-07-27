@@ -85,14 +85,89 @@ public final class TunnelConfigurationStore {
     guard let current = try read(slot: Self.currentSlot) else {
       return nil
     }
-    guard current.monotonicCounter >= (try highWater.load()) else {
+    let floor = try highWater.load()
+    if current.monotonicCounter == floor {
+      if let candidate = try read(slot: Self.candidateSlot),
+        candidate == current
+      {
+        try discardCandidate(matching: current)
+      }
+      return current
+    }
+    guard current.monotonicCounter > floor,
+      let candidate = try read(slot: Self.candidateSlot),
+      candidate == current
+    else {
       throw TunnelConfigurationStoreError.rollbackOrReplay
     }
+    // The authenticated candidate is the durable journal for the narrow
+    // crash window after current-slot replacement and before Keychain
+    // high-water commit. Reconcile only that exact equality; every other
+    // current/high-water split remains a rollback or replay failure.
+    try highWater.commit(current.monotonicCounter)
+    guard try highWater.load() == current.monotonicCounter else {
+      throw TunnelConfigurationStoreError.rollbackOrReplay
+    }
+    try discardCandidate(matching: current)
     return current
   }
 
   public func readRecovery() throws -> TunnelConfigurationPayload? {
     try read(slot: Self.recoverySlot)
+  }
+
+  @discardableResult
+  public func recoverCandidate(
+    expectedIntent: TunnelInitialEnrollmentIntent
+  ) throws -> TunnelConfigurationPayload? {
+    guard try read(slot: Self.currentSlot) == nil,
+      let candidate = try read(slot: Self.candidateSlot)
+    else {
+      return nil
+    }
+    guard
+      candidate.controlPlaneOrigin
+        == expectedIntent.controlPlaneOrigin,
+      candidate.nodeID == expectedIntent.nodeID,
+      candidate.networkID == expectedIntent.networkID,
+      candidate.monotonicCounter == expectedIntent.monotonicCounter
+    else {
+      throw TunnelConfigurationStoreError.invalidSlot
+    }
+    return try activateCandidate()
+  }
+
+  @discardableResult
+  public func install(
+    _ payload: TunnelConfigurationPayload
+  ) throws -> TunnelConfigurationPayload {
+    do {
+      try stage(payload)
+      let activated = try activateCandidate()
+      guard activated == payload else {
+        throw TunnelConfigurationStoreError.invalidSlot
+      }
+      return activated
+    } catch {
+      if let current = try? read(slot: Self.currentSlot),
+        current == payload
+      {
+        do {
+          guard try readCurrent() == payload else {
+            throw TunnelConfigurationStoreError.invalidSlot
+          }
+          try discardCandidate(matching: payload)
+          return current
+        } catch {
+          // Preserve the exact candidate journal when the current/high-water
+          // reconciliation is still failing. A later process may retry it;
+          // mismatched candidates are never accepted by readCurrent().
+          throw error
+        }
+      }
+      try discardCandidate(matching: payload)
+      throw error
+    }
   }
 
   @discardableResult
@@ -127,7 +202,6 @@ public final class TunnelConfigurationStore {
     try directory.remove(Self.candidateSlot)
     try directory.remove(Self.recoverySlot)
     try directory.remove(Self.currentSlot)
-    try directory.remove(TunnelEnrollmentReceiptStore.receiptSlot)
   }
 
   private func read(slot: String) throws -> TunnelConfigurationPayload? {
@@ -135,46 +209,6 @@ public final class TunnelConfigurationStore {
       return nil
     }
     return try TunnelEnvelopeAuthenticator.open(data, using: key)
-  }
-}
-
-public final class TunnelEnrollmentReceiptStore {
-  public static let receiptSlot = "enrollment-receipt.envelope"
-
-  private let directory: SecureSlotDirectory
-  private let key: SymmetricKey
-
-  public init(containerURL: URL, key: SymmetricKey) throws {
-    directory = try SecureSlotDirectory(url: containerURL)
-    self.key = key
-  }
-
-  deinit {
-    directory.close()
-  }
-
-  public func write(_ outcome: TunnelEnrollmentOutcome) throws {
-    try directory.write(
-      TunnelEnrollmentReceiptAuthenticator.seal(
-        outcome,
-        using: key
-      ),
-      to: Self.receiptSlot
-    )
-  }
-
-  public func read() throws -> TunnelEnrollmentOutcome? {
-    guard let data = try directory.read(Self.receiptSlot) else {
-      return nil
-    }
-    return try TunnelEnrollmentReceiptAuthenticator.open(
-      data,
-      using: key
-    )
-  }
-
-  public func erase() throws {
-    try directory.remove(Self.receiptSlot)
   }
 }
 
@@ -321,7 +355,6 @@ private final class SecureSlotDirectory {
         TunnelConfigurationStore.candidateSlot,
         TunnelConfigurationStore.currentSlot,
         TunnelConfigurationStore.recoverySlot,
-        TunnelEnrollmentReceiptStore.receiptSlot,
       ].contains(name)
     else {
       throw TunnelConfigurationStoreError.invalidSlot

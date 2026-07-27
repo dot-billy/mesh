@@ -1,12 +1,5 @@
 import Foundation
 
-protocol TunnelEnrollmentSession: Sendable {
-  func enroll(
-    request: TunnelEnrollmentRequest,
-    monotonicCounter: UInt64
-  ) async throws -> TunnelConfigurationPayload
-}
-
 protocol TunnelLifecycleSession: Sendable {
   func refresh(
     current: TunnelConfigurationPayload,
@@ -32,6 +25,7 @@ protocol TunnelIdentityRemovalSession: Sendable {
 enum TunnelMobileRuntimeReporterError: Error {
   case counterExhausted
   case evidenceMismatch
+  case terminal
 }
 
 actor TunnelMobileRuntimeReporter {
@@ -42,6 +36,9 @@ actor TunnelMobileRuntimeReporter {
   private let startedAt: ContinuousClock.Instant
   private var sequence: UInt64 = 0
   private var lastAcceptedAt: ContinuousClock.Instant?
+  private var terminal = false
+  private var stoppedSequence: UInt64?
+  private var stoppedReportStarted = false
 
   init(
     configuration: TunnelConfigurationPayload,
@@ -59,6 +56,9 @@ actor TunnelMobileRuntimeReporter {
     evidence: TunnelRuntimeEvidence? = nil,
     errorCode: String? = nil
   ) async throws -> TunnelMobileRuntimeReportOutcome {
+    guard !terminal else {
+      throw TunnelMobileRuntimeReporterError.terminal
+    }
     guard sequence < UInt64(Int64.max) else {
       throw TunnelMobileRuntimeReporterError.counterExhausted
     }
@@ -97,10 +97,40 @@ actor TunnelMobileRuntimeReporter {
       packetsWritten: packetsWritten,
       errorCode: errorCode
     )
-    if outcome.status == .accepted {
+    if outcome.status == .accepted, !terminal {
       lastAcceptedAt = clock.now
     }
     return outcome
+  }
+
+  func terminalize() {
+    guard !terminal else {
+      return
+    }
+    terminal = true
+    guard sequence < UInt64(Int64.max) else {
+      return
+    }
+    sequence += 1
+    stoppedSequence = sequence
+  }
+
+  func reportStopped() async throws -> TunnelMobileRuntimeReportOutcome {
+    terminalize()
+    guard let stoppedSequence, !stoppedReportStarted else {
+      throw TunnelMobileRuntimeReporterError.terminal
+    }
+    stoppedReportStarted = true
+    return try await lifecycle.reportRuntime(
+      current: configuration,
+      instanceGeneration: instanceGeneration,
+      sequence: stoppedSequence,
+      state: .stopped,
+      runtimeUptimeMilliseconds: try uptimeMilliseconds(),
+      packetsRead: nil,
+      packetsWritten: nil,
+      errorCode: nil
+    )
   }
 
   func deferredEvidenceExceeded(
@@ -131,70 +161,10 @@ actor TunnelMobileRuntimeReporter {
     case invalidPacket
   }
 
-  enum GoTunnelEnrollmentSessionError: Error {
-    case constructionFailed
-    case invalidCounter
-    case invalidDocument
-  }
-
   enum GoTunnelLifecycleSessionError: Error {
     case constructionFailed
     case invalidCounter
     case invalidDocument
-  }
-
-  final class GoTunnelEnrollmentSession:
-    TunnelEnrollmentSession,
-    @unchecked Sendable
-  {
-    private let session: IosmobileEnrollmentSession
-
-    init(accessGroup: String) throws {
-      var constructionError: NSError?
-      guard
-        let session = IosmobileNewEnrollmentSession(
-          accessGroup,
-          TunnelIdentityScope.primaryID,
-          &constructionError
-        )
-      else {
-        if let constructionError {
-          throw constructionError
-        }
-        throw GoTunnelEnrollmentSessionError.constructionFailed
-      }
-      self.session = session
-    }
-
-    func enroll(
-      request: TunnelEnrollmentRequest,
-      monotonicCounter: UInt64
-    ) async throws -> TunnelConfigurationPayload {
-      guard monotonicCounter <= UInt64(Int64.max) else {
-        throw GoTunnelEnrollmentSessionError.invalidCounter
-      }
-      let document = try await Task.detached { [self] in
-        var enrollmentError: NSError?
-        let value = session.enroll(
-          request.serverOrigin,
-          enrollmentToken: request.enrollmentToken,
-          monotonicCounter: Int64(monotonicCounter),
-          error: &enrollmentError
-        )
-        if let enrollmentError {
-          throw enrollmentError
-        }
-        return value
-      }.value
-      guard let data = document.data(using: String.Encoding.utf8) else {
-        throw GoTunnelEnrollmentSessionError.invalidDocument
-      }
-      let configuration = try TunnelConfigurationPayload.decodeExact(data)
-      guard configuration.monotonicCounter == monotonicCounter else {
-        throw GoTunnelEnrollmentSessionError.invalidCounter
-      }
-      return configuration
-    }
   }
 
   final class GoTunnelLifecycleSession:
@@ -414,18 +384,6 @@ actor TunnelMobileRuntimeReporter {
   }
 #endif
 
-final class UnavailableTunnelEnrollmentSession:
-  TunnelEnrollmentSession,
-  @unchecked Sendable
-{
-  func enroll(
-    request: TunnelEnrollmentRequest,
-    monotonicCounter: UInt64
-  ) async throws -> TunnelConfigurationPayload {
-    throw TunnelEngineAdapterError.unavailable
-  }
-}
-
 final class UnavailableTunnelLifecycleSession:
   TunnelLifecycleSession,
   @unchecked Sendable
@@ -471,18 +429,6 @@ enum TunnelEngineSessionFactory {
       )
     #else
       return UnavailableTunnelEngineSession()
-    #endif
-  }
-}
-
-enum TunnelEnrollmentSessionFactory {
-  static func make() throws -> any TunnelEnrollmentSession {
-    #if canImport(MeshMobile)
-      return try GoTunnelEnrollmentSession(
-        accessGroup: TunnelHighWaterKeychain.resolvedAccessGroup()
-      )
-    #else
-      return UnavailableTunnelEnrollmentSession()
     #endif
   }
 }

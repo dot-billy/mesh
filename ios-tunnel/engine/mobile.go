@@ -2,7 +2,7 @@
 //
 // Its exported API deliberately has no private-key getter or raw configuration
 // execution entrypoint. The first feasibility slice proves only pinned engine
-// identity and extension-owned key generation.
+// identity and device-owned key generation.
 package iosmobile
 
 import (
@@ -45,8 +45,8 @@ func FrameworkIdentitySHA256() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// EnsureIdentity creates or reads one X25519 identity in the extension-only,
-// device-only Keychain group and returns only its public key.
+// EnsureIdentity creates or reads one X25519 identity in the app-and-extension
+// shared, device-only Keychain group and returns only its public key.
 func EnsureIdentity(accessGroup, identityID string) (string, error) {
 	if err := validateIdentityScope(accessGroup, identityID); err != nil {
 		return "", err

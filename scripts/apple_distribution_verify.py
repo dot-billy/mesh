@@ -19,6 +19,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 INPUTS = ROOT / "desktop" / "tool" / "apple-build.json"
 TEAM = "Y3P5UNNG23"
 GROUP = "group.io.rw0.mesh.tunnel.mobile"
+TUNNEL_SHARED_KEYCHAIN_GROUPS = (
+    f"{TEAM}.io.rw0.mesh.tunnel.mobile.handoff",
+    f"{TEAM}.io.rw0.mesh.tunnel.mobile.identity",
+)
 PROFILE_SPECS = {
     "admin": {
         "name": "Mesh Admin App Store",
@@ -50,6 +54,7 @@ TUNNEL_ENGINE_SYMBOLS = {
     "_IosmobileNewIdentityRemovalSession",
     "_IosmobileNewLifecycleSession",
     "_proxyiosmobile_EnrollmentSession_Enroll",
+    "_proxyiosmobile_EnrollmentSession_Recover",
     "_proxyiosmobile_IdentityRemovalSession_Remove",
     "_proxyiosmobile_LifecycleSession_ReportRuntime",
     "_proxyiosmobile_LifecycleSession_Refresh",
@@ -585,17 +590,14 @@ def main() -> int:
             pathlib.Path("PlugIns/MeshPacketTunnel.appex"),
             "io.rw0.mesh.tunnel.mobile.packet-tunnel",
             PROFILE_SPECS["extension"]["uuid"],
-            [
-                f"{TEAM}.io.rw0.mesh.tunnel.mobile.handoff",
-                f"{TEAM}.io.rw0.mesh.tunnel.mobile.identity",
-            ],
+            list(TUNNEL_SHARED_KEYCHAIN_GROUPS),
         )
         archives["ios_tunnel"] = verify_archive(
             args.tunnel_archive,
             pathlib.Path("Mesh Tunnel.app"),
             "io.rw0.mesh.tunnel.mobile",
             PROFILE_SPECS["host"]["uuid"],
-            [f"{TEAM}.io.rw0.mesh.tunnel.mobile.handoff"],
+            list(TUNNEL_SHARED_KEYCHAIN_GROUPS),
             [GROUP],
             ["packet-tunnel-provider"],
             extension,
@@ -605,7 +607,7 @@ def main() -> int:
             pathlib.Path("Mesh Tunnel.app"),
             "io.rw0.mesh.tunnel.mobile",
             PROFILE_SPECS["host"]["uuid"],
-            [f"{TEAM}.io.rw0.mesh.tunnel.mobile.handoff"],
+            list(TUNNEL_SHARED_KEYCHAIN_GROUPS),
             [GROUP],
             ["packet-tunnel-provider"],
             extension,

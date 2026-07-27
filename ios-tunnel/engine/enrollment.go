@@ -32,6 +32,7 @@ const (
 	maximumEnrollmentBody         = 8 << 20
 	defaultTunnelMTU              = 1300
 	enrollmentPreflightV1         = "mesh-enrollment-preflight-v1"
+	enrollmentRecoveryV1          = "mesh-ios-enrollment-recovery-v1"
 	nativeDNSPolicyV1             = "mesh-native-dns-v1"
 	nativeDNSPolicyPrefix         = "# mesh-native-dns-v1 "
 )
@@ -39,20 +40,22 @@ const (
 type enrollmentSecretLoader func() ([]byte, error)
 type enrollmentResolver func(context.Context, string) ([]netip.Addr, error)
 
-// EnrollmentSession owns the extension-only identity and node credential used
-// by one bounded enrollment exchange. Its gomobile surface returns only an
+// EnrollmentSession owns the app-and-extension shared identity and node
+// credential used by one bounded enrollment exchange. Its gomobile surface returns only an
 // authenticated configuration document; it has no private-key, agent-bearer,
 // arbitrary-header, or arbitrary-request API.
 type EnrollmentSession struct {
-	loadPrivateKey  privateKeyLoader
-	loadAgentSecret enrollmentSecretLoader
-	httpClient      *http.Client
-	resolve         enrollmentResolver
-	now             func() time.Time
+	loadPrivateKey          privateKeyLoader
+	loadAgentSecret         enrollmentSecretLoader
+	loadExistingPrivateKey  privateKeyLoader
+	loadExistingAgentSecret enrollmentSecretLoader
+	httpClient              *http.Client
+	resolve                 enrollmentResolver
+	now                     func() time.Time
 }
 
-// NewEnrollmentSession binds enrollment to the same stable extension-only
-// Keychain identity used by EngineSession.
+// NewEnrollmentSession binds enrollment to the same stable shared Keychain
+// identity later used by the Packet Tunnel's EngineSession.
 func NewEnrollmentSession(
 	accessGroup string,
 	identityID string,
@@ -66,7 +69,7 @@ func NewEnrollmentSession(
 			return http.ErrUseLastResponse
 		},
 	}
-	return newEnrollmentSession(
+	session := newEnrollmentSession(
 		func() ([]byte, error) {
 			return loadOrCreatePrivateKey(accessGroup, identityID)
 		},
@@ -82,7 +85,18 @@ func NewEnrollmentSession(
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		},
 		func() time.Time { return time.Now().UTC() },
-	), nil
+	)
+	session.loadExistingPrivateKey = func() ([]byte, error) {
+		return loadPrivateKey(accessGroup, identityID)
+	}
+	session.loadExistingAgentSecret = func() ([]byte, error) {
+		return loadSecret(
+			accessGroup,
+			agentCredentialService,
+			identityID,
+		)
+	}
+	return session, nil
 }
 
 func newEnrollmentSession(
@@ -102,10 +116,10 @@ func newEnrollmentSession(
 }
 
 // Enroll validates an HTTPS Mesh origin and one-use enrollment token, performs
-// the token-scoped preflight, exchanges the extension-owned public key, and
+// the token-scoped preflight, exchanges the device-owned public key, and
 // returns one fully verified v3 engine configuration. The enrollment token and
 // locally generated agent bearer are never returned or persisted outside the
-// extension-only Keychain.
+// shared app-and-extension Keychain group.
 func (s *EnrollmentSession) Enroll(
 	serverURL string,
 	enrollmentToken string,
@@ -191,6 +205,135 @@ func (s *EnrollmentSession) Enroll(
 		preflight,
 		preflightRemotes,
 	)
+}
+
+// Recover reconstructs the verified configuration for an enrollment that
+// already committed its device-owned agent credential but was interrupted
+// before the containing app activated the App Group current slot. It opens
+// only existing Keychain authority, authenticates one bootstrap request, and
+// never accepts another one-use token or creates replacement credentials.
+func (s *EnrollmentSession) Recover(
+	serverURL string,
+	monotonicCounter int64,
+) (string, error) {
+	if s == nil ||
+		s.loadExistingPrivateKey == nil ||
+		s.loadExistingAgentSecret == nil ||
+		s.httpClient == nil ||
+		s.resolve == nil ||
+		s.now == nil {
+		return "", errors.New("enrollment recovery session is unavailable")
+	}
+	if monotonicCounter < 1 {
+		return "", errors.New("enrollment recovery counter is invalid")
+	}
+	origin, err := normalizeEnrollmentOrigin(serverURL)
+	if err != nil {
+		return "", err
+	}
+	privateKey, err := s.loadExistingPrivateKey()
+	if err != nil {
+		return "", errors.New("existing enrollment identity is unavailable")
+	}
+	defer clear(privateKey)
+	publicKey, err := publicKeyPEM(privateKey)
+	if err != nil {
+		return "", err
+	}
+	agentSecret, err := s.loadExistingAgentSecret()
+	if err != nil || len(agentSecret) != 32 {
+		clear(agentSecret)
+		return "", errors.New(
+			"existing enrollment agent credential is unavailable",
+		)
+	}
+	defer clear(agentSecret)
+	agentBearer := base64.RawURLEncoding.EncodeToString(agentSecret)
+	defer func() { agentBearer = "" }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	var bundle enrollmentBundle
+	if err := s.requestJSON(
+		ctx,
+		http.MethodGet,
+		origin+"/api/v1/agent/bootstrap",
+		agentBearer,
+		nil,
+		&bundle,
+	); err != nil {
+		var responseErr *enrollmentHTTPError
+		var transportErr *enrollmentTransportError
+		switch {
+		case errors.As(err, &responseErr) &&
+			responseErr.status == http.StatusUnauthorized:
+			return marshalEnrollmentRecovery(
+				enrollmentRecoveryUnauthorized,
+				"",
+			)
+		case errors.As(err, &transportErr):
+			return marshalEnrollmentRecovery(
+				enrollmentRecoveryDeferred,
+				"",
+			)
+		case errors.As(err, &responseErr) &&
+			(responseErr.status == http.StatusTooManyRequests ||
+				responseErr.status >= http.StatusInternalServerError):
+			return marshalEnrollmentRecovery(
+				enrollmentRecoveryDeferred,
+				"",
+			)
+		default:
+			return "", errors.New(
+				"authenticated enrollment recovery response is invalid",
+			)
+		}
+	}
+	plan, err := recoveryEnrollmentPlan(bundle)
+	if err != nil {
+		return "", err
+	}
+	configuration, err := s.configurationDocument(
+		ctx,
+		bundle,
+		privateKey,
+		publicKey,
+		uint64(monotonicCounter),
+		s.now().UTC(),
+		origin,
+		plan,
+		nil,
+	)
+	if err != nil {
+		return "", err
+	}
+	return marshalEnrollmentRecovery(
+		enrollmentRecoveryReady,
+		configuration,
+	)
+}
+
+func recoveryEnrollmentPlan(
+	bundle enrollmentBundle,
+) (enrollmentPreflight, error) {
+	certificate, remainder, err := cert.UnmarshalCertificateFromPEM(
+		[]byte(bundle.Certificate),
+	)
+	if err != nil ||
+		strings.TrimSpace(string(remainder)) != "" ||
+		certificate.IsCA() ||
+		certificate.Curve() != cert.Curve_CURVE25519 ||
+		len(certificate.Networks()) != 1 ||
+		!certificate.Networks()[0].IsValid() {
+		return enrollmentPreflight{}, errors.New(
+			"recovered enrollment certificate is invalid",
+		)
+	}
+	return enrollmentPreflight{
+		Schema:      enrollmentPreflightV1,
+		TargetRole:  "member",
+		NetworkCIDR: certificate.Networks()[0].Masked().String(),
+	}, nil
 }
 
 type enrollmentExchangeRequest struct {
@@ -333,6 +476,51 @@ type enrollmentTransportError struct{}
 
 func (*enrollmentTransportError) Error() string {
 	return "Mesh enrollment transport failed"
+}
+
+type enrollmentRecoveryStatus string
+
+const (
+	enrollmentRecoveryReady        enrollmentRecoveryStatus = "ready"
+	enrollmentRecoveryDeferred     enrollmentRecoveryStatus = "deferred"
+	enrollmentRecoveryUnauthorized enrollmentRecoveryStatus = "unauthorized"
+)
+
+type enrollmentRecoveryOutcome struct {
+	Schema        string                   `json:"schema"`
+	Status        enrollmentRecoveryStatus `json:"status"`
+	Configuration string                   `json:"configuration,omitempty"`
+}
+
+func marshalEnrollmentRecovery(
+	status enrollmentRecoveryStatus,
+	configuration string,
+) (string, error) {
+	switch status {
+	case enrollmentRecoveryReady:
+		if configuration == "" {
+			return "", errors.New(
+				"recovered enrollment configuration is unavailable",
+			)
+		}
+	case enrollmentRecoveryDeferred, enrollmentRecoveryUnauthorized:
+		if configuration != "" {
+			return "", errors.New(
+				"recovery status cannot carry a configuration",
+			)
+		}
+	default:
+		return "", errors.New("enrollment recovery status is invalid")
+	}
+	raw, err := json.Marshal(enrollmentRecoveryOutcome{
+		Schema:        enrollmentRecoveryV1,
+		Status:        status,
+		Configuration: configuration,
+	})
+	if err != nil {
+		return "", errors.New("encode enrollment recovery outcome")
+	}
+	return string(raw), nil
 }
 
 func (s *EnrollmentSession) requestPreflight(

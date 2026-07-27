@@ -2,13 +2,9 @@ import OSLog
 
 enum TunnelLogEvent: String, CaseIterable {
   case startRequested = "start-requested"
-  case providerBootstrapReady = "provider-bootstrap-ready"
-  case enrollmentHandoffAccepted = "enrollment-handoff-accepted"
   case configurationContainerUnavailable = "configuration-container-unavailable"
   case configurationUnavailable = "configuration-unavailable"
   case configurationInvalid = "configuration-invalid"
-  case enrollmentRequestRejected = "enrollment-request-rejected"
-  case enrollmentFailed = "enrollment-failed"
   case lifecycleRefreshDeferred = "lifecycle-refresh-deferred"
   case lifecycleRefreshFailed = "lifecycle-refresh-failed"
   case agentAuthorizationRejected = "agent-authorization-rejected"
@@ -33,20 +29,12 @@ enum TunnelLog {
     switch event {
     case .startRequested:
       logger.notice("start-requested")
-    case .providerBootstrapReady:
-      logger.notice("provider-bootstrap-ready")
-    case .enrollmentHandoffAccepted:
-      logger.notice("enrollment-handoff-accepted")
     case .configurationContainerUnavailable:
       logger.error("configuration-container-unavailable")
     case .configurationUnavailable:
       logger.error("configuration-unavailable")
     case .configurationInvalid:
       logger.error("configuration-invalid")
-    case .enrollmentRequestRejected:
-      logger.error("enrollment-request-rejected")
-    case .enrollmentFailed:
-      logger.error("enrollment-failed")
     case .lifecycleRefreshDeferred:
       logger.notice("lifecycle-refresh-deferred")
     case .lifecycleRefreshFailed:

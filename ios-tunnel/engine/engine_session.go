@@ -37,7 +37,8 @@ type EngineSession struct {
 	bridge    *packetFlowBridge
 }
 
-// NewEngineSession binds one session to an extension-only Keychain identity.
+// NewEngineSession binds one Packet Tunnel session to the shared Keychain
+// identity installed before the provider starts.
 func NewEngineSession(
 	accessGroup string,
 	identityID string,

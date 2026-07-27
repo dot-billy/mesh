@@ -1,20 +1,25 @@
-# ADR 0014: Extension-owned iOS runtime lifecycle and local identity removal
+# ADR 0014: Shared-custody iOS runtime lifecycle and local identity removal
 
 - Status: accepted for source implementation; physical-device convergence pending
 - Date: 2026-07-25
 
 ## Decision
 
-Mesh Tunnel extends the Packet Tunnel extension boundary from the pre-start
-refresh in ADR 0013 to four narrowly scoped responsibilities:
+Mesh Tunnel extends the shared host-and-extension boundary from the lifecycle
+convergence contract in ADR 0013 to four narrowly scoped responsibilities.
+ADR 0013's 2026-07-27 amendment moves refresh into the containing app before
+provider start and keeps Apple's provider callback local. The four
+responsibilities are:
 
-1. certificate renewal using the existing extension-owned private key;
+1. certificate renewal using the existing shared device-only private key;
 2. crash-recoverable agent-credential rotation;
 3. bounded, authenticated mobile runtime evidence; and
 4. explicit local identity removal.
 
 The containing app never receives the node private key, current or pending
-agent credential, signed configuration, or raw lifecycle HTTP result.
+agent credential, or raw lifecycle HTTP result. Its narrow Go session uses
+Keychain secrets in place and returns only a verified signed configuration or
+an exact typed outcome.
 
 ### Certificate renewal
 
@@ -32,9 +37,9 @@ CA or profile transition never falls back to the old certificate.
 
 ### Agent-credential rotation
 
-The extension rotates an agent credential when its authenticated expiry is
-within seven days. It creates one 32-byte pending secret in a fixed
-extension-only, device-only Keychain item before the request and sends only
+The host lifecycle session rotates an agent credential when its authenticated expiry is
+within seven days. It creates one 32-byte pending secret in a fixed shared
+host-and-extension, device-only Keychain item before the request and sends only
 its SHA-256 hash. The current bearer authorizes the initial
 `POST /api/v1/agent/credentials/rotate`; an ambiguous response is recovered
 with the pending bearer and the same hash. The primary Keychain item changes
@@ -73,7 +78,7 @@ strict request containing a fresh request ID and the exact node ID. The
 extension re-authenticates the current App Group envelope against its real
 anti-rollback floor before deleting anything.
 
-The deletion-only gomobile session attempts all three fixed extension-only
+The deletion-only gomobile session attempts all three fixed shared device-only
 Keychain removals: current agent credential, pending agent credential, and
 node private key. It has no load, return, replace, or create operation. Only
 after all authority deletions succeed does the extension erase the
@@ -81,6 +86,9 @@ candidate/current/recovery configuration slots and return a bounded,
 non-secret receipt. A partial Keychain failure retains the authenticated
 configuration context so the same exact removal can be retried safely. The
 host removes the VPN preference only after confirmed local completion.
+Each terminal cleanup owns a completion barrier. A concurrent Apple stop
+awaits that barrier before reopening the provider lifecycle, so stale cleanup
+cannot mutate a later start.
 
 The handoff HMAC key and lifecycle high-water values are intentionally
 retained. They are not node authority, and retaining them preserves local

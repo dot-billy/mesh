@@ -136,6 +136,180 @@ func TestExtensionEnrollmentExchangesOnlyPublicIdentityAndReturnsVerifiedConfig(
 	}
 }
 
+func TestInterruptedEnrollmentRecoversWithExistingAgentAuthority(
+	t *testing.T,
+) {
+	now := time.Now().UTC().Round(time.Second)
+	fixture := newEngineTestFixture(
+		t,
+		newEngineTestAuthority(t, now),
+		now,
+		"node_recovered",
+		netip.MustParseAddr("10.88.0.31"),
+		4242,
+		false,
+		netip.MustParseAddrPort("192.0.2.31:4242"),
+	)
+	agentSecret := bytes.Repeat([]byte{0x93}, 32)
+	agentBearer := base64.RawURLEncoding.EncodeToString(agentSecret)
+	bundle := enrollmentBundleFromFixture(fixture, now)
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(
+		func(response http.ResponseWriter, request *http.Request) {
+			requests++
+			if request.Method != http.MethodGet ||
+				request.URL.Path != "/api/v1/agent/bootstrap" ||
+				request.Header.Get("Authorization") != "Bearer "+agentBearer ||
+				request.Body == nil {
+				t.Error("enrollment recovery authority changed")
+			}
+			response.Header().Set("Cache-Control", "no-store")
+			writeEnrollmentTestJSON(t, response, bundle)
+		},
+	))
+	defer server.Close()
+
+	session := newEnrollmentSession(
+		func() ([]byte, error) {
+			t.Fatal("recovery created or loaded enrollment private authority")
+			return nil, nil
+		},
+		func() ([]byte, error) {
+			t.Fatal("recovery created or loaded enrollment agent authority")
+			return nil, nil
+		},
+		server.Client(),
+		func(_ context.Context, _ string) ([]netip.Addr, error) {
+			t.Fatal("literal signed endpoint unexpectedly used DNS")
+			return nil, nil
+		},
+		func() time.Time { return now },
+	)
+	session.loadExistingPrivateKey = func() ([]byte, error) {
+		return append([]byte(nil), fixture.privateKey...), nil
+	}
+	session.loadExistingAgentSecret = func() ([]byte, error) {
+		return append([]byte(nil), agentSecret...), nil
+	}
+	raw, err := session.Recover(server.URL, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || strings.Contains(raw, agentBearer) {
+		t.Fatalf(
+			"unexpected enrollment recovery requests=%d document=%q",
+			requests,
+			raw,
+		)
+	}
+	var outcome enrollmentRecoveryOutcome
+	if err := json.Unmarshal([]byte(raw), &outcome); err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Schema != enrollmentRecoveryV1 ||
+		outcome.Status != enrollmentRecoveryReady ||
+		outcome.Configuration == "" {
+		t.Fatalf("unexpected enrollment recovery outcome: %#v", outcome)
+	}
+	document, err := decodeEngineConfiguration(outcome.Configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.NodeID != fixture.document.NodeID ||
+		document.NetworkID != fixture.document.NetworkID ||
+		document.ControlPlaneOrigin != server.URL ||
+		document.MonotonicCounter != 3 {
+		t.Fatalf("unexpected recovered configuration: %#v", document)
+	}
+	if _, err := verifyEngineConfiguration(
+		outcome.Configuration,
+		fixture.privateKey,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInterruptedEnrollmentRecoveryClassifiesRetryBoundary(
+	t *testing.T,
+) {
+	now := time.Now().UTC().Round(time.Second)
+	fixture := newEngineTestFixture(
+		t,
+		newEngineTestAuthority(t, now),
+		now,
+		"node_recovery_boundary",
+		netip.MustParseAddr("10.88.0.32"),
+		4242,
+		false,
+		netip.MustParseAddrPort("192.0.2.32:4242"),
+	)
+	agentSecret := bytes.Repeat([]byte{0x94}, 32)
+	for _, test := range []struct {
+		name       string
+		statusCode int
+		want       enrollmentRecoveryStatus
+	}{
+		{
+			name:       "unauthorized",
+			statusCode: http.StatusUnauthorized,
+			want:       enrollmentRecoveryUnauthorized,
+		},
+		{
+			name:       "server unavailable",
+			statusCode: http.StatusServiceUnavailable,
+			want:       enrollmentRecoveryDeferred,
+		},
+		{
+			name:       "rate limited",
+			statusCode: http.StatusTooManyRequests,
+			want:       enrollmentRecoveryDeferred,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(
+				func(response http.ResponseWriter, request *http.Request) {
+					response.WriteHeader(test.statusCode)
+				},
+			))
+			defer server.Close()
+			session := newEnrollmentSession(
+				func() ([]byte, error) {
+					t.Fatal("recovery created private authority")
+					return nil, nil
+				},
+				func() ([]byte, error) {
+					t.Fatal("recovery created agent authority")
+					return nil, nil
+				},
+				server.Client(),
+				func(_ context.Context, _ string) ([]netip.Addr, error) {
+					return nil, nil
+				},
+				func() time.Time { return now },
+			)
+			session.loadExistingPrivateKey = func() ([]byte, error) {
+				return append([]byte(nil), fixture.privateKey...), nil
+			}
+			session.loadExistingAgentSecret = func() ([]byte, error) {
+				return append([]byte(nil), agentSecret...), nil
+			}
+			raw, err := session.Recover(server.URL, 4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var outcome enrollmentRecoveryOutcome
+			if err := json.Unmarshal([]byte(raw), &outcome); err != nil {
+				t.Fatal(err)
+			}
+			if outcome.Schema != enrollmentRecoveryV1 ||
+				outcome.Status != test.want ||
+				outcome.Configuration != "" {
+				t.Fatalf("unexpected recovery boundary: %#v", outcome)
+			}
+		})
+	}
+}
+
 func TestExtensionEnrollmentRetriesOnlyAmbiguousIdenticalRequest(
 	t *testing.T,
 ) {

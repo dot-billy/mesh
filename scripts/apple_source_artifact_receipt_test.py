@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import plistlib
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -59,6 +60,22 @@ def write_receipt(path: pathlib.Path, value: dict[str, object]) -> None:
     path.write_text(
         json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
     )
+
+
+def copy_tunnel_source_boundary(root: pathlib.Path) -> pathlib.Path:
+    destination = root / "ios-tunnel"
+    destination.mkdir()
+    for directory in (
+        "MeshTunnelHost",
+        "PacketTunnel",
+        "Shared",
+        "MeshTunnel.xcodeproj",
+    ):
+        shutil.copytree(
+            ROOT / "ios-tunnel" / directory,
+            destination / directory,
+        )
+    return destination
 
 
 def write_ios_admin_native_assets(app: pathlib.Path) -> pathlib.Path:
@@ -240,15 +257,24 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
         )
         self.assertEqual(
             boundary["provider"],
-            "coordinator-apple-flow-extension-bootstrap-ipc-enrollment-"
+            "coordinator-apple-flow-current-config-only-"
             "lifecycle-mobile-evidence-identity-removal-static-engine-"
             "network-path-source-wired",
         )
         self.assertEqual(
             boundary["engine_adapter"],
-            "gomobile-extension-enrollment-lifecycle-renewal-credential-"
+            "gomobile-extension-lifecycle-renewal-credential-"
             "rotation-mobile-evidence-identity-removal-signed-config-packet-"
             "session-source-wired",
+        )
+        self.assertEqual(
+            boundary["host_enrollment_adapter"],
+            "gomobile-host-self-enrollment-shared-identity-"
+            "config-activation-source-wired",
+        )
+        self.assertEqual(
+            boundary["identity_keychain_custody"],
+            "shared-host-extension-device-only-source-proven",
         )
         self.assertEqual(
             boundary["runtime_coordinator"],
@@ -256,7 +282,12 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
         )
         self.assertEqual(
             boundary["extension_logging"],
-            "fixed-reviewed-20-event-codes-only",
+            "fixed-reviewed-16-event-codes-only",
+        )
+        self.assertEqual(
+            boundary["host_runtime_controls"],
+            "provision-first-connect-second-real-evidence-"
+            "start-stop-inspect-source-proven",
         )
         self.assertEqual(
             boundary["host_manager_recovery"],
@@ -276,7 +307,16 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
                 "provider",
                 "runtime_adapters",
                 "go_adapter",
+                "host_enrollment_adapter",
                 "host_controller",
+                "host_info",
+                "host_development_entitlements",
+                "host_testflight_entitlements",
+                "host_custom_app_entitlements",
+                "provider_info",
+                "provider_development_entitlements",
+                "provider_testflight_entitlements",
+                "provider_custom_app_entitlements",
                 "tunnel_log",
                 "project",
                 "app_icon_manifest",
@@ -290,6 +330,486 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
             ]),
             15,
         )
+
+    def test_tunnel_source_boundary_rejects_build_7_and_split_custody(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-custody-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            entitlement = (
+                source
+                / "MeshTunnelHost"
+                / "TestFlight.entitlements"
+            )
+            value = plistlib.loads(entitlement.read_bytes())
+            value["keychain-access-groups"].remove(
+                "$(AppIdentifierPrefix)"
+                "io.rw0.mesh.tunnel.mobile.identity"
+            )
+            entitlement.write_bytes(plistlib.dumps(value))
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "share exact identity custody",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-obsolete-ipc-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            provider = source / "PacketTunnel" / "PacketTunnelProvider.swift"
+            provider.write_text(
+                provider.read_text()
+                + "\n// TunnelProviderBootstrap is obsolete.\n"
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "obsolete provider enrollment IPC",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-stop-gate-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            provider = source / "PacketTunnel" / "PacketTunnelProvider.swift"
+            provider.write_text(
+                provider.read_text().replace(
+                    "lifecycleGate.finishStop()",
+                    "lifecycleGate.finishStartFailure()",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "provider flow wiring",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-stop-await-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            provider = source / "PacketTunnel" / "PacketTunnelProvider.swift"
+            provider.write_text(
+                provider.read_text().replace(
+                    "await pendingStartup.value",
+                    "await Task.yield()",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "does not await startup cleanup",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-generation-gate-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            gate = (
+                source
+                / "Shared"
+                / "TunnelProviderLifecycleGate.swift"
+            )
+            gate.write_text(
+                gate.read_text().replace(
+                    "public func mayContinueStart(_ generation: UInt64)",
+                    "public func mayContinueObsoleteStart("
+                    "_ generation: UInt64)",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "lifecycle gate",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-terminal-cleanup-await-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            provider = source / "PacketTunnel" / "PacketTunnelProvider.swift"
+            provider.write_text(
+                provider.read_text().replace(
+                    "await pendingTerminalCleanup?.wait()",
+                    "await Task.yield()",
+                    1,
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "reset lifecycle before completion",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-retry-bound-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            host = (
+                source
+                / "MeshTunnelHost"
+                / "MeshTunnelViewController.swift"
+            )
+            host.write_text(
+                host.read_text().replace(
+                    "for attempt in 1...2",
+                    "for attempt in 1...3",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "retry is not exactly bounded",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-retry-identity-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            host = (
+                source
+                / "MeshTunnelHost"
+                / "MeshTunnelViewController.swift"
+            )
+            host.write_text(
+                host.read_text().replace(
+                    "networkID: networkID,\n"
+                    "                    nodeName: nodeName",
+                    "networkID: networkID,\n"
+                    '                    nodeName: "different-device"',
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "retry is not exactly bounded",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-orphan-authority-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            high_water = (
+                source
+                / "PacketTunnel"
+                / "TunnelHighWaterKeychain.swift"
+            )
+            high_water.write_text(
+                high_water.read_text().replace(
+                    "static func hasLocalAuthority() throws -> Bool",
+                    "static func ignoresLocalAuthority() throws -> Bool",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "orphaned local authority",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-orphan-polarity-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            host = (
+                source
+                / "MeshTunnelHost"
+                / "MeshTunnelViewController.swift"
+            )
+            host.write_text(
+                host.read_text().replace(
+                    "guard try !TunnelHighWaterKeychain.hasLocalAuthority()",
+                    "guard try TunnelHighWaterKeychain.hasLocalAuthority()",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "real local authority",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-generation-commit-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            provider = (
+                source
+                / "PacketTunnel"
+                / "PacketTunnelProvider.swift"
+            )
+            provider.write_text(
+                provider.read_text().replace(
+                    "guard self.lifecycleGate.markRunning(",
+                    "if self.lifecycleGate.markRunning(",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "provider flow wiring",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-current-high-water-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            store = (
+                source
+                / "Shared"
+                / "TunnelConfigurationStore.swift"
+            )
+            store.write_text(
+                store.read_text().replace(
+                    "if current.monotonicCounter == floor",
+                    "if current.monotonicCounter >= floor",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "monotonic configuration store",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-host-refresh-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            host = (
+                source
+                / "MeshTunnelHost"
+                / "MeshTunnelViewController.swift"
+            )
+            host.write_text(
+                host.read_text().replace(
+                    "TunnelHostLifecycleSessionFactory.make()",
+                    "TunnelHostEnrollmentSessionFactory.make()",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "provision-first host enrollment",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-terminal-reporter-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            provider = (
+                source
+                / "PacketTunnel"
+                / "PacketTunnelProvider.swift"
+            )
+            provider.write_text(
+                provider.read_text().replace(
+                    "await reporter?.terminalize()",
+                    "await Task.yield()",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "provider flow wiring",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-atomic-runtime-commit-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            gate = (
+                source
+                / "Shared"
+                / "TunnelProviderLifecycleGate.swift"
+            )
+            gate.write_text(
+                gate.read_text().replace(
+                    "public func commitIfCurrent(",
+                    "public func commitWithoutGenerationCheck(",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "lifecycle gate",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-exact-intent-retirement-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            high_water = (
+                source
+                / "PacketTunnel"
+                / "TunnelHighWaterKeychain.swift"
+            )
+            high_water.write_text(
+                high_water.read_text().replace(
+                    "loadInitialEnrollmentIntent() == expected",
+                    "loadInitialEnrollmentIntent() != expected",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "intent retirement is not exact",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-start-authorization-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            provider = (
+                source
+                / "PacketTunnel"
+                / "PacketTunnelProvider.swift"
+            )
+            provider.write_text(
+                provider.read_text().replace(
+                    "try TunnelHighWaterKeychain.consumeStartAuthorization(",
+                    "try TunnelHighWaterKeychain.saveStartAuthorization(",
+                    1,
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "provider flow wiring",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-terminal-invalidation-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            provider = (
+                source
+                / "PacketTunnel"
+                / "PacketTunnelProvider.swift"
+            )
+            provider.write_text(
+                provider.read_text().replace(
+                    "guard let cleanupBarrier = beginTerminalCleanup() else {",
+                    "guard !lifecycleGate.isStopped() else {",
+                    1,
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "terminal path does not own cleanup",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-committed-intent-reconciliation-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            host = (
+                source
+                / "MeshTunnelHost"
+                / "MeshTunnelViewController.swift"
+            )
+            local_load = host.read_text().replace(
+                "guard committedIntent == retainedIntent else {",
+                "guard committedIntent != retainedIntent else {",
+                1,
+            )
+            host.write_text(local_load)
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "does not reconcile an exact committed enrollment intent",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-mismatched-intent-reset-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            host = (
+                source
+                / "MeshTunnelHost"
+                / "MeshTunnelViewController.swift"
+            )
+            host.write_text(
+                host.read_text().replace(
+                    "if let current = try "
+                    "readAuthenticatedLocalConfiguration() {",
+                    "if let current = try loadLocalConfiguration() {",
+                    1,
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "mismatched enrollment intent reset is unreachable",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-missing-manager-reset-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            host = (
+                source
+                / "MeshTunnelHost"
+                / "MeshTunnelViewController.swift"
+            )
+            host.write_text(
+                host.read_text().replace(
+                    "current != nil || self.orphanRemovalAvailable",
+                    "self.orphanRemovalAvailable",
+                    1,
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "mismatched enrollment intent reset is unreachable",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
+
+        with tempfile.TemporaryDirectory(
+            prefix="mesh-ios-tunnel-disabled-manager-reset-"
+        ) as root:
+            source = copy_tunnel_source_boundary(pathlib.Path(root))
+            host = (
+                source
+                / "MeshTunnelHost"
+                / "MeshTunnelViewController.swift"
+            )
+            host.write_text(
+                host.read_text().replace(
+                    "if !manager.isEnabled {\n"
+                    "            try await enableManager(",
+                    "if manager.isEnabled {\n"
+                    "            try await enableManager(",
+                )
+            )
+            with mock.patch.object(RECEIPT, "IOS_TUNNEL", source):
+                with self.assertRaisesRegex(
+                    RECEIPT.ReceiptError,
+                    "cannot recover its exact manager",
+                ):
+                    RECEIPT.inspect_tunnel_source_boundary()
 
     def test_input_receipt_requires_empty_keychain_and_no_credentials(self) -> None:
         with tempfile.TemporaryDirectory(prefix="mesh-apple-receipt-") as root:
@@ -654,6 +1174,7 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
                                 "_IosmobileNewIdentityRemovalSession",
                                 "_IosmobileNewLifecycleSession",
                                 "_proxyiosmobile_EnrollmentSession_Enroll",
+                                "_proxyiosmobile_EnrollmentSession_Recover",
                                 (
                                     "_proxyiosmobile_IdentityRemovalSession_"
                                     "Remove"

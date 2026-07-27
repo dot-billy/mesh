@@ -29,8 +29,9 @@ engine session. ADR 0012 adds one separate single-method enrollment session
 that owns preflight, extension-only agent custody, enrollment/recovery, and
 verified v4 configuration production without exporting either local
 credential. ADR 0013 adds a separate existing-credential lifecycle session
-that performs one agent-authenticated desired-state refresh before later
-starts and returns only a ready, deferred, or unauthorized result. The engine
+that returns only a ready, deferred, or unauthorized result. Its 2026-07-27
+amendment keeps control-plane work out of Apple's start callback; post-connect
+convergence scheduling remains a controlled-beta qualification item. The engine
 session accepts that exact signed v4 configuration,
 starts Nebula on the in-memory packet device, rebinds its UDP listener, copies
 validated packet callbacks in both directions, and stops idempotently. The

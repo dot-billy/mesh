@@ -466,6 +466,9 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "provider_lifecycle_gate": (
             IOS_TUNNEL / "Shared" / "TunnelProviderLifecycleGate.swift"
         ),
+        "high_water_keychain": (
+            IOS_TUNNEL / "PacketTunnel" / "TunnelHighWaterKeychain.swift"
+        ),
         "provider": IOS_TUNNEL / "PacketTunnel" / "PacketTunnelProvider.swift",
         "runtime_adapters": (
             IOS_TUNNEL / "PacketTunnel" / "TunnelRuntimeAdapters.swift"
@@ -473,10 +476,35 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "go_adapter": (
             IOS_TUNNEL / "PacketTunnel" / "GoTunnelEngineSession.swift"
         ),
+        "host_enrollment_adapter": (
+            IOS_TUNNEL
+            / "MeshTunnelHost"
+            / "GoHostEnrollmentSession.swift"
+        ),
         "host_controller": (
             IOS_TUNNEL
             / "MeshTunnelHost"
             / "MeshTunnelViewController.swift"
+        ),
+        "host_info": IOS_TUNNEL / "MeshTunnelHost" / "Info.plist",
+        "host_development_entitlements": (
+            IOS_TUNNEL / "MeshTunnelHost" / "Development.entitlements"
+        ),
+        "host_testflight_entitlements": (
+            IOS_TUNNEL / "MeshTunnelHost" / "TestFlight.entitlements"
+        ),
+        "host_custom_app_entitlements": (
+            IOS_TUNNEL / "MeshTunnelHost" / "CustomApp.entitlements"
+        ),
+        "provider_info": IOS_TUNNEL / "PacketTunnel" / "Info.plist",
+        "provider_development_entitlements": (
+            IOS_TUNNEL / "PacketTunnel" / "Development.entitlements"
+        ),
+        "provider_testflight_entitlements": (
+            IOS_TUNNEL / "PacketTunnel" / "TestFlight.entitlements"
+        ),
+        "provider_custom_app_entitlements": (
+            IOS_TUNNEL / "PacketTunnel" / "CustomApp.entitlements"
         ),
         "tunnel_log": IOS_TUNNEL / "PacketTunnel" / "TunnelLog.swift",
         "project": IOS_TUNNEL / "MeshTunnel.xcodeproj" / "project.pbxproj",
@@ -515,15 +543,13 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         'mesh-ios-tunnel-configuration-v4',
         'mesh-ios-tunnel-envelope-v4',
         'mesh-ios-tunnel-enrollment-v1',
-        'mesh-ios-provider-bootstrap-v1',
-        'mesh-ios-provider-enrollment-v1',
-        'mesh-ios-enrollment-outcome-v1',
-        'mesh-ios-enrollment-receipt-envelope-v1',
         'mesh-ios-tunnel-control-outcome-v1',
         'mesh-ios-tunnel-evidence-v1',
         'mesh-ios-lifecycle-refresh-v1',
+        'mesh-ios-start-authorization-v1',
+        'startOptionKey = "meshStartAuthorization"',
+        "public struct TunnelStartAuthorization:",
         'mesh-ios-nebula-engine-configuration-v1',
-        'public static let startOptionKey = "meshEnrollmentRequest"',
         "public static let maximumDocumentBytes = 8 * 1024",
         "public static let primaryID = \"primary\"",
         "public static func normalizedOrigin(",
@@ -532,6 +558,8 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "public let agentCredentialExpiresAt: String",
         "public enum TunnelLifecycleRefreshStatus:",
         "public struct TunnelLifecycleRefreshOutcome:",
+        "public struct TunnelInitialEnrollmentIntent:",
+        '"mesh-ios-initial-enrollment-intent-v1"',
         "public struct TunnelControlOutcome:",
         "public static func decodeExact(_ data: Data) throws -> Self",
         'throw TunnelContractError.invalidField("runningEvidence")',
@@ -566,20 +594,24 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "return floor + 1",
         "public func discardCandidate(",
         "matching payload: TunnelConfigurationPayload",
+        "public func install(",
+        "try stage(payload)",
+        "let activated = try activateCandidate()",
+        "try discardCandidate(matching: payload)",
+        "expectedIntent: TunnelInitialEnrollmentIntent",
+        "candidate.nodeID == expectedIntent.nodeID",
+        "candidate.networkID == expectedIntent.networkID",
+        "candidate.monotonicCounter == expectedIntent.monotonicCounter",
+        "if current.monotonicCounter == floor",
+        "current.monotonicCounter > floor",
+        "candidate == current",
+        "try highWater.commit(current.monotonicCounter)",
+        "guard try highWater.load() == current.monotonicCounter",
+        "try discardCandidate(matching: current)",
+        "Preserve the exact candidate journal",
     ):
         if required not in sources["configuration_store"]:
             raise ReceiptError("Mesh Tunnel monotonic configuration store is incomplete")
-    for required in (
-        "public final class TunnelEnrollmentReceiptStore",
-        '"enrollment-receipt.envelope"',
-        "TunnelEnrollmentReceiptAuthenticator.seal(",
-        "TunnelEnrollmentReceiptAuthenticator.open(",
-        "public init(containerURL: URL, key: SymmetricKey) throws",
-    ):
-        if required not in sources["configuration_store"]:
-            raise ReceiptError(
-                "Mesh Tunnel authenticated enrollment receipt store is incomplete"
-            )
     for required in (
         "NEPacketTunnelNetworkSettings(",
         "NEIPv4Settings(",
@@ -644,24 +676,17 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
             raise ReceiptError("Mesh Tunnel provider adapters are incomplete")
     for required in (
         "@preconcurrency import MeshMobile",
-        "protocol TunnelEnrollmentSession: Sendable",
         "protocol TunnelLifecycleSession: Sendable",
         "protocol TunnelIdentityRemovalSession: Sendable",
-        "final class GoTunnelEnrollmentSession",
         "final class GoTunnelLifecycleSession",
         "final class GoTunnelIdentityRemovalSession",
-        "IosmobileNewEnrollmentSession(",
         "IosmobileNewLifecycleSession(",
         "IosmobileNewIdentityRemovalSession(",
         "TunnelIdentityScope.primaryID",
-        "session.enroll(",
         "lifecycle.reportRuntime(",
         "session.remove()",
-        "TunnelConfigurationPayload.decodeExact",
-        "enum TunnelEnrollmentSessionFactory",
         "enum TunnelLifecycleSessionFactory",
         "enum TunnelIdentityRemovalSessionFactory",
-        "return try GoTunnelEnrollmentSession(",
         "return try GoTunnelLifecycleSession(",
         "return try GoTunnelIdentityRemovalSession(",
         "final class GoTunnelEngineSession",
@@ -686,21 +711,68 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
     ):
         if forbidden in sources["go_adapter"]:
             raise ReceiptError("Mesh Tunnel Go adapter exposes a prohibited surface")
+    for forbidden in (
+        "TunnelEnrollmentSession",
+        "IosmobileNewEnrollmentSession(",
+        "session.enroll(",
+    ):
+        if forbidden in sources["go_adapter"]:
+            raise ReceiptError(
+                "Mesh Tunnel extension adapter retains host enrollment authority"
+            )
+    for required in (
+        "protocol TunnelHostEnrollmentSession: Sendable",
+        "final class GoHostEnrollmentSession",
+        "IosmobileNewEnrollmentSession(",
+        "TunnelIdentityScope.primaryID",
+        "session.enroll(",
+        "session.recover(",
+        "TunnelConfigurationPayload.decodeExact",
+        "TunnelEnrollmentRecoveryOutcome.decodeExact",
+        "configuration.monotonicCounter == monotonicCounter",
+        "protocol TunnelHostIdentityRemovalSession: Sendable",
+        "IosmobileNewIdentityRemovalSession(",
+        "session.remove()",
+        "protocol TunnelHostLifecycleSession: Sendable",
+        "final class GoHostLifecycleSession",
+        "IosmobileNewLifecycleSession(",
+        "session.refresh(",
+        "TunnelLifecycleRefreshOutcome.decodeExact",
+        "enum TunnelHostIdentityRemovalSessionFactory",
+        "enum TunnelHostEnrollmentSessionFactory",
+        "enum TunnelHostLifecycleSessionFactory",
+        "return try GoHostEnrollmentSession(",
+        "TunnelHighWaterKeychain.resolvedAccessGroup()",
+    ):
+        if required not in sources["host_enrollment_adapter"]:
+            raise ReceiptError(
+                "Mesh Tunnel host Go enrollment adapter is incomplete"
+            )
+    for forbidden in (
+        "privateKey",
+        "agentBearer",
+        "shell",
+        "Process(",
+        "executableURL",
+    ):
+        if forbidden in sources["host_enrollment_adapter"]:
+            raise ReceiptError(
+                "Mesh Tunnel host enrollment adapter exposes a prohibited surface"
+            )
     for required in (
         "engine-unavailable",
         "private func resolveConfiguration(",
-        "options.count == 1",
-        "TunnelEnrollmentRequest.startOptionKey",
-        "TunnelEnrollmentRequest.decodeExact",
-        "store.nextMonotonicCounter()",
+        "authorization: TunnelStartAuthorization",
+        "TunnelStartAuthorization.startOptionKey",
+        "TunnelStartAuthorization.decodeExact(",
+        'completionHandler(Self.failure("start-authorization-required"))',
+        "authorization.matches(current)",
+        "TunnelHighWaterKeychain.consumeStartAuthorization(",
+        "if let current = try store.readCurrent()",
+        "return current",
         "TunnelLifecycleSessionFactory.make()",
-        "case .deferred:",
-        "case .unauthorized:",
-        "TunnelEnrollmentSessionFactory.make()",
-        "store.stage(configuration)",
-        "store.activateCandidate()",
-        'code: "enrollment-request-rejected"',
-        'code: "enrollment-failed"',
+        "startPostConnectControlPlaneWork(",
+        "reportStoppedBestEffort(",
         "import Network",
         "NWPathMonitor()",
         "TunnelRuntimeCoordinator(",
@@ -721,93 +793,189 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "TunnelControlOutcome(",
         "requestID: request.requestID",
         "lifecycleGate.beginStart()",
-        "lifecycleGate.mayContinueStart()",
-        "lifecycleGate.markRunning()",
+        "lifecycleGate.mayContinueStart(generation)",
+        "guard self.lifecycleGate.markRunning(",
+        "lifecycleGate.commitIfCurrent(",
         "lifecycleGate.latchStop()",
-        "bootstrapGate.arm(request)",
-        "bootstrapGate.claim(request)",
-        "expireBootstrap(requestID: request.requestID)",
-        "bootstrapGate.expire(requestID: requestID)",
-        "Duration.seconds(180)",
-        "Duration.seconds(150)",
-        "providerStartStopLock.lock()",
-        "expireClaimedEnrollment(",
-        "resolveClaimedEnrollment(",
-        "activateEnrollment(",
-        "store.discardCandidate(matching: configuration)",
-        "TunnelProviderEnrollmentRequest.decodeExact(",
-        "request.expectedNodeID",
-        "request.expectedNetworkID",
-        "TunnelEnrollmentOutcome.failed(",
-        "TunnelEnrollmentOutcome.running(",
-        "enrollmentReceiptStore()",
-        "completeEnrollmentHandoff(",
+        "lifecycleGate.finishStop()",
+        "beginTerminalCleanup()",
+        "latchStopAndCaptureTerminalCleanup()",
+        "finishTerminalCleanup(",
+        "await pendingTerminalCleanup?.wait()",
+        "await reporter?.terminalize()",
+        "reportStoppedBestEffort(reporter)",
         '"start-already-in-progress"',
         '"start-cancelled"',
     ):
         if required not in sources["provider"]:
             raise ReceiptError("Mesh Tunnel provider flow wiring is incomplete")
     for required in (
+        "public final class TunnelTerminalCleanupBarrier",
+        "public func wait() async",
+        "public func finish()",
         "public final class TunnelProviderLifecycleGate",
+        "case begin(UInt64)",
         "case alreadyStarting",
         "case alreadyRunning",
-        "public func mayContinueStart() -> Bool",
-        "public func markRunning() -> Bool",
+        "public func mayContinueStart(_ generation: UInt64) -> Bool",
+        "public func markRunning(",
+        "public func commitIfCurrent(",
         "public func latchStop() -> Bool",
-        "public final class TunnelProviderBootstrapGate",
-        "public func arm(_ request: TunnelProviderBootstrapRequest) -> Bool",
-        "public func claim(",
-        "public func isAwaiting(requestID: String) -> Bool",
+        "public func finishStop()",
+        "public func isLatest(_ generation: UInt64) -> Bool",
+        "activeGeneration = nil",
+        "stopped = false",
     ):
         if required not in sources["provider_lifecycle_gate"]:
             raise ReceiptError("Mesh Tunnel provider lifecycle gate is incomplete")
-    bootstrap_source = sources["provider"].split(
-        "if let options,\n      options.keys.contains("
-        "TunnelProviderBootstrapRequest.startOptionKey)",
-        1,
-    )[1].split("let enrollmentRequestID =", 1)[0]
     stop_source = sources["provider"].split(
         "override func stopTunnel(", 1
     )[1].split("override func sleep(", 1)[0]
-    expiry_source = sources["provider"].split(
-        "private func expireClaimedEnrollment(", 1
-    )[1].split("private func resolveClaimedEnrollment(", 1)[0]
-    resolution_source = sources["provider"].split(
-        "private func resolveClaimedEnrollment(", 1
-    )[1].split("private func completeEnrollmentHandoff(", 1)[0]
+    for required in (
+        "let pendingStartup = startupTask",
+        "pendingStartup?.cancel()",
+        "if let pendingStartup {",
+        "await pendingStartup.value",
+        "await runtime.stop()",
+    ):
+        if required not in stop_source:
+            raise ReceiptError(
+                "Mesh Tunnel provider stop does not await startup cleanup"
+            )
+    pending_branch = stop_source.split(
+        "if let pendingStartup {", 1
+    )[1].split("return\n      }", 1)[0]
+    runtime_branch = stop_source.rsplit("Task {", 1)[1]
+    immediate_branch = stop_source.split(
+        "let reporter = runtimeReporter", 1
+    )[1].split("return\n    }", 1)[0]
     if not (
-        bootstrap_source.rindex("providerStartStopLock.unlock()")
-        < bootstrap_source.rindex("completionHandler(nil)")
-        and stop_source.index("providerStartStopLock.unlock()")
-        < stop_source.index("pendingEnrollmentCompletion.resolve(")
-        and expiry_source.index("providerStartStopLock.unlock()")
-        < expiry_source.index("completion.resolve(")
-        and resolution_source.index("providerStartStopLock.unlock()")
-        < resolution_source.index("completion.resolve(error)")
+        stop_source.count("lifecycleGate.finishStop()") == 3
+        and stop_source.count("completionHandler()") == 3
+        and stop_source.count("await pendingTerminalCleanup?.wait()") == 3
+        and "let pendingStartup = startupTask" in stop_source
+        and "pendingStartup?.cancel()" in stop_source
+        and pending_branch.index("await pendingTerminalCleanup?.wait()")
+        < pending_branch.index("await pendingStartup.value")
+        and pending_branch.index("await pendingStartup.value")
+        < pending_branch.index("await reporter?.terminalize()")
+        < pending_branch.index("lifecycleGate.finishStop()")
+        < pending_branch.index("completionHandler()")
+        and immediate_branch.index("await pendingTerminalCleanup?.wait()")
+        < immediate_branch.index("await reporter?.terminalize()")
+        and immediate_branch.index("await reporter?.terminalize()")
+        < immediate_branch.index("lifecycleGate.finishStop()")
+        < immediate_branch.index("completionHandler()")
+        and runtime_branch.index("await pendingTerminalCleanup?.wait()")
+        < runtime_branch.index("await pendingStartup.value")
+        and runtime_branch.index("await pendingStartup.value")
+        < runtime_branch.index("await runtime.stop()")
+        < runtime_branch.index("await reporter?.terminalize()")
+        < runtime_branch.index("lifecycleGate.finishStop()")
+        < runtime_branch.index("completionHandler()")
     ):
         raise ReceiptError(
-            "Mesh Tunnel invokes an Apple or XPC callback while provider state is locked"
+            "Mesh Tunnel provider stop does not await startup cleanup and "
+            "reset lifecycle before completion"
         )
+    for start, end in (
+        ("private func removeIdentity(", "private func startPacketLoops("),
+        (
+            "private func networkRebindFailed(",
+            "private func packetFlowFailed(",
+        ),
+        (
+            "private func packetFlowFailed(",
+            "private func cancelPacketTasks(",
+        ),
+        (
+            "private func mobileRuntimeFailed(",
+            "private static func mobileRuntimeFailure(",
+        ),
+    ):
+        terminal_source = sources["provider"].split(start, 1)[1].split(
+            end, 1
+        )[0]
+        if (
+            "beginTerminalCleanup()" not in terminal_source
+            or "finishTerminalCleanup(cleanupBarrier)"
+            not in terminal_source
+            or terminal_source.index("beginTerminalCleanup()")
+            > terminal_source.index("runtime = nil")
+        ):
+            raise ReceiptError(
+                "Mesh Tunnel terminal path does not own cleanup and "
+                "invalidate generation before clearing runtime"
+            )
     provider_start_index = sources["provider"].index(
         "try await coordinator.start()"
     )
-    provider_completion_index = sources["provider"].index(
-        "complete(nil)",
+    if (
+        sources["provider"].count(
+            "self.lifecycleGate.mayContinueStart(generation)"
+        )
+        < 9
+        or "guard self.lifecycleGate.markRunning("
+        not in sources["provider"]
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel provider async start is not generation-bound"
+        )
+    provider_running_index = sources["provider"].index(
+        "self.lifecycleGate.markRunning(",
         provider_start_index,
     )
+    provider_completion_index = sources["provider"].index(
+        "complete(nil)",
+        provider_running_index,
+    )
+    provider_post_connect_index = sources["provider"].index(
+        "self.startPostConnectControlPlaneWork(",
+        provider_completion_index,
+    )
+    post_start_source = sources["provider"][
+        provider_start_index:provider_running_index
+    ]
     if not (
-        provider_start_index
-        < sources["provider"].index(
-            "self.startPathMonitoring(coordinator: coordinator)",
-            provider_start_index,
+        "guard self.lifecycleGate.mayContinueStart(generation) else {"
+        in post_start_source
+        and "await coordinator.stop()" in post_start_source
+        and "self.completeCancelledStart(complete)" in post_start_source
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel provider start does not stop a stale coordinator"
         )
-        < provider_completion_index
-        < sources["provider"].index(
-            "self.startPacketLoops(",
-            provider_completion_index,
+    pre_completion_source = sources["provider"][
+        provider_start_index:provider_completion_index
+    ]
+    if any(
+        forbidden in pre_completion_source
+        for forbidden in (
+            "TunnelLifecycleSessionFactory.make()",
+            "reporter.report(",
+            "store.nextMonotonicCounter()",
         )
     ):
-        raise ReceiptError("Mesh Tunnel provider starts packet flow too early")
+        raise ReceiptError(
+            "Mesh Tunnel provider start waits on control-plane work"
+        )
+    if not (
+        provider_start_index
+        < provider_running_index
+        < sources["provider"].index(
+            "self.startPathMonitoring(coordinator: coordinator)",
+            provider_running_index,
+        )
+        < sources["provider"].index(
+            "self.startPacketLoops(",
+            provider_running_index,
+        )
+        < provider_completion_index
+        < provider_post_connect_index
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel provider does not generation-commit runtime before completion"
+        )
     if (
         "setTunnelNetworkSettings" in sources["provider"]
         or "provider.packetFlow" in sources["provider"]
@@ -822,20 +990,39 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
     for required in (
         "NETunnelProviderManager.loadAllFromPreferences",
         "TunnelEnrollmentRequest.normalizedOrigin(",
-        "TunnelProviderEnrollmentRequest(",
-        "TunnelProviderBootstrapRequest(",
-        "TunnelProviderBootstrapRequest.startOptionKey",
+        "createSelfEnrollment(",
+        "provisionLocalIdentity(",
+        "TunnelHostEnrollmentSessionFactory.make()",
+        "enrollment.enroll(",
+        "store.install(configuration)",
+        "recoverInterruptedEnrollment(",
+        "store.recoverCandidate(",
+        "TunnelInitialEnrollmentIntent(",
+        "saveInitialEnrollmentIntent(",
+        "loadInitialEnrollmentIntent()",
+        "expectedIntent: intent",
+        "monotonicCounter: monotonicCounter",
+        "intent.monotonicCounter",
+        "configuration.nodeID == intent.nodeID",
+        "configuration.networkID == intent.networkID",
+        "localAuthorityState()",
+        "isRecoverableInitialEnrollment",
+        "orphanedLocalAuthorityRequiresRemoval",
+        "beginOrphanIdentityRemoval()",
+        "TunnelHostIdentityRemovalSessionFactory",
+        "interruptedEnrollmentRecoveryDeferred",
+        "interruptedEnrollmentRecoveryUnauthorized",
+        "prepareProvisionedManagerForRecovery(",
+        "startProvisionedTunnel(",
+        "requestProviderStart(",
+        "TunnelStartAuthorization(",
+        "TunnelHighWaterKeychain.saveStartAuthorization(",
+        "TunnelStartAuthorization.startOptionKey",
+        "session.startTunnel(options:",
         "expectedNodeID: enrollment.node.id",
         "expectedNetworkID: enrollment.node.networkID",
-        "request.encoded()",
-        "eraseTransientEnrollment()",
         "NETunnelProviderSession",
-        "session.startTunnel(options:",
         "sendProviderMessage(",
-        "TunnelEnrollmentOutcome.decodeExact(",
-        "loadEnrollmentReceipt()",
-        "outcome.nodeID == expectedNodeID",
-        "outcome.networkID == expectedNetworkID",
         "tunnelProtocol.serverAddress = origin",
         "tunnelProtocol.providerConfiguration = [",
         '"schema": TunnelEnrollmentRequest.schema',
@@ -843,7 +1030,6 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "manager.onDemandRules = nil",
         "startExistingTunnel",
         "stopTunnel",
-        "session.startTunnel()",
         "manager.connection.stopVPNTunnel()",
         "TunnelControlRequest(",
         "TunnelControlOutcome.decodeExact(response)",
@@ -897,13 +1083,101 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "TunnelOneShotResult<Error?>",
         "providerStartObservationInProgress",
         "requireDisconnectedProvider(",
-        "requireProviderChannelReady(",
         "providerConnectedWithoutIdentity",
         "providerStartFailed(String)",
+        "providerStartFailedAfterIdentity(String)",
+        "providerStartTimedOutAfterIdentity",
         "if completed {",
+        "reconcileInterruptedSetupDiagnostic()",
+        '== "running"',
+        '"interrupted"',
+        "refreshProvisionedConfigurationBeforeStart(",
+        "TunnelHostLifecycleSessionFactory.make()",
+        "lifecycle.refresh(",
+        "retireInitialEnrollmentIntent(",
+        "guard committedIntent == expectedIntent",
+        "matching: committedIntent",
     ):
         if required not in sources["host_controller"]:
-            raise ReceiptError("Mesh Tunnel host enrollment handoff is incomplete")
+            raise ReceiptError(
+                "Mesh Tunnel provision-first host enrollment is incomplete"
+            )
+    if (
+        "try? TunnelHighWaterKeychain.clearInitialEnrollmentIntent()"
+        in sources["host_controller"]
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel can complete with a stale enrollment intent"
+        )
+    local_load = sources["host_controller"].split(
+        "private func readAuthenticatedLocalConfiguration()", 1
+    )[1].split("private func nextLocalConfigurationCounter()", 1)[0]
+    if not (
+        "guard let current = try store.readCurrent()" in local_load
+        and "private func loadLocalConfiguration()" in local_load
+        and "reconcileCommittedEnrollmentIntent(" in local_load
+        and "loadInitialEnrollmentIntent()" in local_load
+        and "guard committedIntent == retainedIntent else" in local_load
+        and "retireInitialEnrollmentIntent(" in local_load
+        and "matching: committedIntent" in local_load
+        and local_load.index("store.readCurrent()")
+        < local_load.index("reconcileCommittedEnrollmentIntent(")
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel does not reconcile an exact committed enrollment "
+            "intent before host use"
+        )
+    inspection_source = sources["host_controller"].split(
+        "private func startInspection(clearsFailure: Bool)", 1
+    )[1].split("private func cancelInspection()", 1)[0]
+    removal_confirmation_source = sources["host_controller"].split(
+        "@objc private func confirmIdentityRemoval()", 1
+    )[1].split("func protectForInactivity()", 1)[0]
+    if (
+        "readAuthenticatedLocalConfiguration()" not in inspection_source
+        or "reconcileCommittedEnrollmentIntent("
+        not in inspection_source
+        or "retainedIntentMismatchAvailable" not in inspection_source
+        or "Tunnel start is blocked." not in inspection_source
+        or "current != nil || self.orphanRemovalAvailable"
+        not in inspection_source
+        or inspection_source.index(
+            "readAuthenticatedLocalConfiguration()"
+        )
+        > inspection_source.index("guard let manager = matches.first else")
+        or "readAuthenticatedLocalConfiguration()"
+        not in removal_confirmation_source
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel mismatched enrollment intent reset is unreachable "
+            "or not fail-closed"
+        )
+    identity_removal_source = sources["host_controller"].split(
+        "private func beginIdentityRemoval(", 1
+    )[1].split("private func beginOrphanIdentityRemoval(", 1)[0]
+    removal_manager_source = sources["host_controller"].split(
+        "private func prepareManagerForIdentityRemoval(", 1
+    )[1].split("private func createManager(", 1)[0]
+    if (
+        "prepareManagerForIdentityRemoval(" not in identity_removal_source
+        or "expectedOrigin: current.controlPlaneOrigin"
+        not in identity_removal_source
+        or "TunnelIdentityRemovalRequest.startOptionKey"
+        not in identity_removal_source
+        or "waitForLocalIdentityRemoval()" not in identity_removal_source
+        or "clearInitialEnrollmentIntent()" not in identity_removal_source
+        or "self.remove(manager)" not in identity_removal_source
+        or "guard matches.count <= 1" not in removal_manager_source
+        or "createManager(origin: expectedOrigin)"
+        not in removal_manager_source
+        or "if !manager.isEnabled" not in removal_manager_source
+        or "enableManager(" not in removal_manager_source
+        or "try await reload(manager)" not in removal_manager_source
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel confirmed identity removal cannot recover its "
+            "exact manager or safely retire enrollment intent"
+        )
     if (
         "private static let postAuthorizationManagerReadinessAttempts = 6"
         not in sources["host_controller"]
@@ -919,39 +1193,48 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         raise ReceiptError(
             "Mesh Tunnel provider-start observation bound changed"
         )
-    bootstrap_index = sources["host_controller"].index(
-        "private func prepareProviderForEnrollment("
-    )
-    handoff_index = sources["host_controller"].index(
-        "private func handOffEnrollment("
-    )
-    handoff_end = sources["host_controller"].index(
-        "private func waitForProviderStart(",
-        handoff_index,
-    )
-    bootstrap_source = sources["host_controller"][
-        bootstrap_index:handoff_index
-    ]
-    handoff_source = sources["host_controller"][handoff_index:handoff_end]
-    if not (
-        bootstrap_source.index("session.startTunnel(options:")
-        < bootstrap_source.index("try await waitForProviderStart(")
-    ):
-        raise ReceiptError(
-            "Mesh Tunnel claims provider readiness before observing startup"
-        )
     automatic_setup = sources["host_controller"].split(
         "private func runAutomaticSetup(", 1
     )[1].split("private func beginAuthorizationBrowser(", 1)[0]
+    normal_setup = automatic_setup.split(
+        "try requireNoLocalIdentity()", 1
+    )[1]
+    provision_start = sources["host_controller"].index(
+        "private func provisionLocalIdentity("
+    )
+    provision_end = sources["host_controller"].index(
+        "private func startProvisionedTunnel(",
+        provision_start,
+    )
+    provision_source = sources["host_controller"][provision_start:provision_end]
+    connect_start = provision_end
+    connect_end = sources["host_controller"].index(
+        "private func waitForProviderStart(",
+        connect_start,
+    )
+    connect_source = sources["host_controller"][connect_start:connect_end]
     if not (
-        automatic_setup.index("prepareProviderForEnrollment(")
-        < automatic_setup.index("createSelfEnrollment(")
-        and handoff_source.index("sendProviderMessage(")
-        < handoff_source.index("TunnelEnrollmentOutcome.decodeExact(")
-        and "startTunnel(options:" not in handoff_source
+        normal_setup.index("reloadReadyManagerAfterAuthorization(")
+        < normal_setup.index("createSelfEnrollmentWithRetry(")
+        < normal_setup.index("saveInitialEnrollmentIntent(")
+        < normal_setup.index("provisionLocalIdentity(")
+        < normal_setup.index("installedConfiguration = provisionedConfiguration")
+        < normal_setup.index("retireCommittedEnrollmentIntent(")
+        < normal_setup.index("refreshProvisionedConfigurationBeforeStart(")
+        < normal_setup.index("startProvisionedTunnel(")
+        and provision_source.index("TunnelHostEnrollmentSessionFactory.make()")
+        < provision_source.index("enrollment.enroll(")
+        < provision_source.index("store.install(configuration)")
+        and connect_source.index("requireDisconnectedProvider(manager)")
+        < connect_source.index("try requestProviderStart(")
+        < connect_source.index("try await waitForProviderStart(")
+        and connect_source.index(
+            "TunnelHighWaterKeychain.saveStartAuthorization("
+        )
+        < connect_source.index("session.startTunnel(options:")
     ):
         raise ReceiptError(
-            "Mesh Tunnel token issuance precedes provider IPC readiness"
+            "Mesh Tunnel does not provision and activate before normal provider start"
         )
     observation_start = sources["host_controller"].index(
         "private func waitForProviderStart("
@@ -977,10 +1260,8 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         not in observation_source
         or "min(Self.providerStartObservationDelay, remaining)"
         not in observation_source
-        or "current?.controlPlaneOrigin == context.origin"
-        not in handoff_source
-        or "connectedAt != context.previousConnectedAt"
-        not in handoff_source
+        or "current?.controlPlaneOrigin" not in connect_source
+        or "connectedAt != previousConnectedAt" not in connect_source
         or "Self.disconnectErrorFetchTimeout" not in disconnect_source
         or "resolver.resolve(nil)" not in disconnect_source
         or "NSLocalizedDescriptionKey" in disconnect_source
@@ -988,30 +1269,35 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         raise ReceiptError(
             "Mesh Tunnel provider success is not identity-bound connected state"
         )
-    for required in (
-        "correlateEnrollmentFailure(",
-        "TunnelProviderFailureContract.schemaKey",
-        "TunnelProviderFailureContract.codeKey",
-        "TunnelProviderFailureContract.requestIDKey",
-    ):
-        if required not in sources["provider"]:
-            raise ReceiptError(
-                "Mesh Tunnel provider failure is not request-correlated"
-            )
-    enrollment_start = sources["provider"].split(
-        "let enrollmentRequestID = Self.enrollmentRequestID(options)",
-        1,
-    )[1]
-    already_running = enrollment_start.split(
-        "case .alreadyRunning:", 1
-    )[1].split("case .alreadyStarting:", 1)[0]
-    if (
-        "if enrollmentRequestID != nil" not in already_running
-        or 'complete(Self.failure("enrollment-request-rejected"))'
-        not in already_running
+    provider_start_source = sources["provider"].split(
+        "override func startTunnel(", 1
+    )[1].split("private func continueTunnelStart(", 1)[0]
+    provider_configuration_source = sources["provider"].split(
+        "private func resolveConfiguration(", 1
+    )[1].split("override func stopTunnel(", 1)[0]
+    if not (
+        provider_start_source.index(
+            "if let options,\n      options.keys.contains("
+            "TunnelIdentityRemovalRequest.startOptionKey)"
+        )
+        < provider_start_source.index(
+            "TunnelStartAuthorization.startOptionKey"
+        )
+        < provider_start_source.index("lifecycleGate.beginStart()")
+        and 'Self.failure("start-authorization-required")'
+        in provider_start_source
+        and "if let current = try store.readCurrent()"
+        in provider_configuration_source
+        and "authorization.matches(current)"
+        in provider_configuration_source
+        and "consumeStartAuthorization("
+        in provider_configuration_source
+        and "return current" in provider_configuration_source
+        and 'code: "configuration-unavailable"'
+        in provider_configuration_source
     ):
         raise ReceiptError(
-            "Mesh Tunnel running provider can discard enrollment"
+            "Mesh Tunnel provider is not current-config-only and option-closed"
         )
     provider_codes = set(
         re.findall(
@@ -1042,15 +1328,6 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "TunnelProviderStartProof",
         "TunnelProviderFailureClassifier",
         "TunnelOneShotResult",
-        "TunnelProviderBootstrapRequest",
-        '"mesh-ios-provider-bootstrap-v1"',
-        "TunnelProviderEnrollmentRequest",
-        '"mesh-ios-provider-enrollment-v1"',
-        "TunnelEnrollmentOutcome",
-        '"mesh-ios-enrollment-outcome-v1"',
-        "TunnelEnrollmentReceiptEnvelope",
-        '"mesh-ios-enrollment-receipt-envelope-v1"',
-        "TunnelEnrollmentReceiptAuthenticator",
     ):
         if required not in sources["contract"]:
             raise ReceiptError(
@@ -1105,30 +1382,153 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         setup_index,
     )
     setup_source = sources["host_controller"][setup_index:setup_end]
+    ordinary_setup_source = setup_source.split(
+        "try requireNoLocalIdentity()", 1
+    )[1]
     if not (
         setup_source.index("prepareManagerBeforeAuthorization(")
         < setup_source.index("TunnelUserEnrollmentClient(")
         < setup_source.index("startAuthorization()")
-        < setup_source.index("createSelfEnrollment(")
+        < setup_source.index("createSelfEnrollmentWithRetry(")
     ):
         raise ReceiptError(
             "Mesh Tunnel does not stage manager readiness before authorization"
         )
     if not (
-        setup_source.index("networks()")
-        < setup_source.index("reloadReadyManagerAfterAuthorization(")
-        < setup_source.index("prepareProviderForEnrollment(")
-        < setup_source.index("createSelfEnrollment(")
-        < setup_source.index("context: providerContext")
+        ordinary_setup_source.index("networks()")
+        < ordinary_setup_source.index("reloadReadyManagerAfterAuthorization(")
+        < ordinary_setup_source.index("stage = .requestingEnrollment")
+        < ordinary_setup_source.index("beginCriticalEnrollmentBackgroundTask()")
+        < ordinary_setup_source.index("createSelfEnrollmentWithRetry(")
+        < ordinary_setup_source.index("saveInitialEnrollmentIntent(")
+        < ordinary_setup_source.index("provisionLocalIdentity(")
+        < ordinary_setup_source.index(
+            "endCriticalEnrollmentBackgroundTask()",
+            ordinary_setup_source.index("provisionLocalIdentity("),
+        )
+        < ordinary_setup_source.index("startProvisionedTunnel(")
     ):
         raise ReceiptError(
-            "Mesh Tunnel can request enrollment against a cached manager"
+            "Mesh Tunnel can provision against a cached manager or connect early"
+        )
+    enrollment_retry_index = sources["host_controller"].index(
+        "private func createSelfEnrollmentWithRetry("
+    )
+    enrollment_retry_end = sources["host_controller"].index(
+        "private func beginCriticalEnrollmentBackgroundTask(",
+        enrollment_retry_index,
+    )
+    enrollment_retry_source = sources["host_controller"][
+        enrollment_retry_index:enrollment_retry_end
+    ]
+    if not (
+        "for attempt in 1...2" in enrollment_retry_source
+        and enrollment_retry_source.count(
+            "client.createSelfEnrollment("
+        ) == 1
+        and (
+            "return try await client.createSelfEnrollment(\n"
+            "                    networkID: networkID,\n"
+            "                    nodeName: nodeName\n"
+            "                )"
+        )
+        in enrollment_retry_source
+        and "urlError.code != .cancelled" in enrollment_retry_source
+        and "(500...599).contains(status)" in enrollment_retry_source
+        and "TunnelHostError.invalidServerResponse" in enrollment_retry_source
+        and "guard attempt == 1" in enrollment_retry_source
+        and "TunnelHostError.selfEnrollmentOutcomeUnknown"
+        in enrollment_retry_source
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel ambiguous self-enrollment retry is not exactly bounded"
+        )
+    background_index = sources["host_controller"].index(
+        "private func eraseTransientEnrollment()"
+    )
+    background_end = sources["host_controller"].index(
+        "private func validatedOrigin(",
+        background_index,
+    )
+    background_source = sources["host_controller"][
+        background_index:background_end
+    ]
+    if not (
+        background_source.index(
+            "activeSetupStage == .requestingEnrollment"
+        )
+        < background_source.index("enrollmentClient?.invalidate()")
+        and background_source.index(
+            "activeSetupStage == .handingOffEnrollment"
+        )
+        < background_source.index("enrollmentClient?.invalidate()")
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel can cancel the mutation-to-activation transaction"
+        )
+    if not (
+        "highWater: TunnelHighWaterKeychain()"
+        in sources["host_controller"]
+        and (
+            "guard try !TunnelHighWaterKeychain.hasLocalAuthority() else {\n"
+            "            throw TunnelHostError.localIdentityAlreadyInstalled\n"
+            "        }"
+        )
+        in sources["host_controller"]
+        and "TunnelHostInspectionHighWater"
+        not in sources["host_controller"]
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel host inspection does not fail closed on real local authority"
+        )
+    for required in (
+        "static func hasLocalAuthority() throws -> Bool",
+        'private static let identityAccount = "primary"',
+        '"io.rw0.mesh.tunnel.mobile.identity.v1"',
+        '"io.rw0.mesh.tunnel.mobile.agent.v1"',
+        '"io.rw0.mesh.tunnel.mobile.agent.pending.v1"',
+        '"io.rw0.mesh.tunnel.mobile.initial-enrollment-intent.v1"',
+        "static func localAuthorityState()",
+        "var isRecoverableInitialEnrollment: Bool",
+        "hasPrivateKey\n"
+        "      && hasCurrentAgentCredential\n"
+        "      && !hasPendingAgentCredential",
+        "static func saveInitialEnrollmentIntent(",
+        "static func loadInitialEnrollmentIntent()",
+        "static func clearInitialEnrollmentIntent()",
+        "static func retireInitialEnrollmentIntent(",
+        "matching expected: TunnelInitialEnrollmentIntent",
+        "static func saveStartAuthorization(",
+        "static func consumeStartAuthorization(",
+        "matching expected: TunnelStartAuthorization",
+        "kSecAttrAccessGroup",
+        "kSecAttrSynchronizable as String: kCFBooleanFalse",
+    ):
+        if required not in sources["high_water_keychain"]:
+            raise ReceiptError(
+                "Mesh Tunnel orphaned local authority inspection is incomplete"
+            )
+    intent_retirement = sources["high_water_keychain"].split(
+        "static func retireInitialEnrollmentIntent(", 1
+    )[1].split("private static func loadValue(", 1)[0]
+    if not (
+        "loadInitialEnrollmentIntent() == expected" in intent_retirement
+        and "try clearInitialEnrollmentIntent()" in intent_retirement
+        and "loadInitialEnrollmentIntent() == nil" in intent_retirement
+        and intent_retirement.index(
+            "loadInitialEnrollmentIntent() == expected"
+        )
+        < intent_retirement.index("try clearInitialEnrollmentIntent()")
+        < intent_retirement.index("loadInitialEnrollmentIntent() == nil")
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel enrollment intent retirement is not exact and verified"
         )
     postauth_index = sources["host_controller"].index(
         "private func reloadReadyManagerAfterAuthorization("
     )
     postauth_end = sources["host_controller"].index(
-        "private func loadReadyManagerAfterAuthorization(",
+        "private func reloadProvisionedManagerForStart(",
         postauth_index,
     )
     postauth_source = sources["host_controller"][
@@ -1231,6 +1631,72 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
             raise ReceiptError(
                 "Mesh Tunnel host stores enrollment credentials in VPN preferences"
             )
+    expected_entitlements = {
+        "com.apple.developer.networking.networkextension": [
+            "packet-tunnel-provider"
+        ],
+        "com.apple.security.application-groups": [
+            "group.io.rw0.mesh.tunnel.mobile"
+        ],
+        "keychain-access-groups": [
+            "$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.handoff",
+            "$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.identity",
+        ],
+    }
+    entitlement_names = (
+        "host_development_entitlements",
+        "host_testflight_entitlements",
+        "host_custom_app_entitlements",
+        "provider_development_entitlements",
+        "provider_testflight_entitlements",
+        "provider_custom_app_entitlements",
+    )
+    try:
+        entitlements = {
+            name: plistlib.loads(paths[name].read_bytes())
+            for name in entitlement_names
+        }
+        host_info = plistlib.loads(paths["host_info"].read_bytes())
+        provider_info = plistlib.loads(paths["provider_info"].read_bytes())
+    except (OSError, plistlib.InvalidFileException) as exc:
+        raise ReceiptError(
+            "Mesh Tunnel identity Keychain source boundary is invalid"
+        ) from exc
+    if (
+        any(value != expected_entitlements for value in entitlements.values())
+        or host_info.get("MeshIdentityKeychainGroup")
+        != "$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.identity"
+        or provider_info.get("MeshIdentityKeychainGroup")
+        != "$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.identity"
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel host and extension do not share exact identity custody"
+        )
+    for forbidden in (
+        "TunnelEnrollmentSessionFactory",
+        "TunnelProviderBootstrap",
+        "TunnelProviderEnrollment",
+        "TunnelEnrollmentOutcome",
+        "TunnelEnrollmentReceipt",
+        "mesh-ios-provider-bootstrap-v1",
+        "mesh-ios-provider-enrollment-v1",
+        "mesh-ios-enrollment-outcome-v1",
+        "mesh-ios-enrollment-receipt-envelope-v1",
+    ):
+        if any(
+            forbidden in sources[name]
+            for name in (
+                "contract",
+                "configuration_store",
+                "provider_lifecycle_gate",
+                "provider",
+                "host_controller",
+                "host_enrollment_adapter",
+            )
+        ):
+            raise ReceiptError(
+                "Mesh Tunnel retains obsolete provider enrollment IPC"
+            )
     for source_name in (
         "TunnelAppleNetworkSettings.swift",
         "TunnelPacketFlowPump.swift",
@@ -1248,27 +1714,56 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
             raise ReceiptError("Mesh Tunnel runtime source is not compiled by extension")
     if sources["project"].count("MeshTunnelViewController.swift in Sources") != 2:
         raise ReceiptError("Mesh Tunnel enrollment host is not compiled by the app")
+    if (
+        sources["project"].count("GoHostEnrollmentSession.swift in Sources") != 2
+        or any(
+            sources["project"].count(
+                f"CODE_SIGN_ENTITLEMENTS = {configuration};"
+            )
+            != 1
+            for configuration in (
+                "MeshTunnelHost/Development.entitlements",
+                "MeshTunnelHost/TestFlight.entitlements",
+                "MeshTunnelHost/CustomApp.entitlements",
+                "PacketTunnel/Development.entitlements",
+                "PacketTunnel/TestFlight.entitlements",
+                "PacketTunnel/CustomApp.entitlements",
+            )
+        )
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel host enrollment or shared custody source is not compiled"
+        )
+    expected_log_events = {
+        "startRequested": "start-requested",
+        "configurationContainerUnavailable": "configuration-container-unavailable",
+        "configurationUnavailable": "configuration-unavailable",
+        "configurationInvalid": "configuration-invalid",
+        "lifecycleRefreshDeferred": "lifecycle-refresh-deferred",
+        "lifecycleRefreshFailed": "lifecycle-refresh-failed",
+        "agentAuthorizationRejected": "agent-authorization-rejected",
+        "engineUnavailable": "engine-unavailable",
+        "networkRebindFailed": "network-rebind-failed",
+        "packetFlowFailed": "packet-flow-failed",
+        "stopRequested": "stop-requested",
+        "statusRequestAccepted": "status-request-accepted",
+        "statusRequestRejected": "status-request-rejected",
+        "identityRemovalRequested": "identity-removal-requested",
+        "identityRemovalCompleted": "identity-removal-completed",
+        "identityRemovalFailed": "identity-removal-failed",
+    }
     for required in (
         "import OSLog",
         "enum TunnelLogEvent: String, CaseIterable",
         "static func record(_ event: TunnelLogEvent)",
-        'logger.notice("start-requested")',
-        'logger.notice("provider-bootstrap-ready")',
-        'logger.notice("enrollment-handoff-accepted")',
-        'logger.error("configuration-container-unavailable")',
-        'logger.error("configuration-unavailable")',
-        'logger.error("configuration-invalid")',
-        'logger.error("enrollment-request-rejected")',
-        'logger.error("enrollment-failed")',
-        'logger.error("engine-unavailable")',
-        'logger.error("network-rebind-failed")',
-        'logger.error("packet-flow-failed")',
-        'logger.notice("stop-requested")',
-        'logger.notice("status-request-accepted")',
-        'logger.error("status-request-rejected")',
-        'logger.notice("identity-removal-requested")',
-        'logger.notice("identity-removal-completed")',
-        'logger.error("identity-removal-failed")',
+        *(
+            f'case {name} = "{code}"'
+            for name, code in expected_log_events.items()
+        ),
+        *(
+            f'logger.{"notice" if name in {"startRequested", "lifecycleRefreshDeferred", "stopRequested", "statusRequestAccepted", "identityRemovalRequested", "identityRemovalCompleted"} else "error"}("{code}")'
+            for name, code in expected_log_events.items()
+        ),
     ):
         if required not in sources["tunnel_log"]:
             raise ReceiptError("Mesh Tunnel logging boundary is incomplete")
@@ -1278,28 +1773,16 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         or sources["project"].count("TunnelLog.swift in Sources") != 2
     ):
         raise ReceiptError("Mesh Tunnel logging accepts dynamic text")
-    for event in (
-        ".startRequested",
-        ".providerBootstrapReady",
-        ".enrollmentHandoffAccepted",
-        ".configurationContainerUnavailable",
-        ".configurationUnavailable",
-        ".configurationInvalid",
-        ".enrollmentRequestRejected",
-        ".enrollmentFailed",
-        ".lifecycleRefreshDeferred",
-        ".lifecycleRefreshFailed",
-        ".agentAuthorizationRejected",
-        ".engineUnavailable",
-        ".networkRebindFailed",
-        ".packetFlowFailed",
-        ".stopRequested",
-        ".statusRequestAccepted",
-        ".statusRequestRejected",
-        ".identityRemovalRequested",
-        ".identityRemovalCompleted",
-        ".identityRemovalFailed",
-    ):
+    declared_log_events = dict(
+        re.findall(
+            r'^\s*case ([A-Za-z0-9]+) = "([a-z0-9-]+)"\s*$',
+            sources["tunnel_log"],
+            re.MULTILINE,
+        )
+    )
+    if declared_log_events != expected_log_events:
+        raise ReceiptError("Mesh Tunnel logging event inventory changed")
+    for event in (f".{name}" for name in expected_log_events):
         if (
             f"TunnelLog.record({event})" not in sources["provider"]
             and f"event: {event}" not in sources["provider"]
@@ -1312,18 +1795,26 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "packet_pump": "bounded-apple-flow-source-wired-static-engine",
         "runtime_coordinator": "ordered-rebind-cleanup-source-proven",
         "provider": (
-            "coordinator-apple-flow-extension-bootstrap-ipc-enrollment-"
+            "coordinator-apple-flow-current-config-only-"
             "lifecycle-mobile-evidence-identity-removal-static-engine-"
             "network-path-source-wired"
         ),
         "engine_adapter": (
-            "gomobile-extension-enrollment-lifecycle-renewal-credential-"
+            "gomobile-extension-lifecycle-renewal-credential-"
             "rotation-mobile-evidence-identity-removal-signed-config-packet-"
             "session-source-wired"
         ),
-        "extension_logging": "fixed-reviewed-20-event-codes-only",
+        "host_enrollment_adapter": (
+            "gomobile-host-self-enrollment-shared-identity-"
+            "config-activation-source-wired"
+        ),
+        "identity_keychain_custody": (
+            "shared-host-extension-device-only-source-proven"
+        ),
+        "extension_logging": "fixed-reviewed-16-event-codes-only",
         "host_runtime_controls": (
-            "request-bound-real-evidence-start-stop-inspect-source-proven"
+            "provision-first-connect-second-real-evidence-"
+            "start-stop-inspect-source-proven"
         ),
         "host_manager_recovery": (
             "preauth-confirmed-disabled-no-identity-exact-replacement-"
@@ -2437,6 +2928,7 @@ def inspect_tunnel_extension(
         "_IosmobileNewIdentityRemovalSession",
         "_IosmobileNewLifecycleSession",
         "_proxyiosmobile_EnrollmentSession_Enroll",
+        "_proxyiosmobile_EnrollmentSession_Recover",
         "_proxyiosmobile_IdentityRemovalSession_Remove",
         "_proxyiosmobile_LifecycleSession_ReportRuntime",
         "_proxyiosmobile_LifecycleSession_Refresh",

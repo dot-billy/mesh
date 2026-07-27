@@ -13,6 +13,7 @@
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.handoff</string>
+		<string>$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.identity</string>
 	</array>
 </dict>
 </plist>

@@ -210,6 +210,53 @@ class DistributionVerifierTests(unittest.TestCase):
                 [],
             )
 
+    def test_tunnel_targets_share_the_exact_identity_keychain_groups(
+        self,
+    ) -> None:
+        groups = list(verifier.TUNNEL_SHARED_KEYCHAIN_GROUPS)
+        self.assertEqual(
+            groups,
+            [
+                f"{verifier.TEAM}.io.rw0.mesh.tunnel.mobile.handoff",
+                f"{verifier.TEAM}.io.rw0.mesh.tunnel.mobile.identity",
+            ],
+        )
+        for identifier in (
+            "io.rw0.mesh.tunnel.mobile",
+            "io.rw0.mesh.tunnel.mobile.packet-tunnel",
+        ):
+            entitlements = {
+                "application-identifier": f"{verifier.TEAM}.{identifier}",
+                "beta-reports-active": True,
+                "com.apple.developer.team-identifier": verifier.TEAM,
+                "com.apple.developer.networking.networkextension": [
+                    "packet-tunnel-provider"
+                ],
+                "com.apple.security.application-groups": [verifier.GROUP],
+                "get-task-allow": False,
+                "keychain-access-groups": groups,
+            }
+            verifier.validate_signed_entitlements(
+                entitlements,
+                identifier,
+                groups,
+                [verifier.GROUP],
+                ["packet-tunnel-provider"],
+            )
+            missing_identity = copy.deepcopy(entitlements)
+            missing_identity["keychain-access-groups"] = groups[:1]
+            with self.assertRaisesRegex(
+                verifier.VerificationError,
+                "exact allowlist",
+            ):
+                verifier.validate_signed_entitlements(
+                    missing_identity,
+                    identifier,
+                    groups,
+                    [verifier.GROUP],
+                    ["packet-tunnel-provider"],
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

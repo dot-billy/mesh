@@ -476,7 +476,8 @@ verifies the resulting simulator bundle, and publishes only the bounded
 4. installed containing application and its exact Packet Tunnel extension;
 5. pinned statically linked Nebula engine matching its reproducible build
    receipt;
-6. extension-bound local device-only private key and derived public key;
+6. app-and-extension-shared, device-only private key that is reachable only
+   through narrow Go sessions, plus its derived public key;
 7. one-use Mesh enrollment bound to network, node, and public key;
 8. validated Mesh certificate and CA;
 9. signed monotonic Mesh configuration bound to certificate generation and
@@ -484,9 +485,9 @@ verifies the resulting simulator bundle, and publishes only the bounded
 10. acknowledged extension evidence bound to the exact selected state and real
     packet/peer observations.
 
-Flutter and the containing application may request enrollment and configuration
-handoff, but cannot retrieve the node private key or substitute for extension
-runtime evidence.
+The containing application may request enrollment and activate the verified
+site before provider startup, but no Swift surface can retrieve the node
+private key or substitute for extension runtime evidence.
 
 ### Current Mesh Tunnel source and controlled-beta boundary
 
@@ -502,16 +503,41 @@ engine, settings, Apple callback, and network-path rebind paths are present,
 but no receipt or TestFlight state claims an executed callback, applied
 interface setting, installed Keychain item, lifecycle convergence, secure
 deletion, or physical packet path.
-The containing app and extension also implement the source-defined
-extension-owned enrollment ceremony from ADR 0012. The app persists only a
-canonical HTTPS origin and passes the one-use token directly as one exact
-start option. The extension performs strict preflight, local lighthouse
-resolution, Keychain identity/agent creation, enrollment, signed-bundle
-validation, monotonic activation, and engine startup. No live server or device
-has executed that ceremony. ADR 0013 adds one existing-credential,
-agent-authenticated lifecycle refresh before later starts; ready state
-activates monotonically, bounded service unavailability may defer, and
-authorization or invalid state fails startup closed.
+The containing app and extension implement the provision-first ceremony from
+amended ADR 0012. The app persists only a canonical HTTPS origin, validates
+the current manager and empty local authority, requests one fixed-policy
+self-enrollment, and passes the one-use token in memory to a narrow Go
+enrollment session. That session performs strict preflight, local lighthouse
+resolution, device-only Keychain identity/agent creation, enrollment, and
+signed-bundle validation. The host activates the verified site monotonically
+and only then prepares provider start. Before start the host revalidates the
+exact manager, performs the same enable/save/reload preference sequence used
+by Mobile Nebula, refreshes the installed site, and creates one exact
+Keychain-backed start authorization. The provider rejects Settings-only starts,
+consumes that authorization, loads only the installed site, applies settings,
+starts Nebula, commits the local running generation, and completes Apple's
+callback without waiting for control-plane HTTP. Runtime reporting begins afterward; verified
+authorization or desired-state rejection can quarantine the running session,
+while unavailable reporting cannot hold Apple in `.connecting`. ADR 0013
+defines the host-side pre-start existing-credential refresh boundary. After an
+interrupted initial enrollment, the host authenticates and activates a
+candidate matching a device-only exact origin/node/network/counter intent before
+network access or uses complete non-rotating existing authority for one
+bootstrap of an already committed node bound to that same intent. Recovery has exact
+ready, deferred, and unauthorized outcomes; only ready carries a verified
+configuration, and the other outcomes preserve authority without requesting
+another token. An uncommitted pending node still requires administrator
+reconciliation and crash/restart remains a qualification blocker. Incomplete
+or unauthorized no-configuration authority can be reset only through explicit
+destructive confirmation after administrator review; deferred or ambiguous
+recovery preserves it and never exposes automatic reset.
+If an authenticated current site disagrees with a retained recovery intent,
+normal load and start fail closed. Inspection still authenticates the current
+site and permits only its explicit exact-node removal; the mismatched marker is
+cleared only after the provider confirms local deletion. If the preference is
+missing or disabled, that confirmation creates or re-enables an exact
+same-origin manager only to launch deletion, then removes the manager after the
+provider confirms completion.
 The registered identifiers and entitlement values are:
 
 - containing app: `io.rw0.mesh.tunnel.mobile`;
@@ -519,16 +545,18 @@ The registered identifiers and entitlement values are:
 - App Group: `group.io.rw0.mesh.tunnel.mobile`;
 - shared handoff Keychain suffix:
   `io.rw0.mesh.tunnel.mobile.handoff`; and
-- extension-only identity Keychain suffix:
+- shared device-identity Keychain suffix:
   `io.rw0.mesh.tunnel.mobile.identity`.
 
-The containing app receives the Packet Tunnel capability, App Group, and
-handoff Keychain group only. The extension additionally receives the
-extension-only identity group. Separate development, TestFlight, and Custom
-App entitlement documents prevent one distribution path from silently
-selecting another path's capability file. Apple Team `Y3P5UNNG23` registered
-these values and issued valid App Store profiles. Enabling Network Extension
-on the host invalidated historical profile
+The containing app and extension both receive the Packet Tunnel capability,
+App Group, handoff Keychain group, and identity Keychain group. The host's
+identity-group access exists only so the narrow Go session can provision the
+site before provider startup; no Swift API returns either credential. Separate
+development, TestFlight, and Custom App entitlement documents prevent one
+distribution path from silently selecting another path's capability file.
+Historical profiles do not prove this new shared-custody entitlement set and
+must be regenerated and reverified for build 8. Enabling Network Extension on
+the host invalidated historical profile
 `ee85c79b-dd9b-444b-a0c3-4dd2b06885e2`; regenerated host profile
 `9ae4c36f-22a0-4d67-b078-f40049321616` and extension profile
 `4201014e-16f3-4836-8da4-04b856709c51` are active through 2027-05-17 UTC.
@@ -615,18 +643,22 @@ writes use create-exclusive private temporaries, full write and file
 synchronization, atomic `renameat`, and directory synchronization. Candidate,
 current, and recovery slots are bound to the exact network, node, certificate,
 configuration, engine, revision, and monotonic counter. The current slot is
-durable before the extension-only Keychain high-water item advances. Recovery
+durable before the shared identity Keychain high-water item advances. Recovery
 derives the effective floor from both authorities, so an ambiguous high-water
 write cannot make an older candidate acceptable. Initial enrollment derives
 its next counter from the maximum of that authenticated current slot and
 Keychain floor before staging and activating the verified framework output.
+Host inspection uses that real high-water value and checks for orphaned
+private-key, current-agent, or pending-agent authority before admitting a new
+enrollment.
 
 The separate `MeshMobile.xcframework` proof establishes key custody and a
 bounded packet-session primitive. Its Go source directly creates or reads the
-raw 32-byte X25519 private key in the extension-only, non-synchronizing,
+raw 32-byte X25519 private key in the shared host-and-extension,
+non-synchronizing,
 after-first-unlock-this-device-only Data Protection Keychain group, zeroes
 temporary buffers, and returns only the derived public key. A separate stable
-32-byte agent credential seed uses the same extension-only group and is never
+32-byte agent credential seed uses the same identity group and is never
 returned. Both use the pre-node-ID account `primary`, so enrollment and later
 engine startup address the same local identity. The generated Objective-C
 surface exports `IosmobileEnsureIdentity`,
@@ -719,22 +751,28 @@ digests before startup; the Go engine independently verifies the signed
 configuration, certificate, CA, local private-key match, routes, and PKI paths
 before constructing Nebula.
 
-When no current slot exists, the provider accepts only one canonical
-`mesh-ios-tunnel-enrollment-v1` start option. The Go enrollment session first
-uses the token-scoped no-store preflight and requires an unexpired member plan
-with at least one locally resolvable usable lighthouse outside the planned
-overlay. Only after that non-consuming gate does it create or read the local
-identity and agent credential. It sends only the one-use token, public key, and
-agent-bearer hash; an ambiguous result permits one byte-identical replay and
-then authenticated bootstrap recovery. Before returning a v4 configuration it
+When no current slot or local Keychain authority exists, the containing app
+reloads and validates the manager after OIDC, protects the
+self-enrollment-to-activation interval from ordinary background cancellation,
+and asks the server for one fixed-policy self-enrollment. An ambiguous
+self-enrollment result permits exactly one retry with the same principal and
+stable device name. The Go enrollment session then uses the token-scoped
+no-store preflight and requires an unexpired member plan with at least one
+locally resolvable usable lighthouse outside the planned overlay. Only after
+that non-consuming gate does it create or read the local identity and agent
+credential. It sends only the one-use token, public key, and agent-bearer hash;
+an ambiguous consuming result permits one byte-identical replay and then
+authenticated bootstrap recovery. Before returning a v4 configuration it
 binds the signed member role, certificate network, local key, native DNS, and
-selected underlay remote back to the preflight plan. The containing app clears
-the token and never places it in VPN preferences or the App Group. These are
-source and test contracts, not evidence that a real token was consumed or a
-physical Keychain item was created.
+selected underlay remote back to the preflight plan. The host activates that
+configuration above the authenticated high-water floor and then starts the
+provider normally. The provider rejects enrollment-bearing start options. The
+containing app clears the token and never places it in VPN preferences or the
+App Group. These are source and test contracts, not evidence that a real token
+was consumed or a physical Keychain item was created.
 
 When a current slot exists, startup first creates a separate lifecycle session
-that can open only the existing extension identity and agent items. It verifies
+that can open only the existing shared device identity and agent items. It verifies
 the current v4 document against the local private key and exact stored origin,
 pins the bootstrap configuration-signing key to the currently trusted key, and
 performs one agent-authenticated bootstrap. The exact
@@ -757,7 +795,7 @@ while the current certificate remains valid. A mandatory CA/profile transition
 never falls back to the old certificate.
 
 When the authenticated agent-credential expiry is within seven days, the
-extension creates one random 32-byte pending seed in a fixed extension-only
+extension creates one random 32-byte pending seed in a fixed shared device-only
 Keychain item before calling `POST /api/v1/agent/credentials/rotate`. Only its
 SHA-256 hash crosses the network. The current bearer authorizes the first
 request; ambiguous response recovery uses the pending bearer and the same
@@ -823,7 +861,10 @@ startup, packet, and rebind failures run reverse cleanup, and running evidence
 is not emitted before all stages complete. Its packet-pump actor copies and validates complete
 packets, bounds batches and directional queues, rejects a whole batch under
 pressure, preserves accepted order, records directional counters, and clears
-queued bytes on idempotent stop.
+queued bytes on idempotent stop. Terminal failure and identity-removal cleanup
+also own a completion barrier. A concurrent Apple stop waits for that barrier
+before resetting the lifecycle gate, preventing an older cleanup task from
+reopening or overwriting a replacement start.
 
 The reviewed unsigned provider build uses the statically linked engine
 adapter. Its two `NEPacketTunnelFlow` tasks start only after engine

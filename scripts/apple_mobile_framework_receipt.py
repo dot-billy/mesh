@@ -54,7 +54,7 @@ EXPECTED_SESSION_METHODS = [
     "start",
     "stop",
 ]
-EXPECTED_ENROLLMENT_SESSION_METHODS = ["enroll"]
+EXPECTED_ENROLLMENT_SESSION_METHODS = ["enroll", "recover"]
 EXPECTED_LIFECYCLE_SESSION_METHODS = ["refresh", "reportRuntime"]
 EXPECTED_IDENTITY_REMOVAL_SESSION_METHODS = ["remove"]
 
@@ -680,7 +680,7 @@ def inspect_engine_sources(inputs: dict[str, object]) -> dict[str, object]:
             )
         )
     )
-    if enrollment_methods != ["Enroll"]:
+    if enrollment_methods != ["Enroll", "Recover"]:
         raise ReceiptError("framework EnrollmentSession source surface is not exact")
     if re.search(
         r'^\s*agentCredentialService\s*=\s*'
@@ -692,6 +692,12 @@ def inspect_engine_sources(inputs: dict[str, object]) -> dict[str, object]:
     for required in (
         "loadOrCreatePrivateKey(accessGroup, identityID)",
         "loadOrCreateSecret(",
+        "loadPrivateKey(accessGroup, identityID)",
+        "loadSecret(",
+        "enrollmentRecoveryV1",
+        "enrollmentRecoveryUnauthorized",
+        "enrollmentRecoveryDeferred",
+        'origin+"/api/v1/agent/bootstrap"',
         "configsignature.Verify(",
         "http.ErrUseLastResponse",
         "validEnrollmentBearer(",

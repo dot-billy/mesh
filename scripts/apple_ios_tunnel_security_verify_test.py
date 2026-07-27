@@ -75,7 +75,7 @@ def fixture(root: pathlib.Path) -> pathlib.Path:
         "source_boundary": {
             "physical_device_validated": False,
             "provider": (
-                "coordinator-apple-flow-extension-enrollment-lifecycle-mobile-"
+                "coordinator-apple-flow-current-config-only-lifecycle-mobile-"
                 "evidence-identity-removal-static-engine-network-path-source-wired"
             ),
             "packet_pump": "bounded-apple-flow-source-wired-static-engine",
@@ -83,13 +83,29 @@ def fixture(root: pathlib.Path) -> pathlib.Path:
                 "coordinator-gated-provider-adapter-source-wired"
             ),
             "engine_adapter": (
-                "gomobile-extension-enrollment-lifecycle-renewal-credential-"
+                "gomobile-extension-lifecycle-renewal-credential-"
                 "rotation-mobile-evidence-identity-removal-signed-config-packet-"
                 "session-source-wired"
             ),
+            "host_enrollment_adapter": (
+                "gomobile-host-self-enrollment-shared-identity-"
+                "config-activation-source-wired"
+            ),
+            "identity_keychain_custody": (
+                "shared-host-extension-device-only-source-proven"
+            ),
+            "host_runtime_controls": (
+                "provision-first-connect-second-real-evidence-"
+                "start-stop-inspect-source-proven"
+            ),
+            "host_manager_recovery": (
+                "preauth-confirmed-disabled-no-identity-exact-replacement-"
+                "postauth-bounded-fresh-manager-retry-terminal-status-source-"
+                "proven"
+            ),
             "remote_endpoint": "authenticated-canonical-required",
             "runtime_coordinator": "ordered-rebind-cleanup-source-proven",
-            "extension_logging": "fixed-reviewed-18-event-codes-only",
+            "extension_logging": "fixed-reviewed-16-event-codes-only",
         },
         "privacy_manifest": {
             "sha256": privacy_hash,

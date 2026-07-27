@@ -53,7 +53,7 @@ type mobileRuntimeReportOutcome struct {
 	Status mobileRuntimeReportStatus `json:"status"`
 }
 
-// LifecycleSession owns one extension-only, agent-authenticated desired-state
+// LifecycleSession owns one shared-custody, agent-authenticated desired-state
 // refresh. It can return a verified replacement configuration, a bounded
 // offline deferral, or an authorization rejection. It never returns the
 // private key or agent bearer.
@@ -69,7 +69,7 @@ type LifecycleSession struct {
 	now                            func() time.Time
 }
 
-// NewLifecycleSession binds refresh to existing extension-only credentials.
+// NewLifecycleSession binds refresh to existing app-and-extension credentials.
 // Unlike enrollment, refresh never creates a missing identity or agent item.
 func NewLifecycleSession(
 	accessGroup string,
@@ -149,7 +149,7 @@ func newLifecycleSession(
 	}
 }
 
-// Refresh authenticates the exact stored origin against the extension-owned
+// Refresh authenticates the exact stored origin against the device-owned
 // agent credential and returns only a verified monotonically newer envelope
 // payload. Transport, 429, and 5xx failures defer to the still-valid current
 // payload; authorization rejection and malformed authenticated state do not.

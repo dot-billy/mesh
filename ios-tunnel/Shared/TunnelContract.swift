@@ -108,7 +108,7 @@ public enum TunnelProviderFailureClassifier {
     schema: String?,
     code: String?,
     requestID: String?,
-    expectedRequestID: String,
+    expectedRequestID: String?,
     allowedCodes: Set<String>
   ) -> String {
     guard
@@ -148,7 +148,6 @@ public final class TunnelOneShotResult<Value>: @unchecked Sendable {
 
 public struct TunnelEnrollmentRequest: Codable, Equatable, Sendable {
   public static let schema = "mesh-ios-tunnel-enrollment-v1"
-  public static let startOptionKey = "meshEnrollmentRequest"
   public static let maximumDocumentBytes = 8 * 1024
 
   public let schema: String
@@ -220,250 +219,43 @@ public struct TunnelEnrollmentRequest: Codable, Equatable, Sendable {
   }
 }
 
-public enum TunnelProviderBootstrapOperation:
-  String,
+public struct TunnelInitialEnrollmentIntent:
   Codable,
   Equatable,
   Sendable
 {
-  case awaitEnrollment = "await-enrollment"
-}
-
-public struct TunnelProviderBootstrapRequest:
-  Codable,
-  Equatable,
-  Sendable
-{
-  public static let schema = "mesh-ios-provider-bootstrap-v1"
-  public static let startOptionKey = "meshProviderBootstrap"
+  public static let schema = "mesh-ios-initial-enrollment-intent-v1"
   public static let maximumDocumentBytes = 4 * 1024
 
   public let schema: String
-  public let requestID: String
-  public let operation: TunnelProviderBootstrapOperation
-  public let serverOrigin: String
-
-  public init(requestID: String, serverOrigin: String) throws {
-    schema = Self.schema
-    self.requestID = requestID
-    operation = .awaitEnrollment
-    self.serverOrigin = try ContractField.httpsOrigin(
-      serverOrigin,
-      name: "serverOrigin"
-    )
-    try validate()
-  }
-
-  public func encoded() throws -> Data {
-    try validate()
-    return try ExactJSON.canonical(self)
-  }
-
-  public static func decodeExact(_ data: Data) throws -> Self {
-    try ExactJSON.requireObject(
-      data,
-      keys: ["schema", "requestID", "operation", "serverOrigin"],
-      maximumBytes: maximumDocumentBytes
-    )
-    let value = try JSONDecoder().decode(Self.self, from: data)
-    try value.validate()
-    guard try ExactJSON.canonical(value) == data else {
-      throw TunnelContractError.invalidDocument
-    }
-    return value
-  }
-
-  private func validate() throws {
-    guard
-      schema == Self.schema,
-      operation == .awaitEnrollment
-    else {
-      throw TunnelContractError.unsupportedSchema
-    }
-    try ContractField.identifier(requestID, name: "requestID")
-    guard
-      try ContractField.httpsOrigin(
-        serverOrigin,
-        name: "serverOrigin"
-      ) == serverOrigin
-    else {
-      throw TunnelContractError.invalidField("serverOrigin")
-    }
-  }
-}
-
-public struct TunnelProviderEnrollmentRequest:
-  Codable,
-  Equatable,
-  Sendable
-{
-  public static let schema = "mesh-ios-provider-enrollment-v1"
-  public static let maximumDocumentBytes = 8 * 1024
-
-  public let schema: String
-  public let requestID: String
-  public let serverOrigin: String
-  public let enrollmentToken: String
-  public let expectedNodeID: String
-  public let expectedNetworkID: String
-
-  public init(
-    requestID: String,
-    serverOrigin: String,
-    enrollmentToken: String,
-    expectedNodeID: String,
-    expectedNetworkID: String
-  ) throws {
-    schema = Self.schema
-    self.requestID = requestID
-    self.serverOrigin = try ContractField.httpsOrigin(
-      serverOrigin,
-      name: "serverOrigin"
-    )
-    self.enrollmentToken = enrollmentToken
-    self.expectedNodeID = expectedNodeID
-    self.expectedNetworkID = expectedNetworkID
-    try validate()
-  }
-
-  public func encoded() throws -> Data {
-    try validate()
-    return try ExactJSON.canonical(self)
-  }
-
-  public static func decodeExact(_ data: Data) throws -> Self {
-    try ExactJSON.requireObject(
-      data,
-      keys: [
-        "schema",
-        "requestID",
-        "serverOrigin",
-        "enrollmentToken",
-        "expectedNodeID",
-        "expectedNetworkID",
-      ],
-      maximumBytes: maximumDocumentBytes
-    )
-    let value = try JSONDecoder().decode(Self.self, from: data)
-    try value.validate()
-    guard try ExactJSON.canonical(value) == data else {
-      throw TunnelContractError.invalidDocument
-    }
-    return value
-  }
-
-  private func validate() throws {
-    guard schema == Self.schema else {
-      throw TunnelContractError.unsupportedSchema
-    }
-    try ContractField.identifier(requestID, name: "requestID")
-    guard
-      try ContractField.httpsOrigin(
-        serverOrigin,
-        name: "serverOrigin"
-      ) == serverOrigin
-    else {
-      throw TunnelContractError.invalidField("serverOrigin")
-    }
-    try ContractField.base64URL(
-      enrollmentToken,
-      bytes: 32,
-      name: "enrollmentToken"
-    )
-    try ContractField.identifier(
-      expectedNodeID,
-      name: "expectedNodeID"
-    )
-    try ContractField.identifier(
-      expectedNetworkID,
-      name: "expectedNetworkID"
-    )
-  }
-}
-
-public enum TunnelEnrollmentOutcomeStatus:
-  String,
-  Codable,
-  Equatable,
-  Sendable
-{
-  case running
-  case failed
-}
-
-public struct TunnelEnrollmentOutcome:
-  Codable,
-  Equatable,
-  Sendable
-{
-  public static let schema = "mesh-ios-enrollment-outcome-v1"
-  public static let maximumDocumentBytes = 4 * 1024
-
-  public let schema: String
-  public let requestID: String
-  public let serverOrigin: String
+  public let controlPlaneOrigin: String
   public let nodeID: String
   public let networkID: String
-  public let status: TunnelEnrollmentOutcomeStatus
-  public let identityCommitted: Bool
-  public let code: String
+  public let monotonicCounter: UInt64
 
   public init(
-    requestID: String,
-    serverOrigin: String,
+    controlPlaneOrigin: String,
     nodeID: String,
     networkID: String,
-    status: TunnelEnrollmentOutcomeStatus,
-    identityCommitted: Bool,
-    code: String
+    monotonicCounter: UInt64
   ) throws {
     schema = Self.schema
-    self.requestID = requestID
-    self.serverOrigin = try ContractField.httpsOrigin(
-      serverOrigin,
-      name: "serverOrigin"
+    self.controlPlaneOrigin = try ContractField.httpsOrigin(
+      controlPlaneOrigin,
+      name: "controlPlaneOrigin"
     )
     self.nodeID = nodeID
     self.networkID = networkID
-    self.status = status
-    self.identityCommitted = identityCommitted
-    self.code = code
+    self.monotonicCounter = monotonicCounter
     try validate()
   }
 
-  public static func running(
-    requestID: String,
-    serverOrigin: String,
-    nodeID: String,
-    networkID: String
-  ) throws -> Self {
-    try Self(
-      requestID: requestID,
-      serverOrigin: serverOrigin,
-      nodeID: nodeID,
-      networkID: networkID,
-      status: .running,
-      identityCommitted: true,
-      code: "none"
-    )
-  }
-
-  public static func failed(
-    requestID: String,
-    serverOrigin: String,
-    nodeID: String,
-    networkID: String,
-    identityCommitted: Bool,
-    code: String
-  ) throws -> Self {
-    try Self(
-      requestID: requestID,
-      serverOrigin: serverOrigin,
-      nodeID: nodeID,
-      networkID: networkID,
-      status: .failed,
-      identityCommitted: identityCommitted,
-      code: code
+  public init(configuration: TunnelConfigurationPayload) throws {
+    try self.init(
+      controlPlaneOrigin: configuration.controlPlaneOrigin,
+      nodeID: configuration.nodeID,
+      networkID: configuration.networkID,
+      monotonicCounter: configuration.monotonicCounter
     )
   }
 
@@ -477,13 +269,10 @@ public struct TunnelEnrollmentOutcome:
       data,
       keys: [
         "schema",
-        "requestID",
-        "serverOrigin",
+        "controlPlaneOrigin",
         "nodeID",
         "networkID",
-        "status",
-        "identityCommitted",
-        "code",
+        "monotonicCounter",
       ],
       maximumBytes: maximumDocumentBytes
     )
@@ -499,101 +288,102 @@ public struct TunnelEnrollmentOutcome:
     guard schema == Self.schema else {
       throw TunnelContractError.unsupportedSchema
     }
-    try ContractField.identifier(requestID, name: "requestID")
     guard
       try ContractField.httpsOrigin(
-        serverOrigin,
-        name: "serverOrigin"
-      ) == serverOrigin
+        controlPlaneOrigin,
+        name: "controlPlaneOrigin"
+      ) == controlPlaneOrigin
     else {
-      throw TunnelContractError.invalidField("serverOrigin")
+      throw TunnelContractError.invalidField("controlPlaneOrigin")
     }
     try ContractField.identifier(nodeID, name: "nodeID")
     try ContractField.identifier(networkID, name: "networkID")
-    try ContractField.identifier(code, name: "code")
-    switch status {
-    case .running:
-      guard identityCommitted, code == "none" else {
-        throw TunnelContractError.invalidField("status")
-      }
-    case .failed:
-      guard code != "none" else {
-        throw TunnelContractError.invalidField("code")
-      }
+    guard monotonicCounter > 0 else {
+      throw TunnelContractError.invalidField("monotonicCounter")
     }
   }
 }
 
-public struct TunnelEnrollmentReceiptEnvelope:
+public struct TunnelStartAuthorization:
   Codable,
   Equatable,
   Sendable
 {
-  public static let schema = "mesh-ios-enrollment-receipt-envelope-v1"
+  public static let schema = "mesh-ios-start-authorization-v1"
+  public static let startOptionKey = "meshStartAuthorization"
+  public static let maximumDocumentBytes = 4 * 1024
 
   public let schema: String
-  public let outcome: TunnelEnrollmentOutcome
-  public let authentication: String
+  public let nonce: String
+  public let controlPlaneOrigin: String
+  public let nodeID: String
+  public let networkID: String
+  public let monotonicCounter: UInt64
 
-  fileprivate init(
-    outcome: TunnelEnrollmentOutcome,
-    authentication: String
-  ) {
+  public init(
+    nonce: String,
+    configuration: TunnelConfigurationPayload
+  ) throws {
     schema = Self.schema
-    self.outcome = outcome
-    self.authentication = authentication
-  }
-}
-
-public enum TunnelEnrollmentReceiptAuthenticator {
-  public static let maximumDocumentBytes = 8 * 1024
-
-  public static func seal(
-    _ outcome: TunnelEnrollmentOutcome,
-    using key: SymmetricKey
-  ) throws -> Data {
-    let authentication = Data(
-      HMAC<SHA256>.authenticationCode(
-        for: try outcome.encoded(),
-        using: key
-      )
-    ).lowerHex
-    return try ExactJSON.canonical(
-      TunnelEnrollmentReceiptEnvelope(
-        outcome: outcome,
-        authentication: authentication
-      )
-    )
+    self.nonce = nonce
+    controlPlaneOrigin = configuration.controlPlaneOrigin
+    nodeID = configuration.nodeID
+    networkID = configuration.networkID
+    monotonicCounter = configuration.monotonicCounter
+    try validate()
   }
 
-  public static func open(
-    _ data: Data,
-    using key: SymmetricKey
-  ) throws -> TunnelEnrollmentOutcome {
+  public func encoded() throws -> Data {
+    try validate()
+    return try ExactJSON.canonical(self)
+  }
+
+  public static func decodeExact(_ data: Data) throws -> Self {
     try ExactJSON.requireObject(
       data,
-      keys: ["schema", "outcome", "authentication"],
+      keys: [
+        "schema",
+        "nonce",
+        "controlPlaneOrigin",
+        "nodeID",
+        "networkID",
+        "monotonicCounter",
+      ],
       maximumBytes: maximumDocumentBytes
     )
-    let envelope = try JSONDecoder().decode(
-      TunnelEnrollmentReceiptEnvelope.self,
-      from: data
-    )
-    guard
-      envelope.schema == TunnelEnrollmentReceiptEnvelope.schema,
-      let authentication = Data(
-        lowerHex: envelope.authentication
-      ),
-      HMAC<SHA256>.isValidAuthenticationCode(
-        authentication,
-        authenticating: try envelope.outcome.encoded(),
-        using: key
-      ),
-      try ExactJSON.canonical(envelope) == data
-    else {
-      throw TunnelContractError.authenticationFailed
+    let value = try JSONDecoder().decode(Self.self, from: data)
+    try value.validate()
+    guard try ExactJSON.canonical(value) == data else {
+      throw TunnelContractError.invalidDocument
     }
-    return envelope.outcome
+    return value
+  }
+
+  public func matches(_ configuration: TunnelConfigurationPayload) -> Bool {
+    controlPlaneOrigin == configuration.controlPlaneOrigin
+      && nodeID == configuration.nodeID
+      && networkID == configuration.networkID
+      && monotonicCounter == configuration.monotonicCounter
+  }
+
+  private func validate() throws {
+    guard schema == Self.schema else {
+      throw TunnelContractError.unsupportedSchema
+    }
+    try ContractField.base64URL(nonce, bytes: 32, name: "nonce")
+    guard
+      try ContractField.httpsOrigin(
+        controlPlaneOrigin,
+        name: "controlPlaneOrigin"
+      ) == controlPlaneOrigin
+    else {
+      throw TunnelContractError.invalidField("controlPlaneOrigin")
+    }
+    try ContractField.identifier(nodeID, name: "nodeID")
+    try ContractField.identifier(networkID, name: "networkID")
+    guard monotonicCounter > 0 else {
+      throw TunnelContractError.invalidField("monotonicCounter")
+    }
   }
 }
 
@@ -1062,6 +852,103 @@ public struct TunnelLifecycleRefreshOutcome:
   private init(
     schema: String,
     status: TunnelLifecycleRefreshStatus,
+    configuration: TunnelConfigurationPayload?
+  ) {
+    self.schema = schema
+    self.status = status
+    self.configuration = configuration
+  }
+}
+
+public enum TunnelEnrollmentRecoveryStatus:
+  String,
+  Codable,
+  Equatable,
+  Sendable
+{
+  case ready
+  case deferred
+  case unauthorized
+}
+
+public struct TunnelEnrollmentRecoveryOutcome:
+  Codable,
+  Equatable,
+  Sendable
+{
+  public static let schema = "mesh-ios-enrollment-recovery-v1"
+
+  public let schema: String
+  public let status: TunnelEnrollmentRecoveryStatus
+  public let configuration: TunnelConfigurationPayload?
+
+  private struct Document: Codable {
+    let schema: String
+    let status: TunnelEnrollmentRecoveryStatus
+    let configuration: String?
+  }
+
+  private struct StatusProbe: Codable {
+    let status: TunnelEnrollmentRecoveryStatus
+  }
+
+  public static func decodeExact(_ data: Data) throws -> Self {
+    guard !data.isEmpty,
+      data.count <= TunnelEnvelopeAuthenticator.maximumDocumentBytes
+    else {
+      throw TunnelContractError.invalidDocument
+    }
+    let status = try JSONDecoder().decode(
+      StatusProbe.self,
+      from: data
+    ).status
+    switch status {
+    case .ready:
+      try ExactJSON.requireObject(
+        data,
+        keys: ["schema", "status", "configuration"],
+        maximumBytes: TunnelEnvelopeAuthenticator.maximumDocumentBytes
+      )
+    case .deferred, .unauthorized:
+      try ExactJSON.requireObject(
+        data,
+        keys: ["schema", "status"],
+        maximumBytes: TunnelEnvelopeAuthenticator.maximumDocumentBytes
+      )
+    }
+    let document = try JSONDecoder().decode(Document.self, from: data)
+    guard document.schema == schema else {
+      throw TunnelContractError.unsupportedSchema
+    }
+    switch document.status {
+    case .ready:
+      guard let raw = document.configuration,
+        let configurationData = raw.data(using: .utf8)
+      else {
+        throw TunnelContractError.invalidDocument
+      }
+      return Self(
+        schema: document.schema,
+        status: document.status,
+        configuration: try TunnelConfigurationPayload.decodeExact(
+          configurationData
+        )
+      )
+    case .deferred, .unauthorized:
+      guard document.configuration == nil else {
+        throw TunnelContractError.invalidDocument
+      }
+      return Self(
+        schema: document.schema,
+        status: document.status,
+        configuration: nil
+      )
+    }
+  }
+
+  private init(
+    schema: String,
+    status: TunnelEnrollmentRecoveryStatus,
     configuration: TunnelConfigurationPayload?
   ) {
     self.schema = schema

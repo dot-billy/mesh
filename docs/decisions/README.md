@@ -19,6 +19,6 @@ retains the independent release gates in
 | [0009](0009-ios-distribution.md) | TestFlight plus managed Custom App distribution |
 | [0010](0010-macos-node-package-bootstrap.md) | Compiled, authenticated macOS node package bootstrap |
 | [0011](0011-macos-node-release-identifiers.md) | Proposed macOS node signing, package, and path identifiers |
-| [0012](0012-ios-tunnel-enrollment.md) | Extension-owned iOS Tunnel enrollment |
-| [0013](0013-ios-tunnel-lifecycle-refresh.md) | Extension-owned pre-start lifecycle refresh |
-| [0014](0014-ios-tunnel-runtime-lifecycle-and-removal.md) | Extension-owned runtime lifecycle and local identity removal |
+| [0012](0012-ios-tunnel-enrollment.md) | Host-provisioned iOS Tunnel enrollment |
+| [0013](0013-ios-tunnel-lifecycle-refresh.md) | Host-side pre-start lifecycle convergence boundary |
+| [0014](0014-ios-tunnel-runtime-lifecycle-and-removal.md) | Shared-custody runtime lifecycle and local identity removal |

@@ -78,6 +78,39 @@ private final class MemoryHighWater: TunnelHighWaterStore {
   }
 }
 
+private enum HighWaterTestFailure: Error {
+  case ambiguousCommit
+}
+
+private final class AmbiguousCommitHighWater: TunnelHighWaterStore {
+  var value: UInt64 = 0
+
+  func load() throws -> UInt64 {
+    value
+  }
+
+  func commit(_ value: UInt64) throws {
+    self.value = value
+    throw HighWaterTestFailure.ambiguousCommit
+  }
+}
+
+private final class PreCommitFailureHighWater: TunnelHighWaterStore {
+  var value: UInt64 = 0
+  var shouldFail = true
+
+  func load() throws -> UInt64 {
+    value
+  }
+
+  func commit(_ value: UInt64) throws {
+    guard !shouldFail else {
+      throw HighWaterTestFailure.ambiguousCommit
+    }
+    self.value = value
+  }
+}
+
 private enum RuntimeTestFailure: Error {
   case settings
   case start
@@ -456,6 +489,47 @@ func lifecycleRefreshOutcomesAreExactAndDoNotCarryCredentials() throws {
 }
 
 @Test
+func enrollmentRecoveryOutcomesAreExactAndFailClosed() throws {
+  let configuration = try payload().engineDocument()
+  let ready = try JSONSerialization.data(
+    withJSONObject: [
+      "schema": TunnelEnrollmentRecoveryOutcome.schema,
+      "status": "ready",
+      "configuration": configuration,
+    ],
+    options: [.sortedKeys, .withoutEscapingSlashes]
+  )
+  let decodedReady = try TunnelEnrollmentRecoveryOutcome.decodeExact(ready)
+  #expect(decodedReady.status == .ready)
+  #expect(decodedReady.configuration == payload())
+
+  for status in ["deferred", "unauthorized"] {
+    let data = try JSONSerialization.data(
+      withJSONObject: [
+        "schema": TunnelEnrollmentRecoveryOutcome.schema,
+        "status": status,
+      ],
+      options: [.sortedKeys]
+    )
+    let decoded = try TunnelEnrollmentRecoveryOutcome.decodeExact(data)
+    #expect(decoded.configuration == nil)
+    #expect(decoded.status.rawValue == status)
+  }
+
+  let unexpected = try JSONSerialization.data(
+    withJSONObject: [
+      "schema": TunnelEnrollmentRecoveryOutcome.schema,
+      "status": "unauthorized",
+      "configuration": configuration,
+    ],
+    options: [.sortedKeys]
+  )
+  #expect(throws: TunnelContractError.invalidDocument) {
+    try TunnelEnrollmentRecoveryOutcome.decodeExact(unexpected)
+  }
+}
+
+@Test
 func mobileRuntimeReportOutcomesAreExactAndVersioned() throws {
   for status in [
     "accepted",
@@ -528,103 +602,61 @@ func enrollmentRequestIsCanonicalBoundedAndSecretOnlyInItsEnvelope() throws {
 }
 
 @Test
-func providerBootstrapIsCanonicalTokenFreeAndOriginBound() throws {
-  let request = try TunnelProviderBootstrapRequest(
-    requestID: "request_1",
-    serverOrigin: "https://mesh.example/"
-  )
-  let encoded = try request.encoded()
-  #expect(
-    try TunnelProviderBootstrapRequest.decodeExact(encoded) == request
-  )
-  let text = String(decoding: encoded, as: UTF8.self)
-  #expect(text.contains("\"operation\":\"await-enrollment\""))
-  #expect(!text.contains("enrollmentToken"))
-  #expect(request.serverOrigin == "https://mesh.example")
-}
-
-@Test
-func providerEnrollmentIPCIsIdentityBoundAndReceiptAuthenticated() throws {
-  let request = try TunnelProviderEnrollmentRequest(
-    requestID: "request_1",
-    serverOrigin: "https://mesh.example",
-    enrollmentToken: base64URL(32, value: 0x33),
-    expectedNodeID: "node_1",
-    expectedNetworkID: "network_1"
-  )
-  #expect(
-    try TunnelProviderEnrollmentRequest.decodeExact(
-      request.encoded()
-    ) == request
-  )
-  let outcome = try TunnelEnrollmentOutcome.running(
-    requestID: request.requestID,
-    serverOrigin: request.serverOrigin,
-    nodeID: request.expectedNodeID,
-    networkID: request.expectedNetworkID
-  )
-  let key = SymmetricKey(data: Data(repeating: 0x44, count: 32))
-  let sealed = try TunnelEnrollmentReceiptAuthenticator.seal(
-    outcome,
-    using: key
-  )
-  #expect(
-    try TunnelEnrollmentReceiptAuthenticator.open(
-      sealed,
-      using: key
-    ) == outcome
-  )
-  #expect(throws: TunnelContractError.authenticationFailed) {
-    try TunnelEnrollmentReceiptAuthenticator.open(
-      sealed,
-      using: SymmetricKey(data: Data(repeating: 0x45, count: 32))
-    )
-  }
-}
-
-@Test
-func enrollmentOutcomeBindsRequestStatusAndCommittedIdentity() throws {
-  let running = try TunnelEnrollmentOutcome.running(
-    requestID: "request_1",
-    serverOrigin: "https://mesh.example",
-    nodeID: "node_1",
-    networkID: "network_1"
-  )
-  #expect(
-    try TunnelEnrollmentOutcome.decodeExact(running.encoded()) == running
-  )
-  let failed = try TunnelEnrollmentOutcome.failed(
-    requestID: "request_1",
-    serverOrigin: "https://mesh.example",
+func initialEnrollmentIntentBindsExactOriginNodeAndNetwork() throws {
+  let intent = try TunnelInitialEnrollmentIntent(
+    controlPlaneOrigin: "https://mesh.example/",
     nodeID: "node_1",
     networkID: "network_1",
-    identityCommitted: false,
-    code: "enrollment-failed"
+    monotonicCounter: 7
+  )
+  #expect(intent.controlPlaneOrigin == "https://mesh.example")
+  #expect(
+    try TunnelInitialEnrollmentIntent.decodeExact(intent.encoded())
+      == intent
+  )
+  let expanded = Data(
+    """
+    {"controlPlaneOrigin":"https://mesh.example",\
+    "monotonicCounter":7,"networkID":"network_1","nodeID":"node_1",\
+    "schema":"\(TunnelInitialEnrollmentIntent.schema)",\
+    "token":"forbidden"}
+    """.utf8
+  )
+  #expect(throws: TunnelContractError.invalidDocument) {
+    try TunnelInitialEnrollmentIntent.decodeExact(expanded)
+  }
+  #expect(throws: TunnelContractError.self) {
+    try TunnelInitialEnrollmentIntent(
+      controlPlaneOrigin: "https://mesh.example",
+      nodeID: "node_1",
+      networkID: "network_1",
+      monotonicCounter: 0
+    )
+  }
+}
+
+@Test
+func startAuthorizationBindsOneHostStartToExactConfiguration() throws {
+  let configuration = payload()
+  let authorization = try TunnelStartAuthorization(
+    nonce: base64URL(32, value: 0x67),
+    configuration: configuration
   )
   #expect(
-    try TunnelEnrollmentOutcome.decodeExact(failed.encoded()) == failed
+    try TunnelStartAuthorization.decodeExact(authorization.encoded())
+      == authorization
   )
-  #expect(throws: TunnelContractError.self) {
-    try TunnelEnrollmentOutcome(
-      requestID: "request_1",
-      serverOrigin: "https://mesh.example",
-      nodeID: "node_1",
-      networkID: "network_1",
-      status: .running,
-      identityCommitted: false,
-      code: "none"
-    )
-  }
-  #expect(throws: TunnelContractError.self) {
-    try TunnelEnrollmentOutcome.failed(
-      requestID: "request_1",
-      serverOrigin: "https://mesh.example",
-      nodeID: "node_1",
-      networkID: "network_1",
-      identityCommitted: false,
-      code: "none"
-    )
-  }
+  #expect(authorization.matches(configuration))
+  #expect(
+    try TunnelInitialEnrollmentIntent(configuration: configuration)
+      == TunnelInitialEnrollmentIntent(
+        controlPlaneOrigin: configuration.controlPlaneOrigin,
+        nodeID: configuration.nodeID,
+        networkID: configuration.networkID,
+        monotonicCounter: configuration.monotonicCounter
+      )
+  )
+  #expect(TunnelStartAuthorization.startOptionKey == "meshStartAuthorization")
 }
 
 @Test
@@ -1421,98 +1453,112 @@ func runningEvidenceRequiresRealEngineAndPacketFields() throws {
 @Test
 func providerLifecycleGateSerializesStartAndLatchesStop() {
   let gate = TunnelProviderLifecycleGate()
-  #expect(gate.beginStart() == .begin)
+  guard case .begin(let first) = gate.beginStart() else {
+    Issue.record("first provider start did not begin")
+    return
+  }
   #expect(gate.beginStart() == .alreadyStarting)
-  #expect(gate.mayContinueStart())
-  #expect(gate.markRunning())
+  #expect(gate.mayContinueStart(first))
+  #expect(gate.markRunning(first, commit: {}))
+  var postConnectCommitted = false
+  #expect(
+    gate.commitIfCurrent(
+      first,
+      commit: { postConnectCommitted = true }
+    )
+  )
+  #expect(postConnectCommitted)
   #expect(gate.beginStart() == .alreadyRunning)
   #expect(!gate.latchStop())
+  #expect(!gate.commitIfCurrent(first, commit: {}))
   #expect(gate.isStopped())
   #expect(gate.beginStart() == .stopped)
-  #expect(!gate.markRunning())
+  #expect(!gate.markRunning(first, commit: {}))
   #expect(gate.latchStop())
+  gate.finishStop()
+  #expect(!gate.isStopped())
+  guard case .begin(let second) = gate.beginStart() else {
+    Issue.record("provider did not restart after completed stop")
+    return
+  }
+  #expect(second > first)
 }
 
 @Test
 func providerLifecycleGateRejectsStopRacingStart() {
   let gate = TunnelProviderLifecycleGate()
-  #expect(gate.beginStart() == .begin)
+  guard case .begin(let generation) = gate.beginStart() else {
+    Issue.record("provider start did not begin")
+    return
+  }
   #expect(!gate.latchStop())
-  #expect(!gate.mayContinueStart())
-  #expect(!gate.markRunning())
-  gate.finishStartFailure()
+  #expect(!gate.mayContinueStart(generation))
+  #expect(!gate.markRunning(generation, commit: {}))
+  #expect(!gate.finishStartFailure(generation))
   #expect(gate.beginStart() == .stopped)
 }
 
 @Test
 func providerLifecycleGateAllowsRetryAfterStartFailure() {
   let gate = TunnelProviderLifecycleGate()
-  #expect(gate.beginStart() == .begin)
-  gate.finishStartFailure()
-  #expect(gate.beginStart() == .begin)
-  #expect(gate.markRunning())
+  guard case .begin(let first) = gate.beginStart() else {
+    Issue.record("provider start did not begin")
+    return
+  }
+  #expect(gate.finishStartFailure(first))
+  guard case .begin(let second) = gate.beginStart() else {
+    Issue.record("provider retry did not begin")
+    return
+  }
+  #expect(second > first)
+  #expect(gate.markRunning(second, commit: {}))
 }
 
 @Test
-func providerBootstrapGateClaimsOneExactRequest() throws {
-  let gate = TunnelProviderBootstrapGate()
-  let bootstrap = try TunnelProviderBootstrapRequest(
-    requestID: "request_1",
-    serverOrigin: "https://mesh.example"
-  )
-  #expect(gate.arm(bootstrap))
-  #expect(!gate.arm(bootstrap))
-  let wrong = try TunnelProviderEnrollmentRequest(
-    requestID: "request_2",
-    serverOrigin: "https://mesh.example",
-    enrollmentToken: base64URL(32, value: 0x11),
-    expectedNodeID: "node_1",
-    expectedNetworkID: "network_1"
-  )
-  #expect(gate.claim(wrong) == .mismatchWhileAwaiting)
-  let exact = try TunnelProviderEnrollmentRequest(
-    requestID: "request_1",
-    serverOrigin: "https://mesh.example",
-    enrollmentToken: base64URL(32, value: 0x22),
-    expectedNodeID: "node_1",
-    expectedNetworkID: "network_1"
-  )
-  #expect(gate.claim(exact) == .accepted)
-  #expect(gate.claim(exact) == .alreadyClaimed)
-  gate.clear()
-  #expect(gate.arm(bootstrap))
-  gate.stop()
-  #expect(gate.claim(exact) == .stopped)
-  gate.clear()
-  #expect(!gate.arm(bootstrap))
+func staleProviderGenerationCannotAttachToRestart() {
+  let gate = TunnelProviderLifecycleGate()
+  guard case .begin(let first) = gate.beginStart() else {
+    Issue.record("first provider start did not begin")
+    return
+  }
+  #expect(!gate.latchStop())
+  gate.finishStop()
+  guard case .begin(let second) = gate.beginStart() else {
+    Issue.record("second provider start did not begin")
+    return
+  }
+  #expect(second > first)
+  #expect(!gate.mayContinueStart(first))
+  #expect(!gate.finishStartFailure(first))
+  #expect(gate.mayContinueStart(second))
+  #expect(gate.markRunning(second, commit: {}))
 }
 
 @Test
-func providerBootstrapGateExpiresOnlyThePendingRequest() throws {
-  let gate = TunnelProviderBootstrapGate()
-  let first = try TunnelProviderBootstrapRequest(
-    requestID: "request_1",
-    serverOrigin: "https://mesh.example"
-  )
-  let second = try TunnelProviderBootstrapRequest(
-    requestID: "request_2",
-    serverOrigin: "https://mesh.example"
-  )
-  let enrollment = try TunnelProviderEnrollmentRequest(
-    requestID: "request_1",
-    serverOrigin: "https://mesh.example",
-    enrollmentToken: base64URL(32, value: 0x33),
-    expectedNodeID: "node_1",
-    expectedNetworkID: "network_1"
-  )
-
-  #expect(gate.claim(enrollment) == .unavailable)
-  #expect(gate.arm(first))
-  #expect(!gate.expire(requestID: second.requestID))
-  #expect(gate.expire(requestID: first.requestID))
-  #expect(!gate.expire(requestID: first.requestID))
-  #expect(gate.claim(enrollment) == .unavailable)
-  #expect(gate.arm(second))
+func terminalCleanupMustFinishBeforeStopReopensLifecycle() async {
+  let gate = TunnelProviderLifecycleGate()
+  let barrier = TunnelTerminalCleanupBarrier()
+  guard case .begin(let generation) = gate.beginStart() else {
+    Issue.record("provider start did not begin")
+    return
+  }
+  #expect(gate.markRunning(generation, commit: {}))
+  #expect(!gate.latchStop())
+  let stop = Task {
+    await barrier.wait()
+    gate.finishStop()
+  }
+  await Task.yield()
+  #expect(gate.isStopped())
+  #expect(gate.beginStart() == .stopped)
+  barrier.finish()
+  await stop.value
+  #expect(!gate.isStopped())
+  guard case .begin(let next) = gate.beginStart() else {
+    Issue.record("provider did not reopen after terminal cleanup")
+    return
+  }
+  #expect(next > generation)
 }
 
 @Test
@@ -1595,6 +1641,16 @@ func providerFailureClassificationRequiresExactRequestAndAllowlist() {
   )
   #expect(exact == "enrollment-failed")
   #expect(exact != requestID)
+  #expect(
+    TunnelProviderFailureClassifier.classify(
+      domain: TunnelProviderFailureContract.domain,
+      schema: TunnelProviderFailureContract.schema,
+      code: "enrollment-failed",
+      requestID: nil,
+      expectedRequestID: nil,
+      allowedCodes: allowed
+    ) == "enrollment-failed"
+  )
 
   for result in [
     TunnelProviderFailureClassifier.classify(
@@ -1670,8 +1726,7 @@ func configurationSlotsActivateMonotonicallyAndPreserveRecovery() throws {
   )
 
   let first = payload()
-  try store.stage(first)
-  #expect(try store.activateCandidate() == first)
+  #expect(try store.install(first) == first)
   #expect(highWater.value == first.monotonicCounter)
   #expect(try store.nextMonotonicCounter() == first.monotonicCounter + 1)
 
@@ -1692,8 +1747,7 @@ func configurationSlotsActivateMonotonicallyAndPreserveRecovery() throws {
     issuedAtMilliseconds: first.issuedAtMilliseconds + 1,
     nebula: first.nebula
   )
-  try store.stage(second)
-  #expect(try store.activateCandidate() == second)
+  #expect(try store.install(second) == second)
   #expect(try store.readCurrent() == second)
   #expect(try store.readRecovery() == first)
   let candidate = TunnelConfigurationPayload(
@@ -1727,6 +1781,228 @@ func configurationSlotsActivateMonotonicallyAndPreserveRecovery() throws {
   try TunnelConfigurationStore.eraseAll(containerURL: root)
   #expect(try store.readCurrent() == nil)
   #expect(try store.readRecovery() == nil)
+}
+
+@Test
+func configurationStoreRecoversOnlyMatchingAuthenticatedCandidate() throws {
+  let firstRoot = FileManager.default.temporaryDirectory.appending(
+    path: "mesh-tunnel-candidate-\(UUID().uuidString)",
+    directoryHint: .isDirectory
+  )
+  try FileManager.default.createDirectory(
+    at: firstRoot,
+    withIntermediateDirectories: false
+  )
+  defer { try? FileManager.default.removeItem(at: firstRoot) }
+  let expected = payload()
+  let expectedIntent = try TunnelInitialEnrollmentIntent(
+    controlPlaneOrigin: expected.controlPlaneOrigin,
+    nodeID: expected.nodeID,
+    networkID: expected.networkID,
+    monotonicCounter: expected.monotonicCounter
+  )
+  let firstStore = try TunnelConfigurationStore(
+    containerURL: firstRoot,
+    key: key,
+    highWater: MemoryHighWater()
+  )
+  try firstStore.stage(expected)
+  #expect(
+    try firstStore.recoverCandidate(
+      expectedIntent: expectedIntent
+    ) == expected
+  )
+  #expect(try firstStore.readCurrent() == expected)
+
+  let secondRoot = FileManager.default.temporaryDirectory.appending(
+    path: "mesh-tunnel-candidate-\(UUID().uuidString)",
+    directoryHint: .isDirectory
+  )
+  try FileManager.default.createDirectory(
+    at: secondRoot,
+    withIntermediateDirectories: false
+  )
+  defer { try? FileManager.default.removeItem(at: secondRoot) }
+  let secondStore = try TunnelConfigurationStore(
+    containerURL: secondRoot,
+    key: key,
+    highWater: MemoryHighWater()
+  )
+  try secondStore.stage(expected)
+  #expect(throws: TunnelConfigurationStoreError.invalidSlot) {
+    try secondStore.recoverCandidate(
+      expectedIntent: try TunnelInitialEnrollmentIntent(
+        controlPlaneOrigin: expected.controlPlaneOrigin,
+        nodeID: "node_other",
+        networkID: expected.networkID,
+        monotonicCounter: expected.monotonicCounter
+      )
+    )
+  }
+  #expect(try secondStore.readCurrent() == nil)
+
+  let thirdRoot = FileManager.default.temporaryDirectory.appending(
+    path: "mesh-tunnel-candidate-\(UUID().uuidString)",
+    directoryHint: .isDirectory
+  )
+  try FileManager.default.createDirectory(
+    at: thirdRoot,
+    withIntermediateDirectories: false
+  )
+  defer { try? FileManager.default.removeItem(at: thirdRoot) }
+  let thirdStore = try TunnelConfigurationStore(
+    containerURL: thirdRoot,
+    key: key,
+    highWater: MemoryHighWater()
+  )
+  try thirdStore.stage(expected)
+  #expect(throws: TunnelConfigurationStoreError.invalidSlot) {
+    try thirdStore.recoverCandidate(
+      expectedIntent: try TunnelInitialEnrollmentIntent(
+        controlPlaneOrigin: expected.controlPlaneOrigin,
+        nodeID: expected.nodeID,
+        networkID: expected.networkID,
+        monotonicCounter: expected.monotonicCounter + 1
+      )
+    )
+  }
+  #expect(try thirdStore.readCurrent() == nil)
+}
+
+@Test
+func configurationInstallReconcilesAmbiguousHighWaterCommit() throws {
+  let root = FileManager.default.temporaryDirectory.appending(
+    path: "mesh-tunnel-store-\(UUID().uuidString)",
+    directoryHint: .isDirectory
+  )
+  try FileManager.default.createDirectory(
+    at: root,
+    withIntermediateDirectories: false
+  )
+  defer { try? FileManager.default.removeItem(at: root) }
+  let highWater = AmbiguousCommitHighWater()
+  let store = try TunnelConfigurationStore(
+    containerURL: root,
+    key: key,
+    highWater: highWater
+  )
+
+  let installed = payload()
+  #expect(try store.install(installed) == installed)
+  #expect(try store.readCurrent() == installed)
+  #expect(highWater.value == installed.monotonicCounter)
+  #expect(
+    !FileManager.default.fileExists(
+      atPath: root.appending(
+        path: TunnelConfigurationStore.candidateSlot
+      ).path
+    )
+  )
+}
+
+@Test
+func configurationInstallRecoversHighWaterFailureAfterRelaunch() throws {
+  let root = FileManager.default.temporaryDirectory.appending(
+    path: "mesh-tunnel-store-\(UUID().uuidString)",
+    directoryHint: .isDirectory
+  )
+  try FileManager.default.createDirectory(
+    at: root,
+    withIntermediateDirectories: false
+  )
+  defer { try? FileManager.default.removeItem(at: root) }
+  let highWater = PreCommitFailureHighWater()
+  let store = try TunnelConfigurationStore(
+    containerURL: root,
+    key: key,
+    highWater: highWater
+  )
+
+  let candidate = payload()
+  #expect(throws: HighWaterTestFailure.ambiguousCommit) {
+    try store.install(candidate)
+  }
+  #expect(highWater.value == 0)
+  #expect(throws: HighWaterTestFailure.ambiguousCommit) {
+    try store.readCurrent()
+  }
+  #expect(
+    FileManager.default.fileExists(
+      atPath: root.appending(
+        path: TunnelConfigurationStore.candidateSlot
+      ).path
+    )
+  )
+
+  highWater.shouldFail = false
+  let relaunchedStore = try TunnelConfigurationStore(
+    containerURL: root,
+    key: key,
+    highWater: highWater
+  )
+  #expect(try relaunchedStore.readCurrent() == candidate)
+  #expect(highWater.value == candidate.monotonicCounter)
+  #expect(
+    !FileManager.default.fileExists(
+      atPath: root.appending(
+        path: TunnelConfigurationStore.candidateSlot
+      ).path
+    )
+  )
+}
+
+@Test
+func configurationRefreshRecoversHighWaterFailureAfterRelaunch() throws {
+  let root = FileManager.default.temporaryDirectory.appending(
+    path: "mesh-tunnel-store-\(UUID().uuidString)",
+    directoryHint: .isDirectory
+  )
+  try FileManager.default.createDirectory(
+    at: root,
+    withIntermediateDirectories: false
+  )
+  defer { try? FileManager.default.removeItem(at: root) }
+  let highWater = PreCommitFailureHighWater()
+  highWater.shouldFail = false
+  let store = try TunnelConfigurationStore(
+    containerURL: root,
+    key: key,
+    highWater: highWater
+  )
+  let initial = payload()
+  #expect(try store.install(initial) == initial)
+
+  let refreshed = TunnelConfigurationPayload(
+    networkID: initial.networkID,
+    nodeID: initial.nodeID,
+    controlPlaneOrigin: initial.controlPlaneOrigin,
+    agentCredentialGeneration: initial.agentCredentialGeneration,
+    agentCredentialExpiresAt: initial.agentCredentialExpiresAt,
+    certificateFingerprint: initial.certificateFingerprint,
+    certificateGeneration: initial.certificateGeneration,
+    configRevision: initial.configRevision,
+    configDigest: initial.configDigest,
+    engineIdentity: initial.engineIdentity,
+    tunnelRemoteAddress: initial.tunnelRemoteAddress,
+    networkSettings: initial.networkSettings,
+    monotonicCounter: initial.monotonicCounter + 1,
+    issuedAtMilliseconds: initial.issuedAtMilliseconds,
+    nebula: initial.nebula
+  )
+  highWater.shouldFail = true
+  #expect(throws: HighWaterTestFailure.ambiguousCommit) {
+    try store.install(refreshed)
+  }
+  #expect(highWater.value == initial.monotonicCounter)
+
+  highWater.shouldFail = false
+  let relaunchedStore = try TunnelConfigurationStore(
+    containerURL: root,
+    key: key,
+    highWater: highWater
+  )
+  #expect(try relaunchedStore.readCurrent() == refreshed)
+  #expect(highWater.value == refreshed.monotonicCounter)
 }
 
 @Test

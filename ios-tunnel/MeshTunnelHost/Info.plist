@@ -28,6 +28,8 @@
 	<false/>
 	<key>MeshHandoffKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.handoff</string>
+	<key>MeshIdentityKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.identity</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

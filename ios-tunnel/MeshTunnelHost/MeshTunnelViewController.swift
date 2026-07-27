@@ -1,5 +1,6 @@
 import AuthenticationServices
 import NetworkExtension
+import Security
 import UIKit
 
 final class MeshTunnelViewController: UIViewController {
@@ -11,7 +12,6 @@ final class MeshTunnelViewController: UIViewController {
     private static let providerStartObservationAttempts = 180
     private static let providerStartObservationDelay =
         Duration.milliseconds(500)
-    private static let providerMessageTimeout = 180.0
     private static let disconnectErrorFetchTimeout = 2.0
     private static let providerFailureCodes: Set<String> = [
         "agent-authorization-rejected",
@@ -19,27 +19,20 @@ final class MeshTunnelViewController: UIViewController {
         "configuration-invalid",
         "configuration-unavailable",
         "engine-unavailable",
-        "enrollment-failed",
-        "enrollment-request-rejected",
         "identity-removal-context-mismatch",
         "identity-removal-failed",
         "identity-removal-request-invalid",
         "identity-removed",
-        "lifecycle-refresh-failed",
-        "mobile-runtime-evidence-failed",
         "mobile-runtime-evidence-invalid",
         "mobile-runtime-evidence-stale",
         "mobile-runtime-refresh-required",
         "network-rebind-failed",
         "packet-flow-failed",
-        "provider-bootstrap-invalid",
-        "provider-bootstrap-expired",
-        "provider-bootstrap-rejected",
-        "provider-enrollment-timeout",
         "provider-message-unavailable",
-        "provider-receipt-unavailable",
         "provider-start-failed",
         "start-already-in-progress",
+        "start-authorization-invalid",
+        "start-authorization-required",
         "start-cancelled",
     ]
     private static let lastSetupStageKey =
@@ -69,6 +62,9 @@ final class MeshTunnelViewController: UIViewController {
     private var backgroundCancelledSetup = false
     private var providerStartObservationInProgress = false
     private var enrollmentClient: TunnelUserEnrollmentClient?
+    private var setupBackgroundTask = UIBackgroundTaskIdentifier.invalid
+    private var orphanRemovalAvailable = false
+    private var retainedIntentMismatchAvailable = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -85,8 +81,8 @@ final class MeshTunnelViewController: UIViewController {
         statusLabel.accessibilityLabel = "Mesh Tunnel status"
         statusLabel.text = """
         Enter your Mesh server, then sign in with your own account. Mesh will \
-        prepare the Apple VPN configuration and pass a server-issued one-time \
-        enrollment token directly to the Packet Tunnel extension.
+        prepare the Apple VPN configuration, install a verified Nebula site, \
+        and then start the Packet Tunnel from that installed identity.
         """
 
         diagnosticLabel.font = .preferredFont(forTextStyle: .caption1)
@@ -94,6 +90,7 @@ final class MeshTunnelViewController: UIViewController {
         diagnosticLabel.numberOfLines = 0
         diagnosticLabel.textColor = .secondaryLabel
         diagnosticLabel.accessibilityLabel = "Mesh Tunnel build and setup stage"
+        reconcileInterruptedSetupDiagnostic()
         updateDiagnosticLabel()
 
         originField.borderStyle = .roundedRect
@@ -125,7 +122,7 @@ final class MeshTunnelViewController: UIViewController {
         )
         startButton.accessibilityHint = (
             "Starts the authenticated identity already stored by the "
-                + "Packet Tunnel extension."
+                + "Mesh app and Packet Tunnel extension."
         )
 
         stopButton.configuration = .bordered()
@@ -162,7 +159,7 @@ final class MeshTunnelViewController: UIViewController {
         )
         removeIdentityButton.accessibilityHint = (
             "Shows the exact local node and asks for destructive confirmation "
-                + "before deleting extension-owned credentials."
+                + "before deleting shared app and extension credentials."
         )
 
         let stack = UIStackView(arrangedSubviews: [
@@ -271,8 +268,13 @@ final class MeshTunnelViewController: UIViewController {
         var client: TunnelUserEnrollmentClient?
         var stage = TunnelAutomaticSetupStage.starting
         var providerSessionToStop: NETunnelProviderSession?
+        var installedConfiguration: TunnelConfigurationPayload?
+        var criticalEnrollmentStarted = false
         var setupCompleted = false
         defer {
+            if criticalEnrollmentStarted {
+                endCriticalEnrollmentBackgroundTask()
+            }
             if !setupCompleted {
                 providerSessionToStop?.stopTunnel()
             }
@@ -287,12 +289,96 @@ final class MeshTunnelViewController: UIViewController {
         }
         do {
             try Task.checkCancellation()
-            try requireNoLocalIdentity()
+            orphanRemovalAvailable = false
             let origin = try TunnelEnrollmentRequest.normalizedOrigin(
                 rawOrigin
             )
             originField.text = origin
             originField.isEnabled = false
+            let currentConfiguration = try loadLocalConfiguration()
+            let authority = try TunnelHighWaterKeychain
+                .localAuthorityState()
+            let retainedRecoveryIntent = try TunnelHighWaterKeychain
+                .loadInitialEnrollmentIntent()
+            if currentConfiguration == nil,
+               authority.hasAnyAuthority || retainedRecoveryIntent != nil
+            {
+                guard
+                    authority.isRecoverableInitialEnrollment,
+                    let retainedRecoveryIntent,
+                    retainedRecoveryIntent.controlPlaneOrigin == origin
+                else {
+                    orphanRemovalAvailable = true
+                    throw TunnelHostError.orphanedLocalAuthorityRequiresRemoval
+                }
+                stage = .recoveringEnrollment
+                recordSetup(stage: stage, result: "running")
+                statusLabel.text = (
+                    "Recovering an interrupted Nebula enrollment from this "
+                        + "device's existing credential. No new one-time token "
+                        + "will be requested."
+                )
+                beginCriticalEnrollmentBackgroundTask()
+                criticalEnrollmentStarted = true
+                let recoveredConfiguration =
+                    try await recoverInterruptedEnrollment(
+                        intent: retainedRecoveryIntent
+                )
+                installedConfiguration = recoveredConfiguration
+                stage = .finalizingInstallation
+                recordSetup(stage: stage, result: "running")
+                try retireCommittedEnrollmentIntent(
+                    configuration: recoveredConfiguration,
+                    expectedIntent: retainedRecoveryIntent
+                )
+                stage = .refreshingConfiguration
+                recordSetup(stage: stage, result: "running")
+                statusLabel.text = (
+                    "The Nebula site is installed. Refreshing its verified "
+                        + "configuration before starting the Packet Tunnel."
+                )
+                let configuration =
+                    try await refreshProvisionedConfigurationBeforeStart(
+                        recoveredConfiguration
+                    )
+                installedConfiguration = configuration
+                endCriticalEnrollmentBackgroundTask()
+                criticalEnrollmentStarted = false
+                try Task.checkCancellation()
+                let recoveredManager =
+                    try await reloadProvisionedManagerForStart(
+                        expectedOrigin: origin
+                    )
+                preparedManager = recoveredManager
+                preparedOrigin = origin
+                statusLabel.text = (
+                    "The interrupted Nebula site is recovered. Starting the "
+                        + "Packet Tunnel from that verified configuration."
+                )
+                stage = .preparingProvider
+                recordSetup(stage: stage, result: "running")
+                providerStartObservationInProgress = true
+                let session = try await startProvisionedTunnel(
+                    manager: recoveredManager,
+                    expectedConfiguration: configuration
+                )
+                providerSessionToStop = session
+                setupCompleted = true
+                inspectButton.isEnabled = true
+                stopButton.isEnabled = true
+                removeIdentityButton.isEnabled = true
+                statusLabel.text = (
+                    "Recovered the interrupted Nebula site and started the "
+                        + "Packet Tunnel. Apple reports connected. Runtime and "
+                        + "packet status still require inspection."
+                )
+                recordSetup(
+                    stage: stage,
+                    result: "recovered-provider-connected"
+                )
+                return true
+            }
+            try requireNoLocalIdentity()
             statusLabel.text = (
                 "Checking the Apple VPN configuration before sign-in. No "
                     + "enrollment token has been requested."
@@ -354,58 +440,119 @@ final class MeshTunnelViewController: UIViewController {
             preparedManager = currentManager
             try requireDisconnectedProvider(currentManager)
             statusLabel.text = (
-                "Sign-in and VPN checks passed. Starting a private enrollment "
-                    + "channel to the Packet Tunnel extension. No one-time "
-                    + "token has been requested."
-            )
-            stage = .preparingProvider
-            recordSetup(stage: stage, result: "running")
-            providerStartObservationInProgress = true
-            let providerContext = try await prepareProviderForEnrollment(
-                manager: currentManager,
-                origin: origin
-            )
-            providerSessionToStop = providerContext.session
-            try Task.checkCancellation()
-            try requireProviderChannelReady(providerContext)
-            statusLabel.text = (
-                "The Packet Tunnel enrollment channel is ready. Requesting a "
-                    + "one-time enrollment for \(network.name)."
+                "Sign-in and VPN checks passed. Requesting one mobile-member "
+                    + "enrollment for \(network.name)."
             )
             stage = .requestingEnrollment
             recordSetup(stage: stage, result: "running")
             let nodeName = try deviceEnrollmentNodeName()
-            let enrollment = try await enrollmentClient.createSelfEnrollment(
+            beginCriticalEnrollmentBackgroundTask()
+            criticalEnrollmentStarted = true
+            let enrollment = try await createSelfEnrollmentWithRetry(
+                client: enrollmentClient,
                 networkID: network.id,
                 nodeName: nodeName
             )
-            try Task.checkCancellation()
+            let monotonicCounter = try nextLocalConfigurationCounter()
+            let recoveryIntent = try TunnelInitialEnrollmentIntent(
+                controlPlaneOrigin: origin,
+                nodeID: enrollment.node.id,
+                networkID: enrollment.node.networkID,
+                monotonicCounter: monotonicCounter
+            )
+            try TunnelHighWaterKeychain.saveInitialEnrollmentIntent(
+                recoveryIntent
+            )
             stage = .handingOffEnrollment
             recordSetup(stage: stage, result: "running")
-            try await handOffEnrollment(
-                context: providerContext,
+            statusLabel.text = (
+                "Creating this device's Nebula identity and verified site "
+                    + "configuration. The one-time token remains in memory."
+            )
+            let provisionedConfiguration = try await provisionLocalIdentity(
+                origin: origin,
                 token: enrollment.enrollmentToken,
                 expectedNodeID: enrollment.node.id,
-                expectedNetworkID: enrollment.node.networkID
+                expectedNetworkID: enrollment.node.networkID,
+                monotonicCounter: monotonicCounter
             )
+            installedConfiguration = provisionedConfiguration
+            stage = .finalizingInstallation
+            recordSetup(stage: stage, result: "running")
+            try retireCommittedEnrollmentIntent(
+                configuration: provisionedConfiguration,
+                expectedIntent: recoveryIntent
+            )
+            stage = .refreshingConfiguration
+            recordSetup(stage: stage, result: "running")
+            statusLabel.text = (
+                "The Nebula site is installed. Refreshing its verified "
+                    + "configuration before starting the Packet Tunnel."
+            )
+            let configuration =
+                try await refreshProvisionedConfigurationBeforeStart(
+                    provisionedConfiguration
+                )
+            installedConfiguration = configuration
+            endCriticalEnrollmentBackgroundTask()
+            criticalEnrollmentStarted = false
+            try Task.checkCancellation()
+            guard
+                configuration.controlPlaneOrigin == origin,
+                configuration.nodeID == enrollment.node.id,
+                configuration.networkID == enrollment.node.networkID
+            else {
+                throw TunnelHostError.localIdentityStateUnavailable
+            }
+            statusLabel.text = (
+                "The Nebula site is installed. Starting the Packet Tunnel "
+                    + "from that verified configuration."
+            )
+            let startManager =
+                try await reloadProvisionedManagerForStart(
+                    expectedOrigin: origin
+                )
+            preparedManager = startManager
+            stage = .preparingProvider
+            recordSetup(stage: stage, result: "running")
+            providerStartObservationInProgress = true
+            let session = try await startProvisionedTunnel(
+                manager: startManager,
+                expectedConfiguration: configuration
+            )
+            providerSessionToStop = session
             setupCompleted = true
             inspectButton.isEnabled = true
             stopButton.isEnabled = true
             removeIdentityButton.isEnabled = true
             statusLabel.text = (
-                "Signed in and installed the local tunnel identity. Apple reports "
-                    + "the Packet Tunnel connected. The one-time token was never "
-                    + "displayed or saved by the app. Runtime and packet status "
+                "Signed in, installed the Nebula site, and started the Packet "
+                    + "Tunnel. Apple reports connected. The one-time token was "
+                    + "never displayed or saved. Runtime and packet status "
                     + "still require inspection."
             )
             recordSetup(stage: stage, result: "provider-connected")
             return true
         } catch {
+            if case
+                TunnelHostError.orphanedLocalAuthorityRequiresRemoval = error
+            {
+                orphanRemovalAvailable = true
+            } else if case
+                TunnelHostError.interruptedEnrollmentRecoveryUnauthorized =
+                    error
+            {
+                orphanRemovalAvailable = true
+            }
             let result: String
             if backgroundCancelledSetup {
-                result = "cancelled-background"
+                result = installedConfiguration == nil
+                    ? "cancelled-background"
+                    : "cancelled-background-after-identity"
             } else if error is CancellationError {
-                result = "cancelled"
+                result = installedConfiguration == nil
+                    ? "cancelled"
+                    : "cancelled-after-identity"
             } else if case let TunnelHostError.providerStartFailed(code) =
                 error
             {
@@ -417,6 +564,10 @@ final class MeshTunnelViewController: UIViewController {
                 result = "failed-after-identity-\(code)"
             } else if case TunnelHostError.providerStartTimedOut = error {
                 result = "failed-provider-start-timeout"
+            } else if case
+                TunnelHostError.providerStartTimedOutAfterIdentity = error
+            {
+                result = "failed-after-identity-provider-start-timeout"
             } else if case TunnelHostError.providerNotReady = error {
                 result = "failed-provider-not-ready"
             } else if case TunnelHostError.providerConnectedWithoutIdentity =
@@ -539,169 +690,272 @@ final class MeshTunnelViewController: UIViewController {
         }
     }
 
-    private func prepareProviderForEnrollment(
-        manager: NETunnelProviderManager,
-        origin: String
-    ) async throws -> TunnelProviderEnrollmentContext {
-        try requireDisconnectedProvider(manager)
-        let request = try TunnelProviderBootstrapRequest(
-            requestID: UUID().uuidString.lowercased(),
-            serverOrigin: origin
-        )
-        let data = try request.encoded()
-        guard let session = manager.connection
-            as? NETunnelProviderSession
-        else {
-            throw TunnelHostError.providerSessionUnavailable
-        }
-        let previousConnectedAt = session.connectedDate
-        try session.startTunnel(options: [
-            TunnelProviderBootstrapRequest.startOptionKey: data as NSData,
-        ])
-        try await waitForProviderStart(
-            session,
-            requestID: request.requestID
-        )
-        guard
-            let connectedAt = session.connectedDate,
-            connectedAt != previousConnectedAt,
-            providerObservedStatus(session.status) == .connected
-        else {
-            throw TunnelHostError.providerNotReady
-        }
-        return TunnelProviderEnrollmentContext(
-            requestID: request.requestID,
-            origin: origin,
-            session: session,
-            previousConnectedAt: previousConnectedAt
-        )
-    }
-
-    private func requireProviderChannelReady(
-        _ context: TunnelProviderEnrollmentContext
-    ) throws {
-        guard
-            let connectedAt = context.session.connectedDate,
-            connectedAt != context.previousConnectedAt,
-            providerObservedStatus(context.session.status) == .connected
-        else {
-            throw TunnelHostError.providerNotReady
-        }
-    }
-
-    private func handOffEnrollment(
-        context: TunnelProviderEnrollmentContext,
+    private func provisionLocalIdentity(
+        origin: String,
         token: String,
         expectedNodeID: String,
-        expectedNetworkID: String
-    ) async throws {
-        try requireProviderChannelReady(context)
-        let request = try TunnelProviderEnrollmentRequest(
-            requestID: context.requestID,
-            serverOrigin: context.origin,
-            enrollmentToken: token,
-            expectedNodeID: expectedNodeID,
-            expectedNetworkID: expectedNetworkID
+        expectedNetworkID: String,
+        monotonicCounter: UInt64
+    ) async throws -> TunnelConfigurationPayload {
+        let request = try TunnelEnrollmentRequest(
+            requestID: UUID().uuidString.lowercased(),
+            serverOrigin: origin,
+            enrollmentToken: token
         )
-        let outcome: TunnelEnrollmentOutcome
-        do {
-            let response = try await sendProviderMessage(
-                try request.encoded(),
-                session: context.session,
-                timeout: Self.providerMessageTimeout
-            )
-            outcome = try TunnelEnrollmentOutcome.decodeExact(response)
-        } catch {
-            guard
-                let reconciled = try loadEnrollmentReceipt(),
-                reconciled.requestID == context.requestID,
-                reconciled.serverOrigin == context.origin
-            else {
-                if case TunnelHostError.providerMessageTimedOut = error {
-                    throw TunnelHostError.providerStartTimedOut
-                }
-                throw TunnelHostError.providerStartFailed(
-                    "provider-message-unavailable"
-                )
-            }
-            outcome = reconciled
-        }
-        guard
-            outcome.requestID == context.requestID,
-            outcome.serverOrigin == context.origin,
-            outcome.nodeID == expectedNodeID,
-            outcome.networkID == expectedNetworkID
-        else {
-            throw TunnelHostError.statusResponseMismatch
-        }
-        let current = try loadLocalConfiguration()
-        switch outcome.status {
-        case .failed:
-            guard Self.providerFailureCodes.contains(outcome.code) else {
-                throw TunnelHostError.providerStartFailed(
-                    "provider-message-unavailable"
-                )
-            }
-            if outcome.identityCommitted {
-                guard
-                    current?.controlPlaneOrigin == context.origin,
-                    current?.nodeID == expectedNodeID,
-                    current?.networkID == expectedNetworkID
-                else {
-                    throw TunnelHostError.statusResponseMismatch
-                }
-                throw TunnelHostError.providerStartFailedAfterIdentity(
-                    outcome.code
-                )
-            }
-            guard current == nil else {
-                throw TunnelHostError.statusResponseMismatch
-            }
-            throw TunnelHostError.providerStartFailed(outcome.code)
-        case .running:
-            guard
-                outcome.identityCommitted,
-                outcome.code == "none",
-                current?.nodeID == expectedNodeID,
-                current?.networkID == expectedNetworkID
-            else {
-                throw TunnelHostError.statusResponseMismatch
-            }
-        }
-        guard
-            let connectedAt = context.session.connectedDate,
-            TunnelProviderStartProof.accepts(
-                finalStatus: providerObservedStatus(
-                    context.session.status
-                ),
-                connectionDateChanged:
-                    connectedAt != context.previousConnectedAt,
-                sameOriginIdentity:
-                    current?.controlPlaneOrigin == context.origin
-            )
-        else {
-            throw TunnelHostError.providerConnectedWithoutIdentity
-        }
-    }
-
-    private func loadEnrollmentReceipt()
-        throws -> TunnelEnrollmentOutcome?
-    {
         guard let container = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier:
                 "group.io.rw0.mesh.tunnel.mobile"
         ) else {
             throw TunnelHostError.localIdentityStateUnavailable
         }
-        return try TunnelEnrollmentReceiptStore(
+        let store = try TunnelConfigurationStore(
             containerURL: container,
-            key: try TunnelHandoffKeychain.loadOrCreate()
-        ).read()
+            key: try TunnelHandoffKeychain.loadOrCreate(),
+            highWater: TunnelHighWaterKeychain()
+        )
+        guard
+            try store.readCurrent() == nil,
+            try store.nextMonotonicCounter() == monotonicCounter
+        else {
+            throw TunnelHostError.localIdentityAlreadyInstalled
+        }
+        let enrollment = try TunnelHostEnrollmentSessionFactory.make()
+        let configuration = try await enrollment.enroll(
+            request: request,
+            monotonicCounter: monotonicCounter
+        )
+        guard
+            configuration.controlPlaneOrigin == origin,
+            configuration.nodeID == expectedNodeID,
+            configuration.networkID == expectedNetworkID,
+            configuration.monotonicCounter == monotonicCounter
+        else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        return try store.install(configuration)
+    }
+
+    private func recoverInterruptedEnrollment(
+        intent: TunnelInitialEnrollmentIntent
+    ) async throws -> TunnelConfigurationPayload {
+        guard try loadLocalConfiguration() == nil,
+              try TunnelHighWaterKeychain.localAuthorityState()
+                .isRecoverableInitialEnrollment,
+              try TunnelHighWaterKeychain.loadInitialEnrollmentIntent()
+                == intent,
+              let container = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier:
+                    "group.io.rw0.mesh.tunnel.mobile"
+              )
+        else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        _ = try await prepareProvisionedManagerForRecovery(
+            expectedOrigin: intent.controlPlaneOrigin
+        )
+        let store = try TunnelConfigurationStore(
+            containerURL: container,
+            key: try TunnelHandoffKeychain.loadOrCreate(),
+            highWater: TunnelHighWaterKeychain()
+        )
+        guard try store.readCurrent() == nil else {
+            throw TunnelHostError.localIdentityAlreadyInstalled
+        }
+        if let candidate = try store.recoverCandidate(
+            expectedIntent: intent
+        ) {
+            return candidate
+        }
+        guard try store.nextMonotonicCounter() == intent.monotonicCounter else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        let enrollment = try TunnelHostEnrollmentSessionFactory.make()
+        let outcome = try await enrollment.recover(
+            origin: intent.controlPlaneOrigin,
+            monotonicCounter: intent.monotonicCounter
+        )
+        guard outcome.schema == TunnelEnrollmentRecoveryOutcome.schema else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        let configuration: TunnelConfigurationPayload
+        switch outcome.status {
+        case .ready:
+            guard let recovered = outcome.configuration else {
+                throw TunnelHostError.localIdentityStateUnavailable
+            }
+            configuration = recovered
+        case .deferred:
+            throw TunnelHostError.interruptedEnrollmentRecoveryDeferred
+        case .unauthorized:
+            throw TunnelHostError.interruptedEnrollmentRecoveryUnauthorized
+        }
+        guard configuration.controlPlaneOrigin
+                == intent.controlPlaneOrigin,
+              configuration.nodeID == intent.nodeID,
+              configuration.networkID == intent.networkID,
+              configuration.monotonicCounter == intent.monotonicCounter
+        else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        return try store.install(configuration)
+    }
+
+    private func retireCommittedEnrollmentIntent(
+        configuration: TunnelConfigurationPayload,
+        expectedIntent: TunnelInitialEnrollmentIntent
+    ) throws {
+        let committedIntent = try TunnelInitialEnrollmentIntent(
+            configuration: configuration
+        )
+        guard committedIntent == expectedIntent else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        try TunnelHighWaterKeychain.retireInitialEnrollmentIntent(
+            matching: committedIntent
+        )
+    }
+
+    private func refreshProvisionedConfigurationBeforeStart(
+        _ current: TunnelConfigurationPayload
+    ) async throws -> TunnelConfigurationPayload {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier:
+                "group.io.rw0.mesh.tunnel.mobile"
+        ) else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        let store = try TunnelConfigurationStore(
+            containerURL: container,
+            key: try TunnelHandoffKeychain.loadOrCreate(),
+            highWater: TunnelHighWaterKeychain()
+        )
+        guard try store.readCurrent() == current else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        let counter = try store.nextMonotonicCounter()
+        let lifecycle = try TunnelHostLifecycleSessionFactory.make()
+        let outcome = try await lifecycle.refresh(
+            current: current,
+            monotonicCounter: counter
+        )
+        switch outcome.status {
+        case .ready:
+            guard let configuration = outcome.configuration,
+                  configuration.networkID == current.networkID,
+                  configuration.nodeID == current.nodeID,
+                  configuration.controlPlaneOrigin
+                    == current.controlPlaneOrigin,
+                  configuration.agentCredentialGeneration
+                    >= current.agentCredentialGeneration,
+                  configuration.certificateGeneration
+                    >= current.certificateGeneration,
+                  configuration.configRevision >= current.configRevision,
+                  configuration.monotonicCounter == counter
+            else {
+                throw TunnelHostError.lifecycleRefreshInvalid
+            }
+            return try store.install(configuration)
+        case .deferred:
+            guard outcome.configuration == nil else {
+                throw TunnelHostError.lifecycleRefreshInvalid
+            }
+            return current
+        case .unauthorized:
+            throw TunnelHostError.lifecycleRefreshUnauthorized
+        }
+    }
+
+    private func startProvisionedTunnel(
+        manager: NETunnelProviderManager,
+        expectedConfiguration: TunnelConfigurationPayload
+    ) async throws -> NETunnelProviderSession {
+        try requireDisconnectedProvider(manager)
+        guard let session = manager.connection
+            as? NETunnelProviderSession
+        else {
+            throw TunnelHostError.providerSessionUnavailable
+        }
+        let previousConnectedAt = session.connectedDate
+        do {
+            try requestProviderStart(
+                session,
+                configuration: expectedConfiguration
+            )
+            try await waitForProviderStart(
+                session,
+                requestID: nil
+            )
+            let current = try loadLocalConfiguration()
+            guard
+                let connectedAt = session.connectedDate,
+                current?.controlPlaneOrigin
+                    == expectedConfiguration.controlPlaneOrigin,
+                current?.nodeID == expectedConfiguration.nodeID,
+                current?.networkID == expectedConfiguration.networkID,
+                (current?.monotonicCounter ?? 0)
+                    >= expectedConfiguration.monotonicCounter,
+                (current?.configRevision ?? 0)
+                    >= expectedConfiguration.configRevision,
+                (current?.certificateGeneration ?? 0)
+                    >= expectedConfiguration.certificateGeneration,
+                (current?.agentCredentialGeneration ?? 0)
+                    >= expectedConfiguration.agentCredentialGeneration,
+                TunnelProviderStartProof.accepts(
+                finalStatus: providerObservedStatus(
+                    session.status
+                ),
+                connectionDateChanged:
+                    connectedAt != previousConnectedAt,
+                sameOriginIdentity:
+                    current?.controlPlaneOrigin
+                        == expectedConfiguration.controlPlaneOrigin
+                )
+            else {
+                throw TunnelHostError.providerConnectedWithoutIdentity
+            }
+            return session
+        } catch let TunnelHostError.providerStartFailed(code) {
+            session.stopTunnel()
+            throw TunnelHostError.providerStartFailedAfterIdentity(code)
+        } catch TunnelHostError.providerStartTimedOut {
+            session.stopTunnel()
+            throw TunnelHostError.providerStartTimedOutAfterIdentity
+        } catch {
+            session.stopTunnel()
+            throw error
+        }
+    }
+
+    private func requestProviderStart(
+        _ session: NETunnelProviderSession,
+        configuration: TunnelConfigurationPayload
+    ) throws {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(
+            kSecRandomDefault,
+            bytes.count,
+            &bytes
+        ) == errSecSuccess else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        let nonce = Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let authorization = try TunnelStartAuthorization(
+            nonce: nonce,
+            configuration: configuration
+        )
+        try TunnelHighWaterKeychain.saveStartAuthorization(authorization)
+        try session.startTunnel(options: [
+            TunnelStartAuthorization.startOptionKey:
+                try authorization.encoded() as NSData,
+        ])
     }
 
     private func waitForProviderStart(
         _ session: NETunnelProviderSession,
-        requestID: String
+        requestID: String?
     ) async throws {
         var observation = TunnelProviderStartObservation()
         let budget = TunnelProviderObservationBudget()
@@ -771,7 +1025,7 @@ final class MeshTunnelViewController: UIViewController {
 
     private func lastDisconnectCode(
         _ connection: NEVPNConnection,
-        requestID: String
+        requestID: String?
     ) async -> String? {
         let error: Error? = await withCheckedContinuation { continuation in
             let resolver = TunnelOneShotResult<Error?> { error in
@@ -853,35 +1107,95 @@ final class MeshTunnelViewController: UIViewController {
                     )
                     return
                 }
+                let current = try self.readAuthenticatedLocalConfiguration()
+                let retainedIntentMismatch: Bool
+                if let current {
+                    self.orphanRemovalAvailable = false
+                    retainedIntentMismatch =
+                        try self.reconcileCommittedEnrollmentIntent(
+                            configuration: current
+                        )
+                } else {
+                    retainedIntentMismatch = false
+                    let authority = try TunnelHighWaterKeychain
+                        .localAuthorityState()
+                    let intent = try TunnelHighWaterKeychain
+                        .loadInitialEnrollmentIntent()
+                    self.orphanRemovalAvailable =
+                        authority.hasAnyAuthority
+                        && (!authority.isRecoverableInitialEnrollment
+                            || intent == nil)
+                }
                 guard let manager = matches.first else {
                     try self.requireCurrentInspection(generation)
                     self.preparedManager = nil
-                    self.preparedOrigin = nil
-                    self.originField.isEnabled = true
+                    self.preparedOrigin = current?.controlPlaneOrigin
+                    self.retainedIntentMismatchAvailable =
+                        retainedIntentMismatch
+                    self.originField.text = current?.controlPlaneOrigin
+                    self.originField.isEnabled = current == nil
                     self.signInButton.configuration?.title =
                         "Sign in and set up VPN"
-                    self.signInButton.isEnabled = true
+                    self.signInButton.isEnabled =
+                        current == nil && !self.orphanRemovalAvailable
                     self.startButton.isEnabled = false
                     self.stopButton.isEnabled = false
-                    self.removeIdentityButton.isEnabled = false
-                    self.statusLabel.text = (
-                        "No Mesh Tunnel VPN configuration is installed. "
-                            + "Sign in to add one and enroll this device."
-                    )
+                    self.removeIdentityButton.isEnabled =
+                        current != nil || self.orphanRemovalAvailable
+                    if current != nil {
+                        self.statusLabel.text = retainedIntentMismatch
+                            ? (
+                                "The authenticated local identity does not "
+                                    + "match its retained recovery marker, "
+                                    + "and no VPN configuration is installed. "
+                                    + "Start is blocked. Explicitly remove "
+                                    + "this local identity before enrolling "
+                                    + "again."
+                            )
+                            : (
+                                "An authenticated local Mesh identity exists, "
+                                    + "but its VPN configuration is missing. "
+                                    + "Explicitly remove the local identity "
+                                    + "before enrolling again."
+                            )
+                    } else if self.orphanRemovalAvailable {
+                        self.statusLabel.text = (
+                            "Incomplete local Mesh authority exists without a "
+                                + "VPN configuration. Review it with an "
+                                + "administrator, then explicitly reset it."
+                        )
+                    } else {
+                        self.statusLabel.text = (
+                            "No Mesh Tunnel VPN configuration is installed. "
+                                + "Sign in to add one and enroll this device."
+                        )
+                    }
                     return
                 }
                 let origin = try self.validatedOrigin(
                     for: manager,
                     requireEnabled: false
                 )
-                let current = try self.loadLocalConfiguration()
-                let status = try await self.configurationStatusText(
-                    manager: manager,
-                    current: current
-                )
+                let status: String
+                if retainedIntentMismatch {
+                    status = (
+                        "The authenticated local identity does not match a "
+                            + "retained enrollment recovery marker. "
+                            + "Tunnel start is blocked. Inspect the configuration, "
+                            + "then explicitly remove this local identity "
+                            + "before enrolling again."
+                    )
+                } else {
+                    status = try await self.configurationStatusText(
+                        manager: manager,
+                        current: current
+                    )
+                }
                 try self.requireCurrentInspection(generation)
                 self.preparedManager = manager
                 self.preparedOrigin = origin
+                self.retainedIntentMismatchAvailable =
+                    retainedIntentMismatch
                 self.originField.text = origin
                 self.originField.isEnabled = false
                 self.updateControls(
@@ -956,9 +1270,16 @@ final class MeshTunnelViewController: UIViewController {
         do {
             guard let manager = preparedManager,
                   let expectedOrigin = preparedOrigin,
-                  let current = try loadLocalConfiguration(),
-                  current.controlPlaneOrigin == expectedOrigin
+                  let installed = try loadLocalConfiguration(),
+                  installed.controlPlaneOrigin == expectedOrigin
             else {
+                throw TunnelHostError.localIdentityUnavailable
+            }
+            let current =
+                try await refreshProvisionedConfigurationBeforeStart(
+                    installed
+                )
+            guard current.controlPlaneOrigin == expectedOrigin else {
                 throw TunnelHostError.localIdentityUnavailable
             }
             try await enableManager(
@@ -971,7 +1292,10 @@ final class MeshTunnelViewController: UIViewController {
             else {
                 throw TunnelHostError.providerSessionUnavailable
             }
-            try session.startTunnel()
+            try requestProviderStart(
+                session,
+                configuration: current
+            )
             inspectButton.isEnabled = true
             stopButton.isEnabled = true
             removeIdentityButton.isEnabled = true
@@ -1008,7 +1332,40 @@ final class MeshTunnelViewController: UIViewController {
 
     @objc private func confirmIdentityRemoval() {
         do {
-            guard let current = try loadLocalConfiguration() else {
+            if let current = try readAuthenticatedLocalConfiguration() {
+                let alert = UIAlertController(
+                    title: "Remove local Mesh identity?",
+                    message: (
+                        "Node \(current.nodeID) on network "
+                            + "\(current.networkID) will stop. Its "
+                            + "app-and-extension private key and agent "
+                            + "credential will be deleted from this device. "
+                            + "This does not revoke or delete the server-side "
+                            + "node."
+                    ),
+                    preferredStyle: .alert
+                )
+                alert.addAction(
+                    UIAlertAction(title: "Cancel", style: .cancel)
+                )
+                alert.addAction(
+                    UIAlertAction(
+                        title: "Remove identity",
+                        style: .destructive
+                    ) { [weak self] _ in
+                        self?.beginIdentityRemoval(current: current)
+                    }
+                )
+                present(alert, animated: true)
+                return
+            }
+            let authority = try TunnelHighWaterKeychain
+                .localAuthorityState()
+            let intent = try TunnelHighWaterKeychain
+                .loadInitialEnrollmentIntent()
+            guard orphanRemovalAvailable,
+                  authority.hasAnyAuthority || intent != nil
+            else {
                 statusLabel.text = (
                     "No authenticated local Mesh node configuration is "
                         + "available to remove."
@@ -1016,22 +1373,23 @@ final class MeshTunnelViewController: UIViewController {
                 return
             }
             let alert = UIAlertController(
-                title: "Remove local Mesh identity?",
+                title: "Reset incomplete local identity?",
                 message: (
-                    "Node \(current.nodeID) on network \(current.networkID) "
-                        + "will stop. Its extension-only private key and agent "
-                        + "credential will be deleted from this device. This "
-                        + "does not revoke or delete the server-side node."
+                    "Mesh will delete only this device's incomplete private "
+                        + "key, agent credentials, enrollment marker, and saved "
+                        + "VPN preference. This does not revoke or delete any "
+                        + "server-side pending or active node. Confirm with an "
+                        + "administrator before resetting unauthorized state."
                 ),
                 preferredStyle: .alert
             )
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
             alert.addAction(
                 UIAlertAction(
-                    title: "Remove identity",
+                    title: "Reset local identity",
                     style: .destructive
                 ) { [weak self] _ in
-                    self?.beginIdentityRemoval(current: current)
+                    self?.beginOrphanIdentityRemoval()
                 }
             )
             present(alert, animated: true)
@@ -1054,23 +1412,34 @@ final class MeshTunnelViewController: UIViewController {
 
     func restoreFromBackground() {
         privacyShield.isHidden = true
+        if setupTask == nil {
+            startInspection(clearsFailure: false)
+        }
     }
 
     @MainActor
     private func eraseTransientEnrollment() {
+        if providerStartObservationInProgress
+            || activeSetupStage == .requestingEnrollment
+            || activeSetupStage == .handingOffEnrollment
+            || activeSetupStage == .recoveringEnrollment
+            || activeSetupStage == .finalizingInstallation
+            || activeSetupStage == .refreshingConfiguration
+        {
+            recordSetup(
+                stage: activeSetupStage,
+                result: activeSetupStage == .preparingProvider
+                    ? "provider-observation-backgrounded"
+                    : "enrollment-commit-backgrounded"
+            )
+            return
+        }
         authorizationWasCancelled = true
         isCompletingAuthorization = true
         authorizationSession?.cancel()
         authorizationSession = nil
         enrollmentClient?.invalidate()
         enrollmentClient = nil
-        if providerStartObservationInProgress {
-            recordSetup(
-                stage: activeSetupStage,
-                result: "provider-observation-backgrounded"
-            )
-            return
-        }
         if setupTask != nil {
             backgroundCancelledSetup = true
             recordSetup(
@@ -1113,8 +1482,15 @@ final class MeshTunnelViewController: UIViewController {
         hasLocalIdentity: Bool
     ) {
         inspectButton.isEnabled = true
-        removeIdentityButton.isEnabled = hasLocalIdentity
+        removeIdentityButton.isEnabled =
+            hasLocalIdentity || orphanRemovalAvailable
         originField.isEnabled = false
+        if retainedIntentMismatchAvailable {
+            signInButton.isEnabled = false
+            startButton.isEnabled = false
+            stopButton.isEnabled = false
+            return
+        }
         if !manager.isEnabled {
             signInButton.configuration?.title = hasLocalIdentity
                 ? "Sign in and set up VPN"
@@ -1275,14 +1651,20 @@ final class MeshTunnelViewController: UIViewController {
             stopButton.isEnabled = false
             inspectButton.isEnabled = false
         } else if preparedManager == nil {
-            signInButton.isEnabled = true
-            originField.isEnabled = true
+            let hasLocalIdentity =
+                (try? readAuthenticatedLocalConfiguration()) != nil
+            signInButton.isEnabled =
+                !hasLocalIdentity && !orphanRemovalAvailable
+            originField.isEnabled =
+                !hasLocalIdentity && !orphanRemovalAvailable
             inspectButton.isEnabled = true
-            removeIdentityButton.isEnabled = false
+            removeIdentityButton.isEnabled =
+                hasLocalIdentity || orphanRemovalAvailable
         } else {
             updateControls(
                 manager: preparedManager!,
-                hasLocalIdentity: (try? loadLocalConfiguration()) != nil
+                hasLocalIdentity:
+                    (try? readAuthenticatedLocalConfiguration()) != nil
             )
         }
     }
@@ -1296,15 +1678,11 @@ final class MeshTunnelViewController: UIViewController {
                 return
             }
             do {
-                let managers = try await self.loadManagers()
-                let matches = managers.filter { manager in
-                    (manager.protocolConfiguration as? NETunnelProviderProtocol)?
-                        .providerBundleIdentifier
-                        == Self.providerBundleIdentifier
-                }
-                guard matches.count == 1,
-                      let manager = matches.first,
-                      let session = manager.connection
+                let manager =
+                    try await self.prepareManagerForIdentityRemoval(
+                        expectedOrigin: current.controlPlaneOrigin
+                    )
+                guard let session = manager.connection
                         as? NETunnelProviderSession
                 else {
                     throw TunnelHostError.providerSessionUnavailable
@@ -1328,16 +1706,21 @@ final class MeshTunnelViewController: UIViewController {
                     else {
                         throw TunnelHostError.identityRemovalMismatch
                     }
-                case .disconnected, .disconnecting, .invalid:
+                case .disconnected:
                     try session.startTunnel(options: [
                         TunnelIdentityRemovalRequest.startOptionKey:
                             encoded as NSData,
                     ])
                     try await self.waitForLocalIdentityRemoval()
+                case .disconnecting, .invalid:
+                    throw TunnelHostError.providerNotReady
                 @unknown default:
                     throw TunnelHostError.providerSessionUnavailable
                 }
+                try TunnelHighWaterKeychain
+                    .clearInitialEnrollmentIntent()
                 try await self.remove(manager)
+                self.retainedIntentMismatchAvailable = false
                 self.preparedManager = nil
                 self.preparedOrigin = nil
                 self.originField.text = nil
@@ -1354,6 +1737,76 @@ final class MeshTunnelViewController: UIViewController {
                     "Local identity removal was not confirmed complete. The "
                         + "tunnel remains fail-closed; retry before transferring "
                         + "or re-enrolling this device."
+                )
+                self.setControlsBusy(false)
+            }
+        }
+    }
+
+    private func beginOrphanIdentityRemoval() {
+        setControlsBusy(true)
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            do {
+                guard try self.loadLocalConfiguration() == nil else {
+                    throw TunnelHostError.localIdentityAlreadyInstalled
+                }
+                let authority = try TunnelHighWaterKeychain
+                    .localAuthorityState()
+                let intent = try TunnelHighWaterKeychain
+                    .loadInitialEnrollmentIntent()
+                guard self.orphanRemovalAvailable,
+                      authority.hasAnyAuthority || intent != nil
+                else {
+                    throw TunnelHostError.localIdentityStateUnavailable
+                }
+                let managers = try await self.loadManagers()
+                let matches = managers.filter { manager in
+                    (manager.protocolConfiguration
+                        as? NETunnelProviderProtocol)?
+                        .providerBundleIdentifier
+                        == Self.providerBundleIdentifier
+                }
+                guard matches.count <= 1 else {
+                    throw TunnelHostError.ambiguousManager
+                }
+                if let manager = matches.first {
+                    try self.requireDisconnectedProvider(manager)
+                }
+                let removal = try TunnelHostIdentityRemovalSessionFactory
+                    .make()
+                try await removal.remove()
+                try TunnelHighWaterKeychain
+                    .clearInitialEnrollmentIntent()
+                if let container = FileManager.default.containerURL(
+                    forSecurityApplicationGroupIdentifier:
+                        "group.io.rw0.mesh.tunnel.mobile"
+                ) {
+                    try TunnelConfigurationStore.eraseAll(
+                        containerURL: container
+                    )
+                }
+                if let manager = matches.first {
+                    try await self.remove(manager)
+                }
+                self.orphanRemovalAvailable = false
+                self.preparedManager = nil
+                self.preparedOrigin = nil
+                self.originField.text = nil
+                self.originField.isEnabled = true
+                self.statusLabel.text = (
+                    "The incomplete local identity and saved VPN preference "
+                        + "were removed. Any server-side pending or active node "
+                        + "still requires administrator review."
+                )
+                self.setControlsBusy(false)
+            } catch {
+                self.statusLabel.text = (
+                    "The incomplete local identity reset was not confirmed "
+                        + "complete. Mesh remains fail-closed; retry only after "
+                        + "administrator review."
                 )
                 self.setControlsBusy(false)
             }
@@ -1377,12 +1830,90 @@ final class MeshTunnelViewController: UIViewController {
         return name
     }
 
+    private func createSelfEnrollmentWithRetry(
+        client: TunnelUserEnrollmentClient,
+        networkID: String,
+        nodeName: String
+    ) async throws -> TunnelUserSelfEnrollmentResponse {
+        for attempt in 1...2 {
+            do {
+                return try await client.createSelfEnrollment(
+                    networkID: networkID,
+                    nodeName: nodeName
+                )
+            } catch {
+                let ambiguous: Bool
+                if let urlError = error as? URLError {
+                    ambiguous = urlError.code != .cancelled
+                } else if case let TunnelHostError.httpStatus(status) = error {
+                    ambiguous = (500...599).contains(status)
+                } else if case TunnelHostError.invalidServerResponse = error {
+                    ambiguous = true
+                } else {
+                    ambiguous = false
+                }
+                guard ambiguous else {
+                    throw error
+                }
+                guard attempt == 1 else {
+                    throw TunnelHostError.selfEnrollmentOutcomeUnknown
+                }
+                try await Task.sleep(for: .milliseconds(500))
+            }
+        }
+        throw TunnelHostError.selfEnrollmentOutcomeUnknown
+    }
+
+    @MainActor
+    private func beginCriticalEnrollmentBackgroundTask() {
+        guard setupBackgroundTask == .invalid else {
+            return
+        }
+        setupBackgroundTask = UIApplication.shared.beginBackgroundTask(
+            withName: "Mesh enrollment commit"
+        ) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.setupBackgroundTask != .invalid
+                else {
+                    return
+                }
+                self.recordSetup(
+                    stage: self.activeSetupStage,
+                    result: "enrollment-background-time-expired"
+                )
+                self.endCriticalEnrollmentBackgroundTask()
+            }
+        }
+    }
+
+    @MainActor
+    private func endCriticalEnrollmentBackgroundTask() {
+        guard setupBackgroundTask != .invalid else {
+            return
+        }
+        UIApplication.shared.endBackgroundTask(setupBackgroundTask)
+        setupBackgroundTask = .invalid
+    }
+
     private func setupFailureText(
         _ error: Error,
         stage: TunnelAutomaticSetupStage
     ) -> String {
         switch error {
         case _ as CancellationError:
+            if (stage == .handingOffEnrollment
+                || stage == .finalizingInstallation
+                || stage == .refreshingConfiguration),
+               (try? loadLocalConfiguration()) != nil
+            {
+                return (
+                    "The Nebula identity and site were installed before setup "
+                        + "was interrupted. Use Inspect installed "
+                        + "configuration, then Start existing tunnel; do not "
+                        + "enroll again."
+                )
+            }
             return (
                 "Setup was cancelled and its temporary browser session was "
                     + "erased. No one-time token was retained."
@@ -1411,6 +1942,34 @@ final class MeshTunnelViewController: UIViewController {
                 "Mesh Tunnel could not prove that local identity storage is "
                     + "empty. No VPN configuration was replaced and no "
                     + "enrollment token was requested."
+            )
+        case TunnelHostError.orphanedLocalAuthorityRequiresRemoval:
+            return (
+                "Mesh found incomplete or unrelated local identity authority "
+                    + "that cannot safely resume this enrollment. No token was "
+                    + "requested. Use Remove local node identity, confirm the "
+                    + "device-only reset, then sign in again."
+            )
+        case TunnelHostError.interruptedEnrollmentRecoveryDeferred:
+            return (
+                "The saved device identity is intact, but authenticated "
+                    + "recovery is temporarily unavailable. Retry later. Mesh "
+                    + "did not request another one-time token or erase the "
+                    + "identity."
+            )
+        case TunnelHostError.interruptedEnrollmentRecoveryUnauthorized:
+            return (
+                "The server no longer authorizes the saved device identity. "
+                    + "An administrator must inspect or revoke that node "
+                    + "before setup can continue. Mesh did not request another "
+                    + "one-time token or erase the identity."
+            )
+        case TunnelHostError.selfEnrollmentOutcomeUnknown:
+            return (
+                "Mesh could not confirm the self-enrollment result after one "
+                    + "safe same-device retry. No token was retained. Inspect "
+                    + "the installed configuration and server node before "
+                    + "starting setup again."
             )
         case TunnelHostError.staleManagerReplacementCancelled:
             return (
@@ -1443,19 +2002,17 @@ final class MeshTunnelViewController: UIViewController {
                     + "tunnel; do not request another enrollment."
             )
         case TunnelHostError.providerStartTimedOut:
-            if stage == .handingOffEnrollment {
-                return (
-                    "The Packet Tunnel did not return a request-correlated "
-                        + "enrollment outcome within 180 seconds. Enrollment "
-                        + "may have completed; inspect the installed "
-                        + "configuration before retrying."
-                )
-            }
             return (
                 "The Packet Tunnel did not reach connected or a fixed failure "
-                    + "stage within 90 seconds. No one-time enrollment token "
-                    + "was requested; inspect the installed configuration "
-                    + "before retrying."
+                    + "stage within 90 seconds. Inspect the installed "
+                    + "configuration before retrying."
+            )
+        case TunnelHostError.providerStartTimedOutAfterIdentity:
+            return (
+                "The Nebula identity and site were installed, but the Packet "
+                    + "Tunnel did not reach connected within 90 seconds. Use "
+                    + "Inspect installed configuration, then Start existing "
+                    + "tunnel; do not enroll again."
             )
         case TunnelHostError.providerNotReady:
             if stage == .handingOffEnrollment {
@@ -1499,6 +2056,19 @@ final class MeshTunnelViewController: UIViewController {
         updateDiagnosticLabel()
     }
 
+    private func reconcileInterruptedSetupDiagnostic() {
+        let defaults = UserDefaults.standard
+        guard defaults.string(
+            forKey: Self.lastSetupResultKey
+        ) == "running" else {
+            return
+        }
+        defaults.set(
+            "interrupted",
+            forKey: Self.lastSetupResultKey
+        )
+    }
+
     private func updateDiagnosticLabel() {
         let shortVersion =
             Bundle.main.object(
@@ -1520,7 +2090,7 @@ final class MeshTunnelViewController: UIViewController {
         )
     }
 
-    private func loadLocalConfiguration()
+    private func readAuthenticatedLocalConfiguration()
         throws -> TunnelConfigurationPayload?
     {
         guard
@@ -1535,9 +2105,66 @@ final class MeshTunnelViewController: UIViewController {
         let store = try TunnelConfigurationStore(
             containerURL: container,
             key: key,
-            highWater: TunnelHostInspectionHighWater()
+            highWater: TunnelHighWaterKeychain()
         )
-        return try store.readCurrent()
+        guard let current = try store.readCurrent() else {
+            return nil
+        }
+        return current
+    }
+
+    private func loadLocalConfiguration()
+        throws -> TunnelConfigurationPayload?
+    {
+        guard let current = try readAuthenticatedLocalConfiguration() else {
+            return nil
+        }
+        guard try !reconcileCommittedEnrollmentIntent(
+            configuration: current
+        ) else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        return current
+    }
+
+    private func reconcileCommittedEnrollmentIntent(
+        configuration: TunnelConfigurationPayload
+    ) throws -> Bool {
+        guard let retainedIntent = try TunnelHighWaterKeychain
+            .loadInitialEnrollmentIntent()
+        else {
+            return false
+        }
+        let committedIntent = try TunnelInitialEnrollmentIntent(
+            configuration: configuration
+        )
+        guard committedIntent == retainedIntent else {
+            return true
+        }
+        try TunnelHighWaterKeychain.retireInitialEnrollmentIntent(
+            matching: committedIntent
+        )
+        return false
+    }
+
+    private func nextLocalConfigurationCounter() throws -> UInt64 {
+        guard
+            let container = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier:
+                    "group.io.rw0.mesh.tunnel.mobile"
+            )
+        else {
+            throw TunnelHostError.localIdentityStateUnavailable
+        }
+        let store = try TunnelConfigurationStore(
+            containerURL: container,
+            key: try TunnelHandoffKeychain.loadOrCreate(),
+            highWater: TunnelHighWaterKeychain()
+        )
+        guard try store.readCurrent() == nil else {
+            throw TunnelHostError.localIdentityAlreadyInstalled
+        }
+        return try store.nextMonotonicCounter()
     }
 
     private func requireNoLocalIdentity() throws {
@@ -1557,6 +2184,14 @@ final class MeshTunnelViewController: UIViewController {
             throw TunnelHostError.localIdentityAlreadyInstalled
         }
         guard try loadLocalConfiguration() == nil else {
+            throw TunnelHostError.localIdentityAlreadyInstalled
+        }
+        guard try !TunnelHighWaterKeychain.hasLocalAuthority() else {
+            throw TunnelHostError.localIdentityAlreadyInstalled
+        }
+        guard try TunnelHighWaterKeychain
+            .loadInitialEnrollmentIntent() == nil
+        else {
             throw TunnelHostError.localIdentityAlreadyInstalled
         }
     }
@@ -1669,6 +2304,70 @@ final class MeshTunnelViewController: UIViewController {
         throw TunnelHostError.managerNotReady
     }
 
+    private func reloadProvisionedManagerForStart(
+        expectedOrigin: String
+    ) async throws -> NETunnelProviderManager {
+        let managers = try await loadManagers()
+        let matches = managers.filter { manager in
+            (manager.protocolConfiguration as? NETunnelProviderProtocol)?
+                .providerBundleIdentifier
+                == Self.providerBundleIdentifier
+        }
+        guard matches.count == 1,
+              let currentManager = matches.first
+        else {
+            throw TunnelHostError.ambiguousManager
+        }
+        try await reload(currentManager)
+        guard try validatedOrigin(
+            for: currentManager,
+            requireEnabled: false
+        ) == expectedOrigin else {
+            throw TunnelHostError.originMismatch
+        }
+        currentManager.isEnabled = true
+        try await save(currentManager)
+        try await reload(currentManager)
+        guard try validatedOrigin(for: currentManager) == expectedOrigin else {
+            throw TunnelHostError.savedConfigurationMismatch
+        }
+        try requireDisconnectedProvider(currentManager)
+        return currentManager
+    }
+
+    private func prepareProvisionedManagerForRecovery(
+        expectedOrigin: String
+    ) async throws -> NETunnelProviderManager {
+        let managers = try await loadManagers()
+        let matches = managers.filter { manager in
+            (manager.protocolConfiguration as? NETunnelProviderProtocol)?
+                .providerBundleIdentifier
+                == Self.providerBundleIdentifier
+        }
+        guard matches.count <= 1 else {
+            throw TunnelHostError.ambiguousManager
+        }
+        guard let manager = matches.first else {
+            return try await createManager(origin: expectedOrigin)
+        }
+        try await reload(manager)
+        guard try validatedOrigin(
+            for: manager,
+            requireEnabled: false
+        ) == expectedOrigin else {
+            throw TunnelHostError.originMismatch
+        }
+        if !manager.isEnabled {
+            try await enableManager(
+                manager,
+                expectedOrigin: expectedOrigin
+            )
+        }
+        return try await reloadProvisionedManagerForStart(
+            expectedOrigin: expectedOrigin
+        )
+    }
+
     private func loadReadyManagerAfterAuthorization(
         expectedOrigin: String
     ) async throws -> NETunnelProviderManager {
@@ -1772,6 +2471,41 @@ final class MeshTunnelViewController: UIViewController {
             throw TunnelHostError.ambiguousManager
         }
         return try await createManager(origin: expectedOrigin)
+    }
+
+    private func prepareManagerForIdentityRemoval(
+        expectedOrigin: String
+    ) async throws -> NETunnelProviderManager {
+        let managers = try await loadManagers()
+        let matches = managers.filter { manager in
+            (manager.protocolConfiguration as? NETunnelProviderProtocol)?
+                .providerBundleIdentifier
+                == Self.providerBundleIdentifier
+        }
+        guard matches.count <= 1 else {
+            throw TunnelHostError.ambiguousManager
+        }
+        guard let manager = matches.first else {
+            return try await createManager(origin: expectedOrigin)
+        }
+        try await reload(manager)
+        guard try validatedOrigin(
+            for: manager,
+            requireEnabled: false
+        ) == expectedOrigin else {
+            throw TunnelHostError.originMismatch
+        }
+        if !manager.isEnabled {
+            try await enableManager(
+                manager,
+                expectedOrigin: expectedOrigin
+            )
+        }
+        try await reload(manager)
+        guard try validatedOrigin(for: manager) == expectedOrigin else {
+            throw TunnelHostError.savedConfigurationMismatch
+        }
+        return manager
     }
 
     private func createManager(
@@ -2062,23 +2796,6 @@ private final class TunnelUserEnrollmentClient {
     }
 }
 
-private struct TunnelHostInspectionHighWater: TunnelHighWaterStore {
-    func load() throws -> UInt64 {
-        0
-    }
-
-    func commit(_: UInt64) throws {
-        throw TunnelKeychainError.rollbackOrReplay
-    }
-}
-
-private struct TunnelProviderEnrollmentContext {
-    let requestID: String
-    let origin: String
-    let session: NETunnelProviderSession
-    let previousConnectedAt: Date?
-}
-
 private enum TunnelHostError: Error {
     case ambiguousManager
     case originMismatch
@@ -2090,12 +2807,19 @@ private enum TunnelHostError: Error {
     case identityRemovalTimeout
     case localIdentityAlreadyInstalled
     case localIdentityStateUnavailable
+    case orphanedLocalAuthorityRequiresRemoval
+    case interruptedEnrollmentRecoveryDeferred
+    case interruptedEnrollmentRecoveryUnauthorized
+    case lifecycleRefreshInvalid
+    case lifecycleRefreshUnauthorized
+    case selfEnrollmentOutcomeUnknown
     case staleManagerReplacementCancelled
     case managerNotReady
     case authenticationCookiesUnavailable
     case providerStartFailed(String)
     case providerStartFailedAfterIdentity(String)
     case providerStartTimedOut
+    case providerStartTimedOutAfterIdentity
     case providerMessageUnavailable
     case providerMessageTimedOut
     case providerNotReady
@@ -2113,6 +2837,9 @@ private enum TunnelAutomaticSetupStage: String {
     case preparingProvider
     case requestingEnrollment
     case handingOffEnrollment
+    case recoveringEnrollment
+    case finalizingInstallation
+    case refreshingConfiguration
 
     var failureText: String {
         switch self {
@@ -2140,19 +2867,43 @@ private enum TunnelAutomaticSetupStage: String {
             )
         case .preparingProvider:
             return (
-                "Apple did not make the Packet Tunnel enrollment channel "
-                    + "ready. No one-time enrollment token was requested."
+                "The Nebula identity and site are installed, but Apple did not "
+                    + "start the Packet Tunnel. Inspect the installed "
+                    + "configuration before retrying; do not enroll again."
             )
         case .requestingEnrollment:
             return (
-                "The VPN configuration is ready, but Mesh did not issue a "
-                    + "one-time enrollment. No token was retained."
+                "The VPN configuration is ready, but the self-enrollment "
+                    + "outcome could not be confirmed. No token was retained. "
+                    + "Inspect the installed configuration and server node "
+                    + "before retrying."
             )
         case .handingOffEnrollment:
             return (
-                "Mesh issued a one-time enrollment, but the Packet Tunnel "
-                    + "extension did not accept the handoff. Retry to replace "
-                    + "the still-pending enrollment safely."
+                "Mesh issued a one-time enrollment, but the device identity "
+                    + "and verified Nebula site were not committed. Inspect "
+                    + "the installed configuration before retrying."
+            )
+        case .recoveringEnrollment:
+            return (
+                "Mesh found an interrupted device identity but could not "
+                    + "recover its authenticated Nebula site. No new one-time "
+                    + "token was requested. Retry recovery while this server "
+                    + "and the saved VPN configuration are available."
+            )
+        case .finalizingInstallation:
+            return (
+                "The Nebula identity and site are installed, but Mesh Tunnel "
+                    + "could not verify removal of the exact recovery marker. "
+                    + "Inspect the installed configuration, then retry Start "
+                    + "existing tunnel; do not enroll again."
+            )
+        case .refreshingConfiguration:
+            return (
+                "The Nebula identity and site are installed, but authenticated "
+                    + "pre-start refresh did not complete. Inspect the installed "
+                    + "configuration, then use Start existing tunnel; do not "
+                    + "enroll again."
             )
         }
     }
@@ -2176,7 +2927,8 @@ private enum TunnelAutomaticSetupStage: String {
                     + "No one-time token was retained."
             )
         case .preparingManager, .verifyingManager, .preparingProvider,
-             .handingOffEnrollment:
+             .handingOffEnrollment, .recoveringEnrollment,
+             .finalizingInstallation, .refreshingConfiguration:
             return failureText
         }
     }

@@ -402,7 +402,7 @@ class AppleProjectTest(unittest.TestCase):
                         "packet-tunnel-provider"
                     ],
                     "com.apple.security.application-groups": app_group,
-                    "keychain-access-groups": handoff_group,
+                    "keychain-access-groups": handoff_group + [identity_group],
                 },
             )
             extension = plist(IOS_TUNNEL / "PacketTunnel" / name)
@@ -427,6 +427,9 @@ class AppleProjectTest(unittest.TestCase):
             'mesh-ios-tunnel-configuration-v4',
             'mesh-ios-tunnel-envelope-v4',
             'mesh-ios-lifecycle-refresh-v1',
+            'mesh-ios-start-authorization-v1',
+            'startOptionKey = "meshStartAuthorization"',
+            "public struct TunnelStartAuthorization:",
             'mesh-ios-nebula-engine-configuration-v1',
             '"tunnelRemoteAddress"',
             "networkSettings.remoteEndpointRoute",
@@ -446,8 +449,8 @@ class AppleProjectTest(unittest.TestCase):
         self.assertIn("TunnelRuntimeCoordinator(", provider)
         self.assertIn("TunnelEngineSessionFactory.make(", provider)
         self.assertIn("TunnelLifecycleSessionFactory.make()", provider)
-        self.assertIn("case .deferred:", provider)
-        self.assertIn("case .unauthorized:", provider)
+        self.assertIn("startPostConnectControlPlaneWork(", provider)
+        self.assertIn("reportStoppedBestEffort(", provider)
         self.assertIn("ProviderPacketFlowSession(", provider)
         self.assertIn("self.startPacketLoops(", provider)
         self.assertIn("try await packetFlow.read()", provider)
@@ -562,6 +565,14 @@ class AppleProjectTest(unittest.TestCase):
             2,
         )
         self.assertEqual(
+            project.count("GoHostEnrollmentSession.swift in Sources"),
+            2,
+        )
+        self.assertEqual(
+            project.count("TunnelHighWaterKeychain.swift in Sources"),
+            4,
+        )
+        self.assertEqual(
             project.count("Assets.xcassets in Resources"),
             2,
         )
@@ -580,19 +591,20 @@ class AppleProjectTest(unittest.TestCase):
             ],
             False,
         )
+        self.assertEqual(
+            plist(IOS_TUNNEL / "MeshTunnelHost" / "Info.plist")[
+                "MeshIdentityKeychainGroup"
+            ],
+            "$(AppIdentifierPrefix)io.rw0.mesh.tunnel.mobile.identity",
+        )
         go_adapter = (
             IOS_TUNNEL / "PacketTunnel" / "GoTunnelEngineSession.swift"
         ).read_text()
         for required in (
             "@preconcurrency import MeshMobile",
-            "protocol TunnelEnrollmentSession: Sendable",
             "protocol TunnelLifecycleSession: Sendable",
-            "IosmobileNewEnrollmentSession(",
             "IosmobileNewLifecycleSession(",
             "TunnelIdentityScope.primaryID",
-            "session.enroll(",
-            "TunnelConfigurationPayload.decodeExact",
-            "enum TunnelEnrollmentSessionFactory",
             "enum TunnelLifecycleSessionFactory",
             "IosmobileNewEngineSession(",
             "session.prepare(document)",
@@ -602,6 +614,35 @@ class AppleProjectTest(unittest.TestCase):
             "enum TunnelEngineSessionFactory",
         ):
             self.assertIn(required, go_adapter)
+        host_enrollment = (
+            IOS_TUNNEL
+            / "MeshTunnelHost"
+            / "GoHostEnrollmentSession.swift"
+        ).read_text()
+        for required in (
+            "@preconcurrency import MeshMobile",
+            "protocol TunnelHostEnrollmentSession: Sendable",
+            "IosmobileNewEnrollmentSession(",
+            "TunnelIdentityScope.primaryID",
+            "session.enroll(",
+            "session.recover(",
+            "TunnelConfigurationPayload.decodeExact",
+            "TunnelEnrollmentRecoveryOutcome.decodeExact",
+            "configuration.monotonicCounter == monotonicCounter",
+            "protocol TunnelHostIdentityRemovalSession: Sendable",
+            "IosmobileNewIdentityRemovalSession(",
+            "session.remove()",
+            "protocol TunnelHostLifecycleSession: Sendable",
+            "final class GoHostLifecycleSession",
+            "IosmobileNewLifecycleSession(",
+            "session.refresh(",
+            "TunnelLifecycleRefreshOutcome.decodeExact",
+            "enum TunnelHostIdentityRemovalSessionFactory",
+            "enum TunnelHostEnrollmentSessionFactory",
+            "enum TunnelHostLifecycleSessionFactory",
+            "TunnelHighWaterKeychain.resolvedAccessGroup()",
+        ):
+            self.assertIn(required, host_enrollment)
         host = (
             IOS_TUNNEL / "MeshTunnelHost" / "MeshTunnelViewController.swift"
         ).read_text()
@@ -618,11 +659,7 @@ class AppleProjectTest(unittest.TestCase):
             'path: "/api/v1/auth/desktop/start"',
             "createSelfEnrollment(",
             "NETunnelProviderSession",
-            "session.startTunnel(options:",
-            "TunnelProviderBootstrapRequest(",
-            "TunnelProviderBootstrapRequest.startOptionKey",
             "sendProviderMessage(",
-            "TunnelEnrollmentOutcome.decodeExact(",
             "eraseTransientEnrollment()",
             "manager.isOnDemandEnabled = false",
             "removeFromPreferences",
@@ -667,10 +704,33 @@ class AppleProjectTest(unittest.TestCase):
             "TunnelOneShotResult<Error?>",
             "providerStartObservationInProgress",
             "requireDisconnectedProvider(",
-            "requireProviderChannelReady(",
+            "provisionLocalIdentity(",
+            "TunnelHostEnrollmentSessionFactory.make()",
+            "store.install(configuration)",
+            "store.recoverCandidate(",
+            "recoverInterruptedEnrollment(",
+            "TunnelInitialEnrollmentIntent(",
+            "saveInitialEnrollmentIntent(",
+            "loadInitialEnrollmentIntent()",
+            "expectedIntent: intent",
+            "configuration.nodeID == intent.nodeID",
+            "configuration.networkID == intent.networkID",
+            "localAuthorityState()",
+            "isRecoverableInitialEnrollment",
+            "orphanedLocalAuthorityRequiresRemoval",
+            "beginOrphanIdentityRemoval()",
+            "TunnelHostIdentityRemovalSessionFactory",
+            "interruptedEnrollmentRecoveryDeferred",
+            "interruptedEnrollmentRecoveryUnauthorized",
+            "startProvisionedTunnel(",
+            "requestProviderStart(",
+            "TunnelStartAuthorization(",
+            "TunnelHighWaterKeychain.saveStartAuthorization(",
+            "TunnelStartAuthorization.startOptionKey",
+            "session.startTunnel(options:",
             "providerConnectedWithoutIdentity",
             "providerStartFailed(String)",
-            "if completed {",
+            "installedConfiguration",
         ):
             self.assertIn(required, host)
         self.assertNotIn("HTTPCookieStorage()", host)
@@ -696,30 +756,221 @@ class AppleProjectTest(unittest.TestCase):
             "private static let providerStartObservationAttempts = 180",
             host,
         )
-        bootstrap = host.split(
-            "private func prepareProviderForEnrollment(", 1
-        )[1].split("private func handOffEnrollment(", 1)[0]
-        self.assertLess(
-            bootstrap.index("session.startTunnel(options:"),
-            bootstrap.index("try await waitForProviderStart("),
-        )
         automatic_setup = host.split(
             "private func runAutomaticSetup(", 1
         )[1].split(
             "private func beginAuthorizationBrowser(", 1
         )[0]
+        normal_setup = automatic_setup.split(
+            "try requireNoLocalIdentity()", 1
+        )[1]
         self.assertLess(
-            automatic_setup.index("prepareProviderForEnrollment("),
-            automatic_setup.index("createSelfEnrollment("),
+            normal_setup.index("createSelfEnrollmentWithRetry("),
+            normal_setup.index("saveInitialEnrollmentIntent("),
         )
-        handoff = host.split(
-            "private func handOffEnrollment(", 1
+        self.assertLess(
+            normal_setup.index("saveInitialEnrollmentIntent("),
+            normal_setup.index("provisionLocalIdentity("),
+        )
+        self.assertLess(
+            normal_setup.index("provisionLocalIdentity("),
+            normal_setup.index("startProvisionedTunnel("),
+        )
+        self.assertLess(
+            normal_setup.index("reloadReadyManagerAfterAuthorization("),
+            normal_setup.index("createSelfEnrollmentWithRetry("),
+        )
+        self.assertLess(
+            normal_setup.index("stage = .requestingEnrollment"),
+            normal_setup.index("beginCriticalEnrollmentBackgroundTask()"),
+        )
+        self.assertLess(
+            normal_setup.index("beginCriticalEnrollmentBackgroundTask()"),
+            normal_setup.index("createSelfEnrollmentWithRetry("),
+        )
+        self.assertLess(
+            normal_setup.index("provisionLocalIdentity("),
+            normal_setup.index(
+                "endCriticalEnrollmentBackgroundTask()",
+                normal_setup.index("provisionLocalIdentity("),
+            ),
+        )
+        retry = host.split(
+            "private func createSelfEnrollmentWithRetry(", 1
+        )[1].split(
+            "private func beginCriticalEnrollmentBackgroundTask(", 1
+        )[0]
+        for required in (
+            "for attempt in 1...2",
+            "return try await client.createSelfEnrollment(\n"
+            "                    networkID: networkID,\n"
+            "                    nodeName: nodeName\n"
+            "                )",
+            "urlError.code != .cancelled",
+            "(500...599).contains(status)",
+            "TunnelHostError.invalidServerResponse",
+            "guard attempt == 1",
+            "TunnelHostError.selfEnrollmentOutcomeUnknown",
+        ):
+            self.assertIn(required, retry)
+        self.assertEqual(retry.count("client.createSelfEnrollment("), 1)
+        background = host.split(
+            "private func eraseTransientEnrollment()", 1
+        )[1].split("private func validatedOrigin(", 1)[0]
+        self.assertLess(
+            background.index("activeSetupStage == .requestingEnrollment"),
+            background.index("enrollmentClient?.invalidate()"),
+        )
+        self.assertLess(
+            background.index("activeSetupStage == .handingOffEnrollment"),
+            background.index("enrollmentClient?.invalidate()"),
+        )
+        provisioning = host.split(
+            "private func provisionLocalIdentity(", 1
+        )[1].split("private func startProvisionedTunnel(", 1)[0]
+        for required in (
+            "store.nextMonotonicCounter()",
+            "TunnelHostEnrollmentSessionFactory.make()",
+            "configuration.controlPlaneOrigin == origin",
+            "configuration.nodeID == expectedNodeID",
+            "configuration.networkID == expectedNetworkID",
+            "configuration.monotonicCounter == monotonicCounter",
+            "store.install(configuration)",
+        ):
+            self.assertIn(required, provisioning)
+        self.assertNotIn("startTunnel", provisioning)
+        self.assertNotIn(
+            "try? TunnelHighWaterKeychain.clearInitialEnrollmentIntent()",
+            host,
+        )
+        retirement = provisioning.split(
+            "private func retireCommittedEnrollmentIntent(", 1
+        )[1].split(
+            "private func refreshProvisionedConfigurationBeforeStart(", 1
+        )[0]
+        for required in (
+            "TunnelInitialEnrollmentIntent(",
+            "configuration: configuration",
+            "guard committedIntent == expectedIntent",
+            "retireInitialEnrollmentIntent(",
+            "matching: committedIntent",
+        ):
+            self.assertIn(required, retirement)
+        local_load = host.split(
+            "private func readAuthenticatedLocalConfiguration()", 1
+        )[1].split("private func nextLocalConfigurationCounter()", 1)[0]
+        for required in (
+            "guard let current = try store.readCurrent()",
+            "private func loadLocalConfiguration()",
+            "reconcileCommittedEnrollmentIntent(",
+            "loadInitialEnrollmentIntent()",
+            "guard committedIntent == retainedIntent else",
+            "retireInitialEnrollmentIntent(",
+            "matching: committedIntent",
+        ):
+            self.assertIn(required, local_load)
+        self.assertLess(
+            local_load.index("store.readCurrent()"),
+            local_load.index("reconcileCommittedEnrollmentIntent("),
+        )
+        inspection = host.split(
+            "private func startInspection(clearsFailure: Bool)", 1
+        )[1].split("private func cancelInspection()", 1)[0]
+        for required in (
+            "readAuthenticatedLocalConfiguration()",
+            "reconcileCommittedEnrollmentIntent(",
+            "retainedIntentMismatchAvailable",
+            "Tunnel start is blocked.",
+            "current != nil || self.orphanRemovalAvailable",
+        ):
+            self.assertIn(required, inspection)
+        self.assertLess(
+            inspection.index("readAuthenticatedLocalConfiguration()"),
+            inspection.index("guard let manager = matches.first else"),
+        )
+        confirmation = host.split(
+            "@objc private func confirmIdentityRemoval()", 1
+        )[1].split("func protectForInactivity()", 1)[0]
+        self.assertIn(
+            "readAuthenticatedLocalConfiguration()",
+            confirmation,
+        )
+        identity_removal = host.split(
+            "private func beginIdentityRemoval(", 1
+        )[1].split("private func beginOrphanIdentityRemoval(", 1)[0]
+        for required in (
+            "prepareManagerForIdentityRemoval(",
+            "expectedOrigin: current.controlPlaneOrigin",
+            "TunnelIdentityRemovalRequest.startOptionKey",
+            "waitForLocalIdentityRemoval()",
+            "clearInitialEnrollmentIntent()",
+            "self.remove(manager)",
+        ):
+            self.assertIn(required, identity_removal)
+        removal_manager = host.split(
+            "private func prepareManagerForIdentityRemoval(", 1
+        )[1].split("private func createManager(", 1)[0]
+        for required in (
+            "guard matches.count <= 1",
+            "createManager(origin: expectedOrigin)",
+            "validatedOrigin(",
+            "if !manager.isEnabled",
+            "enableManager(",
+            "try await reload(manager)",
+        ):
+            self.assertIn(required, removal_manager)
+        identity_removal = host.split(
+            "private func beginIdentityRemoval(", 1
+        )[1].split("private func beginOrphanIdentityRemoval(", 1)[0]
+        self.assertIn(
+            "clearInitialEnrollmentIntent()",
+            identity_removal,
+        )
+        self.assertIn("reconcileInterruptedSetupDiagnostic()", host)
+        self.assertIn('== "running"', host)
+        self.assertIn('"interrupted"', host)
+        refresh = host.split(
+            "private func refreshProvisionedConfigurationBeforeStart(", 1
+        )[1].split("private func startProvisionedTunnel(", 1)[0]
+        for required in (
+            "TunnelHostLifecycleSessionFactory.make()",
+            "lifecycle.refresh(",
+            "store.install(configuration)",
+            "configuration.controlPlaneOrigin",
+            "configuration.monotonicCounter == counter",
+        ):
+            self.assertIn(required, refresh)
+        self.assertEqual(
+            automatic_setup.count(
+                "refreshProvisionedConfigurationBeforeStart("
+            ),
+            2,
+        )
+        provider_start = host.split(
+            "private func startProvisionedTunnel(", 1
         )[1].split("private func waitForProviderStart(", 1)[0]
         self.assertLess(
-            handoff.index("sendProviderMessage("),
-            handoff.index("TunnelEnrollmentOutcome.decodeExact("),
+            provider_start.index("try requestProviderStart("),
+            provider_start.index("try await waitForProviderStart("),
         )
-        self.assertNotIn("startTunnel(options:", handoff)
+        self.assertLess(
+            provider_start.index(
+                "TunnelHighWaterKeychain.saveStartAuthorization("
+            ),
+            provider_start.index("session.startTunnel(options:"),
+        )
+        self.assertIn(
+            "TunnelStartAuthorization.startOptionKey",
+            provider_start,
+        )
+        self.assertIn(
+            "connectedAt != previousConnectedAt",
+            provider_start,
+        )
+        self.assertIn(
+            "current?.controlPlaneOrigin",
+            provider_start,
+        )
         observation = host.split(
             "private func waitForProviderStart(", 1
         )[1].split("private func lastDisconnectCode(", 1)[0]
@@ -739,73 +990,55 @@ class AppleProjectTest(unittest.TestCase):
         self.assertIn("Self.disconnectErrorFetchTimeout", disconnect)
         self.assertIn("resolver.resolve(nil)", disconnect)
         self.assertNotIn("NSLocalizedDescriptionKey", disconnect)
-        self.assertIn(
-            "current?.controlPlaneOrigin == context.origin",
-            handoff,
-        )
-        self.assertIn(
-            "connectedAt != context.previousConnectedAt",
-            handoff,
-        )
         provider = (
             IOS_TUNNEL / "PacketTunnel" / "PacketTunnelProvider.swift"
         ).read_text()
         for required in (
-            "correlateEnrollmentFailure(",
             "TunnelProviderFailureContract.schemaKey",
             "TunnelProviderFailureContract.codeKey",
             "TunnelProviderFailureContract.requestIDKey",
-            "Duration.seconds(180)",
-            "Duration.seconds(150)",
-            "providerStartStopLock.lock()",
-            "expireClaimedEnrollment(",
-            "resolveClaimedEnrollment(",
-            "activateEnrollment(",
-            "store.discardCandidate(matching: configuration)",
+            "TunnelStartAuthorization.startOptionKey",
+            "TunnelStartAuthorization.decodeExact(",
+            'Self.failure("start-authorization-required")',
+            "authorization.matches(current)",
+            "TunnelHighWaterKeychain.consumeStartAuthorization(",
+            "if let current = try store.readCurrent()",
+            "return current",
+            "startPostConnectControlPlaneWork(",
         ):
             self.assertIn(required, provider)
-        bootstrap_start = provider.split(
-            "if let options,\n      options.keys.contains("
-            "TunnelProviderBootstrapRequest.startOptionKey)",
-            1,
-        )[1].split("let enrollmentRequestID =", 1)[0]
-        self.assertLess(
-            bootstrap_start.rindex("providerStartStopLock.unlock()"),
-            bootstrap_start.rindex("completionHandler(nil)"),
-        )
-        stop_source = provider.split(
-            "override func stopTunnel(", 1
-        )[1].split("override func sleep(", 1)[0]
-        self.assertLess(
-            stop_source.index("providerStartStopLock.unlock()"),
-            stop_source.index("pendingEnrollmentCompletion.resolve("),
-        )
-        expiry_source = provider.split(
-            "private func expireClaimedEnrollment(", 1
-        )[1].split("private func resolveClaimedEnrollment(", 1)[0]
-        self.assertLess(
-            expiry_source.index("providerStartStopLock.unlock()"),
-            expiry_source.index("completion.resolve("),
-        )
-        resolution_source = provider.split(
-            "private func resolveClaimedEnrollment(", 1
-        )[1].split("private func completeEnrollmentHandoff(", 1)[0]
-        self.assertLess(
-            resolution_source.index("providerStartStopLock.unlock()"),
-            resolution_source.index("completion.resolve(error)"),
-        )
-        enrollment_start = provider.split(
-            "let enrollmentRequestID = Self.enrollmentRequestID(options)",
-            1,
+        normal_start = provider.split(
+            "switch lifecycleGate.beginStart()", 1
         )[1]
-        already_running = enrollment_start.split(
+        already_running = normal_start.split(
             "case .alreadyRunning:", 1
         )[1].split("case .alreadyStarting:", 1)[0]
-        self.assertIn("if enrollmentRequestID != nil", already_running)
-        self.assertIn(
-            'complete(Self.failure("enrollment-request-rejected"))',
-            already_running,
+        self.assertIn("complete(nil)", already_running)
+        provider_start = provider.split(
+            "private func continueTunnelStart(", 1
+        )[1].split(
+            "private func resolveConfiguration(", 1
+        )[0]
+        completion_index = provider_start.rindex("complete(nil)")
+        post_connect_index = provider_start.index(
+            "self.startPostConnectControlPlaneWork("
         )
+        self.assertLess(completion_index, post_connect_index)
+        for forbidden in (
+            "TunnelLifecycleSessionFactory.make()",
+            "reporter.report(",
+            "store.nextMonotonicCounter()",
+        ):
+            self.assertNotIn(forbidden, provider_start[:completion_index])
+        for forbidden in (
+            "TunnelProviderBootstrapRequest",
+            "TunnelProviderEnrollmentRequest",
+            "TunnelEnrollmentOutcome",
+            "TunnelEnrollmentSessionFactory",
+            "enrollmentToken",
+            "providerStartStopLock",
+        ):
+            self.assertNotIn(forbidden, provider)
         provider_codes = set(
             re.findall(
                 r'(?:Self\.failure\(\s*|code:\s*)"([a-z0-9-]+)"',
@@ -837,15 +1070,8 @@ class AppleProjectTest(unittest.TestCase):
             "TunnelProviderStartProof",
             "TunnelProviderFailureClassifier",
             "TunnelOneShotResult",
-            "TunnelProviderBootstrapRequest",
-            '"mesh-ios-provider-bootstrap-v1"',
-            "TunnelProviderEnrollmentRequest",
-            '"mesh-ios-provider-enrollment-v1"',
-            "TunnelEnrollmentOutcome",
-            '"mesh-ios-enrollment-outcome-v1"',
-            "TunnelEnrollmentReceiptEnvelope",
-            '"mesh-ios-enrollment-receipt-envelope-v1"',
-            "TunnelEnrollmentReceiptAuthenticator",
+            "TunnelEnrollmentRequest",
+            '"mesh-ios-tunnel-enrollment-v1"',
         ):
             self.assertIn(required, contract)
         sign_in = host.split(
@@ -875,14 +1101,19 @@ class AppleProjectTest(unittest.TestCase):
         )
         self.assertLess(
             setup.index("reloadReadyManagerAfterAuthorization("),
-            setup.index("createSelfEnrollment("),
+            setup.index("createSelfEnrollmentWithRetry("),
         )
-        self.assertIn("manager: currentManager", setup)
+        self.assertIn(
+            "let startManager =\n"
+            "                try await reloadProvisionedManagerForStart(",
+            setup,
+        )
+        self.assertIn("manager: startManager", setup)
         postauth_start = host.index(
             "private func reloadReadyManagerAfterAuthorization("
         )
         postauth_end = host.index(
-            "private func loadReadyManagerAfterAuthorization(",
+            "private func reloadProvisionedManagerForStart(",
             postauth_start,
         )
         postauth = host[postauth_start:postauth_end]
@@ -1020,6 +1251,9 @@ class AppleProjectTest(unittest.TestCase):
             "candidate.monotonicCounter > effectiveHighWater",
             "public func nextMonotonicCounter() throws -> UInt64",
             "return floor + 1",
+            "expectedIntent: TunnelInitialEnrollmentIntent",
+            "candidate.nodeID == expectedIntent.nodeID",
+            "candidate.networkID == expectedIntent.networkID",
         ):
             self.assertIn(required, store)
         handoff = (
@@ -1041,17 +1275,57 @@ class AppleProjectTest(unittest.TestCase):
                 "kSecUseDataProtectionKeychain as String: kCFBooleanTrue!",
                 source,
             )
+        for required in (
+            "static func hasLocalAuthority() throws -> Bool",
+            'private static let identityAccount = "primary"',
+            '"io.rw0.mesh.tunnel.mobile.identity.v1"',
+            '"io.rw0.mesh.tunnel.mobile.agent.v1"',
+            '"io.rw0.mesh.tunnel.mobile.agent.pending.v1"',
+            '"io.rw0.mesh.tunnel.mobile.initial-enrollment-intent.v1"',
+            "static func localAuthorityState()",
+            "var isRecoverableInitialEnrollment: Bool",
+            "hasPrivateKey\n"
+            "      && hasCurrentAgentCredential\n"
+            "      && !hasPendingAgentCredential",
+            "static func saveInitialEnrollmentIntent(",
+            "static func loadInitialEnrollmentIntent()",
+            "static func clearInitialEnrollmentIntent()",
+            "static func retireInitialEnrollmentIntent(",
+            "matching expected: TunnelInitialEnrollmentIntent",
+            "static func saveStartAuthorization(",
+            "static func consumeStartAuthorization(",
+            "matching expected: TunnelStartAuthorization",
+        ):
+            self.assertIn(required, highwater)
+        self.assertIn(
+            "highWater: TunnelHighWaterKeychain()",
+            host,
+        )
+        self.assertIn(
+            "guard try !TunnelHighWaterKeychain.hasLocalAuthority() else {\n"
+            "            throw TunnelHostError.localIdentityAlreadyInstalled\n"
+            "        }",
+            host,
+        )
+        self.assertNotIn("TunnelHostInspectionHighWater", host)
 
         lifecycle_gate = (
             IOS_TUNNEL / "Shared" / "TunnelProviderLifecycleGate.swift"
         ).read_text()
         for required in (
+            "public final class TunnelTerminalCleanupBarrier",
+            "public func wait() async",
+            "public func finish()",
             "public final class TunnelProviderLifecycleGate",
             "case alreadyStarting",
             "case alreadyRunning",
-            "public func mayContinueStart() -> Bool",
-            "public func markRunning() -> Bool",
+            "case begin(UInt64)",
+            "public func mayContinueStart(_ generation: UInt64) -> Bool",
+            "public func markRunning(",
+            "public func commitIfCurrent(",
             "public func latchStop() -> Bool",
+            "public func finishStop()",
+            "public func isLatest(_ generation: UInt64) -> Bool",
         ):
             self.assertIn(required, lifecycle_gate)
         provider = (
@@ -1059,18 +1333,77 @@ class AppleProjectTest(unittest.TestCase):
         ).read_text()
         for required in (
             "lifecycleGate.beginStart()",
-            "lifecycleGate.mayContinueStart()",
-            "lifecycleGate.markRunning()",
+            "lifecycleGate.mayContinueStart(generation)",
+            "guard self.lifecycleGate.markRunning(",
             "lifecycleGate.latchStop()",
-            "bootstrapGate.arm(request)",
-            "bootstrapGate.claim(request)",
-            "TunnelEnrollmentOutcome.failed(",
-            "TunnelEnrollmentOutcome.running(",
-            "completeEnrollmentHandoff(",
+            "lifecycleGate.finishStop()",
+            "beginTerminalCleanup()",
+            "latchStopAndCaptureTerminalCleanup()",
+            "finishTerminalCleanup(",
+            "await pendingTerminalCleanup?.wait()",
+            "TunnelStartAuthorization.startOptionKey",
+            'Self.failure("start-authorization-required")',
+            "TunnelHighWaterKeychain.consumeStartAuthorization(",
             '"start-already-in-progress"',
             '"start-cancelled"',
+            "let pendingStartup = startupTask",
+            "pendingStartup?.cancel()",
+            "await pendingStartup.value",
+            "await coordinator.stop()",
+            "try Task.checkCancellation()",
+            "await reporter?.terminalize()",
+            "reportStoppedBestEffort(reporter)",
+            "lifecycleGate.commitIfCurrent(",
         ):
             self.assertIn(required, provider)
+        stop_source = provider.split(
+            "override func stopTunnel(", 1
+        )[1].split("override func sleep(", 1)[0]
+        self.assertEqual(
+            stop_source.count("lifecycleGate.finishStop()"),
+            3,
+        )
+        self.assertEqual(stop_source.count("completionHandler()"), 3)
+        self.assertEqual(
+            stop_source.count("await pendingTerminalCleanup?.wait()"),
+            3,
+        )
+        for start, end in (
+            ("private func removeIdentity(", "private func startPacketLoops("),
+            (
+                "private func networkRebindFailed(",
+                "private func packetFlowFailed(",
+            ),
+            (
+                "private func packetFlowFailed(",
+                "private func cancelPacketTasks(",
+            ),
+            (
+                "private func mobileRuntimeFailed(",
+                "private static func mobileRuntimeFailure(",
+            ),
+        ):
+            terminal = provider.split(start, 1)[1].split(end, 1)[0]
+            self.assertLess(
+                terminal.index("beginTerminalCleanup()"),
+                terminal.index("runtime = nil"),
+            )
+            self.assertIn(
+                "finishTerminalCleanup(cleanupBarrier)",
+                terminal,
+            )
+        self.assertGreaterEqual(
+            provider.count(
+                "self.lifecycleGate.mayContinueStart(generation)"
+            ),
+            9,
+        )
+        for forbidden in (
+            "bootstrapGate",
+            "completeEnrollmentHandoff(",
+            "TunnelEnrollmentOutcome.",
+        ):
+            self.assertNotIn(forbidden, provider)
         self.assertEqual(
             project.count("TunnelProviderLifecycleGate.swift in Sources"),
             2,
@@ -1091,13 +1424,9 @@ class AppleProjectTest(unittest.TestCase):
             re.findall(r'case \w+ = "([^"]+)"', source),
             [
                 "start-requested",
-                "provider-bootstrap-ready",
-                "enrollment-handoff-accepted",
                 "configuration-container-unavailable",
                 "configuration-unavailable",
                 "configuration-invalid",
-                "enrollment-request-rejected",
-                "enrollment-failed",
                 "lifecycle-refresh-deferred",
                 "lifecycle-refresh-failed",
                 "agent-authorization-rejected",
@@ -1212,10 +1541,6 @@ class AppleProjectTest(unittest.TestCase):
         for required in (
             "mesh-ios-tunnel-control-v1",
             "mesh-ios-tunnel-enrollment-v1",
-            "mesh-ios-provider-bootstrap-v1",
-            "mesh-ios-provider-enrollment-v1",
-            "mesh-ios-enrollment-outcome-v1",
-            "mesh-ios-enrollment-receipt-envelope-v1",
             "mesh-ios-tunnel-configuration-v4",
             "mesh-ios-tunnel-envelope-v4",
             "mesh-ios-lifecycle-refresh-v1",
@@ -1233,11 +1558,18 @@ class AppleProjectTest(unittest.TestCase):
             "HMAC<SHA256>",
             "authenticationFailed",
             "runningEvidence",
-            'public static let startOptionKey = "meshEnrollmentRequest"',
             'public static let primaryID = "primary"',
             "public static func normalizedOrigin(",
         ):
             self.assertIn(required, contract)
+        for forbidden in (
+            "mesh-ios-provider-bootstrap-v1",
+            "mesh-ios-provider-enrollment-v1",
+            "mesh-ios-enrollment-outcome-v1",
+            "mesh-ios-enrollment-receipt-envelope-v1",
+            'startOptionKey = "meshEnrollmentRequest"',
+        ):
+            self.assertNotIn(forbidden, contract)
         for forbidden in ("privateKey", "recoveryCode", "sessionCookie"):
             self.assertNotIn(forbidden, contract)
         build_script = (
@@ -1263,10 +1595,10 @@ class AppleProjectTest(unittest.TestCase):
             "coordinator-gated-provider-adapter-source-wired",
             "authenticated-canonical-required",
             "bounded-apple-flow-source-wired-static-engine",
-            "coordinator-apple-flow-extension-bootstrap-ipc-enrollment-",
+            "coordinator-apple-flow-current-config-only-",
             "lifecycle-mobile-evidence-identity-removal-static-engine-",
             "network-path-source-wired",
-            "gomobile-extension-enrollment-lifecycle-renewal-credential-",
+            "gomobile-extension-lifecycle-renewal-credential-",
             "rotation-mobile-evidence-identity-removal-signed-config-packet-",
             "session-source-wired",
             "ordered-rebind-cleanup-source-proven",

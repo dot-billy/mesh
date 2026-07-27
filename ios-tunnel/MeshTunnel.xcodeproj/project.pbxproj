@@ -36,6 +36,8 @@
 		A1000000000000000000011B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021D /* Assets.xcassets */; };
 		A1000000000000000000011C /* TunnelUserEnrollment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021E /* TunnelUserEnrollment.swift */; };
 		A1000000000000000000011D /* TunnelProviderLifecycleGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021F /* TunnelProviderLifecycleGate.swift */; };
+		A1000000000000000000011E /* TunnelHighWaterKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000215 /* TunnelHighWaterKeychain.swift */; };
+		A1000000000000000000011F /* GoHostEnrollmentSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000220 /* GoHostEnrollmentSession.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -94,6 +96,7 @@
 		A1000000000000000000021D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1000000000000000000021E /* TunnelUserEnrollment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelUserEnrollment.swift; sourceTree = "<group>"; };
 		A1000000000000000000021F /* TunnelProviderLifecycleGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelProviderLifecycleGate.swift; sourceTree = "<group>"; };
+		A10000000000000000000220 /* GoHostEnrollmentSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoHostEnrollmentSession.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +138,7 @@
 				A10000000000000000000201 /* AppDelegate.swift */,
 				A10000000000000000000202 /* SceneDelegate.swift */,
 				A10000000000000000000203 /* MeshTunnelViewController.swift */,
+				A10000000000000000000220 /* GoHostEnrollmentSession.swift */,
 				A1000000000000000000021D /* Assets.xcassets */,
 				A10000000000000000000206 /* Info.plist */,
 				A10000000000000000000208 /* PrivacyInfo.xcprivacy */,
@@ -305,6 +309,8 @@
 				A10000000000000000000113 /* TunnelPacketFlowPump.swift in Sources */,
 				A10000000000000000000115 /* TunnelAppleNetworkSettings.swift in Sources */,
 				A1000000000000000000011C /* TunnelUserEnrollment.swift in Sources */,
+				A1000000000000000000011E /* TunnelHighWaterKeychain.swift in Sources */,
+				A1000000000000000000011F /* GoHostEnrollmentSession.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

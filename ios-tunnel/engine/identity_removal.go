@@ -5,9 +5,10 @@ import (
 	"fmt"
 )
 
-// IdentityRemovalSession exposes deletion only. It cannot load, return, replace,
-// or create node authority, and the containing app cannot construct it because
-// only the Packet Tunnel extension has the identity Keychain access group.
+// IdentityRemovalSession exposes deletion only. It cannot return, replace, or
+// create node authority. Product wiring constructs it in the Packet Tunnel for
+// an installed node and in the containing app only after explicit confirmation
+// to reset incomplete authority that has no current configuration.
 type IdentityRemovalSession struct {
 	deletePrivateKey         func() error
 	deleteAgentSecret        func() error

@@ -111,7 +111,7 @@ def canonical_source_receipt(path: pathlib.Path) -> dict[str, Any]:
         and boundary.get("physical_device_validated") is False
         and boundary.get("provider")
         == (
-            "coordinator-apple-flow-extension-enrollment-lifecycle-mobile-"
+            "coordinator-apple-flow-current-config-only-lifecycle-mobile-"
             "evidence-identity-removal-static-engine-network-path-source-wired"
         )
         and boundary.get("packet_pump")
@@ -120,16 +120,34 @@ def canonical_source_receipt(path: pathlib.Path) -> dict[str, Any]:
         == "coordinator-gated-provider-adapter-source-wired"
         and boundary.get("engine_adapter")
         == (
-            "gomobile-extension-enrollment-lifecycle-renewal-credential-"
+            "gomobile-extension-lifecycle-renewal-credential-"
             "rotation-mobile-evidence-identity-removal-signed-config-packet-"
             "session-source-wired"
+        )
+        and boundary.get("host_enrollment_adapter")
+        == (
+            "gomobile-host-self-enrollment-shared-identity-"
+            "config-activation-source-wired"
+        )
+        and boundary.get("identity_keychain_custody")
+        == "shared-host-extension-device-only-source-proven"
+        and boundary.get("host_runtime_controls")
+        == (
+            "provision-first-connect-second-real-evidence-"
+            "start-stop-inspect-source-proven"
+        )
+        and boundary.get("host_manager_recovery")
+        == (
+            "preauth-confirmed-disabled-no-identity-exact-replacement-"
+            "postauth-bounded-fresh-manager-retry-terminal-status-source-"
+            "proven"
         )
         and boundary.get("remote_endpoint")
         == "authenticated-canonical-required"
         and boundary.get("runtime_coordinator")
         == "ordered-rebind-cleanup-source-proven"
         and boundary.get("extension_logging")
-        == "fixed-reviewed-18-event-codes-only",
+        == "fixed-reviewed-16-event-codes-only",
         "iOS Tunnel unsupported source boundary is invalid",
     )
     privacy = document.get("privacy_manifest")
