@@ -45,8 +45,10 @@ def profile(kind: str) -> dict[str, object]:
 class DistributionVerifierTests(unittest.TestCase):
     def test_static_tunnel_engine_is_required_and_bound(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            extension = pathlib.Path(raw) / "MeshPacketTunnel.appex"
-            extension.mkdir()
+            app = pathlib.Path(raw) / "Mesh Tunnel.app"
+            extension = app / "PlugIns" / "MeshPacketTunnel.appex"
+            extension.mkdir(parents=True)
+            (app / "Mesh Tunnel").write_bytes(b"static host sessions")
             (extension / "Info.plist").write_bytes(
                 plistlib.dumps(
                     {"CFBundleExecutable": "MeshPacketTunnel"}
@@ -60,17 +62,24 @@ class DistributionVerifierTests(unittest.TestCase):
                 **_kwargs: object,
             ) -> subprocess.CompletedProcess[bytes]:
                 if arguments[0] == "nm":
-                    output = "\n".join(
-                        sorted(verifier.TUNNEL_ENGINE_SYMBOLS)
-                    ).encode()
+                    symbols = (
+                        verifier.TUNNEL_ENGINE_SYMBOLS
+                        if pathlib.Path(arguments[-1]).name
+                        == "MeshPacketTunnel"
+                        else verifier.TUNNEL_HOST_SESSION_SYMBOLS
+                    )
+                    output = "\n".join(sorted(symbols)).encode()
                 elif arguments[0] == "otool":
                     output = (
                         b"/System/Library/Frameworks/Foundation.framework\n"
                     )
                 elif arguments[0] == "strings":
-                    output = "\n".join(
-                        sorted(verifier.TUNNEL_ENGINE_MARKERS)
-                    ).encode()
+                    markers = (
+                        verifier.TUNNEL_HOST_SESSION_SYMBOLS
+                        if pathlib.Path(arguments[-1]).name == "Mesh Tunnel"
+                        else verifier.TUNNEL_ENGINE_MARKERS
+                    )
+                    output = "\n".join(sorted(markers)).encode()
                 else:
                     raise AssertionError(arguments)
                 return subprocess.CompletedProcess(
@@ -85,7 +94,10 @@ class DistributionVerifierTests(unittest.TestCase):
                 "run",
                 side_effect=inspected,
             ):
-                result = verifier.verify_static_tunnel_engine(extension)
+                result = verifier.verify_static_tunnel_engine(
+                    extension,
+                    app,
+                )
             self.assertEqual(result["linkage"], "static")
             self.assertFalse(result["dynamic_framework_embedded"])
             self.assertFalse(
@@ -97,7 +109,7 @@ class DistributionVerifierTests(unittest.TestCase):
                 verifier.VerificationError,
                 "static Packet Tunnel engine layout",
             ):
-                verifier.verify_static_tunnel_engine(extension)
+                verifier.verify_static_tunnel_engine(extension, app)
 
     def test_products_can_be_verified_independently(self) -> None:
         self.assertEqual(

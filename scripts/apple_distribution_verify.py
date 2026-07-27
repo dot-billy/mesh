@@ -50,14 +50,10 @@ PROFILE_SPECS = {
 }
 TUNNEL_ENGINE_SYMBOLS = {
     "_IosmobileNewEngineSession",
-    "_IosmobileNewEnrollmentSession",
     "_IosmobileNewIdentityRemovalSession",
     "_IosmobileNewLifecycleSession",
-    "_proxyiosmobile_EnrollmentSession_Enroll",
-    "_proxyiosmobile_EnrollmentSession_Recover",
     "_proxyiosmobile_IdentityRemovalSession_Remove",
     "_proxyiosmobile_LifecycleSession_ReportRuntime",
-    "_proxyiosmobile_LifecycleSession_Refresh",
     "_proxyiosmobile_EngineSession_FrameworkIdentity",
     "_proxyiosmobile_EngineSession_Prepare",
     "_proxyiosmobile_EngineSession_Rebind",
@@ -65,6 +61,15 @@ TUNNEL_ENGINE_SYMBOLS = {
     "_proxyiosmobile_EngineSession_Send",
     "_proxyiosmobile_EngineSession_Start",
     "_proxyiosmobile_EngineSession_Stop",
+}
+TUNNEL_HOST_SESSION_SYMBOLS = {
+    "main.proxyiosmobile__NewEnrollmentSession",
+    "main.proxyiosmobile__NewIdentityRemovalSession",
+    "main.proxyiosmobile__NewLifecycleSession",
+    "main.proxyiosmobile_EnrollmentSession_Enroll",
+    "main.proxyiosmobile_EnrollmentSession_Recover",
+    "main.proxyiosmobile_IdentityRemovalSession_Remove",
+    "main.proxyiosmobile_LifecycleSession_Refresh",
 }
 TUNNEL_ENGINE_MARKERS = {
     "mesh-ios-mobile-framework-v5",
@@ -255,7 +260,10 @@ def validate_signed_entitlements(
         raise VerificationError("signed entitlements are not the exact allowlist")
 
 
-def verify_static_tunnel_engine(extension: pathlib.Path) -> dict[str, Any]:
+def verify_static_tunnel_engine(
+    extension: pathlib.Path,
+    host_app: pathlib.Path,
+) -> dict[str, Any]:
     try:
         info = plistlib.loads((extension / "Info.plist").read_bytes())
     except (OSError, plistlib.InvalidFileException) as exc:
@@ -286,6 +294,24 @@ def verify_static_tunnel_engine(extension: pathlib.Path) -> dict[str, Any]:
         raise VerificationError(
             f"{extension}: static Packet Tunnel engine symbols are incomplete"
         )
+    host_executable = host_app / "Mesh Tunnel"
+    if not host_executable.is_file() or host_executable.is_symlink():
+        raise VerificationError(
+            f"{host_app}: containing-app executable is missing"
+        )
+    host_symbols = run(
+        "strings",
+        "-a",
+        str(host_executable),
+        timeout=120,
+    ).stdout.decode("utf-8", "replace")
+    if any(
+        symbol not in host_symbols
+        for symbol in TUNNEL_HOST_SESSION_SYMBOLS
+    ):
+        raise VerificationError(
+            f"{host_app}: static host enrollment symbols are incomplete"
+        )
     dependencies = run(
         "otool",
         "-L",
@@ -310,6 +336,7 @@ def verify_static_tunnel_engine(extension: pathlib.Path) -> dict[str, Any]:
         "linkage": "static",
         "dynamic_framework_embedded": False,
         "symbols": sorted(TUNNEL_ENGINE_SYMBOLS),
+        "host_session_symbols": sorted(TUNNEL_HOST_SESSION_SYMBOLS),
         "identity_markers": sorted(TUNNEL_ENGINE_MARKERS),
         "executable_sha256": sha256_file(executable),
         "physical_device_packet_path_validated": False,
@@ -375,7 +402,7 @@ def verify_archive(
             "bundle_identifier": identifier,
             "embedded_profile_uuid": extension_uuid,
             "packet_tunnel_entitlement": True,
-            "engine": verify_static_tunnel_engine(appex),
+            "engine": verify_static_tunnel_engine(appex, app),
         }
     return result
 
@@ -448,7 +475,7 @@ def verify_exported_ipa(
                 "bundle_identifier": identifier,
                 "embedded_profile_uuid": extension_uuid,
                 "packet_tunnel_entitlement": True,
-                "engine": verify_static_tunnel_engine(appex),
+                "engine": verify_static_tunnel_engine(appex, app),
             }
         return result
 
