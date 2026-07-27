@@ -10,15 +10,16 @@ on 2026-07-26, approved its Beta App Review, and placed it in external testing.
 Build `3` adds disabled-manager recovery and is also approved and in external
 testing. A development-signed physical execution of the exact build-3 source
 completed OIDC and desktop authorization, read the user's network inventory,
-and then stopped while writing the retained disabled manager before requesting
-self-enrollment. A development-signed build 4 avoided rewriting an enabled
-manager, but two physical attempts reached the same disabled-manager write path
-after OIDC and again sent no self-enrollment request. No token, node, local
-identity, extension start, or packet path was proved. Current successor source
-prepares the manager before OIDC and offers a confirmation-gated replacement
-only for the exact disabled/no-identity recovery fixture. None of these builds
-is a supported application, proven working VPN, production enrollment path, or
-public App Store release.
+and sent no self-enrollment request. Two development-signed build-4 attempts
+reached the same observed API boundary. The app-group container retained no
+local identity, and a later physical screen showed one enabled, structurally
+valid saved manager with no identity. Those observations do not identify the
+manager state or exact failure stage during the earlier attempts. No attempt
+proved token issuance, node creation, extension start, or a packet path.
+Current successor source prepares the manager before OIDC and offers a
+confirmation-gated replacement only for the exact disabled/no-identity
+recovery fixture. None of these builds is a supported application, proven
+working VPN, production enrollment path, or public App Store release.
 
 ## What exists
 
@@ -170,13 +171,12 @@ Build `0.1.0 (3)` contains that recovery source, is approved, and is in external
 testing. A development-signed physical execution from the same source completed
 OIDC and desktop authorization and reached the authenticated network-list
 request. The server observed no self-enrollment request, and the app-group
-container retained no current, candidate, or recovery identity. The bounded
-evidence places the stop in an unnecessary save/reload of the already-valid
-Apple VPN manager, before token issuance. Development-signed build 4 validates
-and reuses an enabled manager without rewriting it, but the established
-physical fixture is disabled. Two build-4 attempts completed OIDC and read the
-single network, then stopped while enabling/saving that disabled manager; no
-self-enrollment or mobile-runtime request was sent.
+container retained no current, candidate, or recovery identity.
+Development-signed build 4 validates and reuses an enabled manager without
+rewriting it. Two build-4 attempts completed OIDC and read the single network;
+no self-enrollment or mobile-runtime request was sent. A later screen showed
+one enabled, structurally valid saved manager with no identity. That later state
+does not establish the manager state or exact stop during any earlier attempt.
 
 Current successor source moves all manager preparation before OIDC. With
 exactly one structurally valid same-origin disabled Mesh manager and no current,
@@ -399,13 +399,14 @@ described above. That bounded installation evidence does not establish
 enrollment, extension runtime, or packet behavior.
 Build `0.1.0 (3)` contains the recovery source and is approved for external
 testing. A development-signed run of the exact source proved OIDC completion
-and authenticated network inventory, but stopped before self-enrollment while
-writing the retained disabled manager. Development-signed build 4 avoided
-rewriting enabled managers, but two attempts necessarily re-entered the same
-disabled-manager write path after OIDC. Current successor source stages manager
-readiness before login and uses the bounded confirmation-gated replacement
-described above; it has not yet proved enrollment, extension runtime, or packet
-behavior.
+and authenticated network inventory, but the server observed no self-enrollment
+request and the app-group container retained no identity. Two
+development-signed build-4 attempts reached that same observed boundary. A
+later physical screen showed one enabled, structurally valid manager without an
+identity; it does not prove the manager state or exact stop during the earlier
+attempts. Current successor source stages manager readiness before login and
+uses the bounded confirmation-gated replacement described above; it has not yet
+proved enrollment, extension runtime, or packet behavior.
 
 ## Deliberately unresolved
 

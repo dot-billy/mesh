@@ -807,6 +807,42 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
     ):
         if required not in sources["host_controller"]:
             raise ReceiptError("Mesh Tunnel host enrollment handoff is incomplete")
+    if (
+        "private static let postAuthorizationManagerReadinessAttempts = 6"
+        not in sources["host_controller"]
+        or "Duration.milliseconds(500)" not in sources["host_controller"]
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel post-authorization manager retry bound changed"
+        )
+    failure_latch_clears = re.findall(
+        r"(?m)^\s{8}setupFailureIsVisible = false$",
+        sources["host_controller"],
+    )
+    sign_in_index = sources["host_controller"].index(
+        "private func signInAndSetUpVPN()"
+    )
+    sign_in_end = sources["host_controller"].index(
+        "private func runAutomaticSetup(",
+        sign_in_index,
+    )
+    inspect_index = sources["host_controller"].index(
+        "private func inspectConfiguration()"
+    )
+    inspect_end = sources["host_controller"].index(
+        "private func vpnStatusDidChange()",
+        inspect_index,
+    )
+    if (
+        len(failure_latch_clears) != 2
+        or "setupFailureIsVisible = false"
+        not in sources["host_controller"][sign_in_index:sign_in_end]
+        or "setupFailureIsVisible = false"
+        not in sources["host_controller"][inspect_index:inspect_end]
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel terminal setup failure has an unreviewed clear path"
+        )
     setup_index = sources["host_controller"].index(
         "private func runAutomaticSetup("
     )

@@ -647,6 +647,25 @@ class AppleProjectTest(unittest.TestCase):
             "if completed {",
         ):
             self.assertIn(required, host)
+        self.assertIn(
+            "private static let postAuthorizationManagerReadinessAttempts = 6",
+            host,
+        )
+        self.assertIn(
+            "Duration.milliseconds(500)",
+            host,
+        )
+        self.assertEqual(
+            len(re.findall(
+                r"(?m)^\s{8}setupFailureIsVisible = false$",
+                host,
+            )),
+            2,
+        )
+        sign_in = host.split(
+            "private func signInAndSetUpVPN()", 1
+        )[1].split("private func runAutomaticSetup(", 1)[0]
+        self.assertIn("setupFailureIsVisible = false", sign_in)
         setup_start = host.index("private func runAutomaticSetup(")
         setup_end = host.index(
             "private func beginAuthorizationBrowser(",
