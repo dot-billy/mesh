@@ -1164,15 +1164,26 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
                         stderr="",
                     )
                 if arguments[0] == "nm":
+                    executable = pathlib.Path(arguments[-1]).name
+                    constructors = (
+                        [
+                            "_IosmobileNewEngineSession",
+                            "_IosmobileNewIdentityRemovalSession",
+                            "_IosmobileNewLifecycleSession",
+                        ]
+                        if executable == "MeshPacketTunnel"
+                        else [
+                            "_IosmobileNewEnrollmentSession",
+                            "_IosmobileNewIdentityRemovalSession",
+                            "_IosmobileNewLifecycleSession",
+                        ]
+                    )
                     return subprocess.CompletedProcess(
                         arguments,
                         0,
                         stdout="\n".join(
-                            [
-                                "_IosmobileNewEngineSession",
-                                "_IosmobileNewEnrollmentSession",
-                                "_IosmobileNewIdentityRemovalSession",
-                                "_IosmobileNewLifecycleSession",
+                            constructors
+                            + [
                                 "_proxyiosmobile_EnrollmentSession_Enroll",
                                 "_proxyiosmobile_EnrollmentSession_Recover",
                                 (
@@ -1255,6 +1266,14 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
             self.assertEqual(
                 result["extension"]["engine_linkage"],
                 "static",
+            )
+            self.assertIn(
+                "_IosmobileNewEngineSession",
+                result["extension"]["engine_exports"],
+            )
+            self.assertNotIn(
+                "_IosmobileNewEnrollmentSession",
+                result["extension"]["engine_exports"],
             )
             self.assertFalse(
                 result["extension"]["engine_dynamic_dependency"]

@@ -2924,14 +2924,10 @@ def inspect_tunnel_extension(
     symbols = command("nm", "-gU", str(executable))
     required_symbols = {
         "_IosmobileNewEngineSession",
-        "_IosmobileNewEnrollmentSession",
         "_IosmobileNewIdentityRemovalSession",
         "_IosmobileNewLifecycleSession",
-        "_proxyiosmobile_EnrollmentSession_Enroll",
-        "_proxyiosmobile_EnrollmentSession_Recover",
         "_proxyiosmobile_IdentityRemovalSession_Remove",
         "_proxyiosmobile_LifecycleSession_ReportRuntime",
-        "_proxyiosmobile_LifecycleSession_Refresh",
         "_proxyiosmobile_EngineSession_FrameworkIdentity",
         "_proxyiosmobile_EngineSession_Prepare",
         "_proxyiosmobile_EngineSession_Rebind",
@@ -2946,6 +2942,29 @@ def inspect_tunnel_extension(
     ):
         raise ReceiptError(
             "Mesh Packet Tunnel is missing its static Go engine session"
+        )
+    host_executable = app / "Mesh Tunnel"
+    if not host_executable.is_file() or host_executable.is_symlink():
+        raise ReceiptError("Mesh Tunnel containing-app executable is missing")
+    host_symbols = command("nm", "-gU", str(host_executable))
+    required_host_symbols = {
+        "_IosmobileNewEnrollmentSession",
+        "_IosmobileNewIdentityRemovalSession",
+        "_IosmobileNewLifecycleSession",
+        "_proxyiosmobile_EnrollmentSession_Enroll",
+        "_proxyiosmobile_EnrollmentSession_Recover",
+        "_proxyiosmobile_IdentityRemovalSession_Remove",
+        "_proxyiosmobile_LifecycleSession_Refresh",
+    }
+    if (
+        host_symbols.returncode != 0
+        or any(
+            symbol not in host_symbols.stdout
+            for symbol in required_host_symbols
+        )
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel host is missing its static Go enrollment session"
         )
     dependencies = command("otool", "-L", str(executable))
     if (
