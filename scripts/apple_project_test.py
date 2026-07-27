@@ -756,11 +756,57 @@ class AppleProjectTest(unittest.TestCase):
             "private static let providerStartObservationAttempts = 180",
             host,
         )
+        initial_view = host.split(
+            "override func viewDidLoad()", 1
+        )[1].split("deinit {", 1)[0]
+        for control in (
+            "signInButton",
+            "startButton",
+            "stopButton",
+            "inspectButton",
+            "removeIdentityButton",
+        ):
+            self.assertIn(f"{control}.isEnabled = false", initial_view)
+            self.assertLess(
+                initial_view.index(f"{control}.isEnabled = false"),
+                initial_view.index(
+                    "startInspection(clearsFailure: false)"
+                ),
+            )
         automatic_setup = host.split(
             "private func runAutomaticSetup(", 1
         )[1].split(
             "private func beginAuthorizationBrowser(", 1
         )[0]
+        existing_identity = automatic_setup.split(
+            "let currentConfiguration = try loadLocalConfiguration()", 1
+        )[1].split(
+            "let authority = try TunnelHighWaterKeychain", 1
+        )[0]
+        for required in (
+            "if let currentConfiguration {",
+            "currentConfiguration.controlPlaneOrigin == origin",
+            "prepareProvisionedManagerForRecovery(",
+            'result: "existing-identity-ready"',
+            "return true",
+        ):
+            self.assertIn(required, existing_identity)
+        self.assertNotIn(
+            "TunnelUserEnrollmentClient(",
+            existing_identity,
+        )
+        self.assertNotIn(
+            "createSelfEnrollmentWithRetry(",
+            existing_identity,
+        )
+        self.assertLess(
+            automatic_setup.index("if let currentConfiguration {"),
+            automatic_setup.index("try requireNoLocalIdentity()"),
+        )
+        self.assertLess(
+            automatic_setup.index("if let currentConfiguration {"),
+            automatic_setup.index("TunnelUserEnrollmentClient("),
+        )
         normal_setup = automatic_setup.split(
             "try requireNoLocalIdentity()", 1
         )[1]
@@ -888,6 +934,15 @@ class AppleProjectTest(unittest.TestCase):
             "current != nil || self.orphanRemovalAvailable",
         ):
             self.assertIn(required, inspection)
+        no_manager = inspection.split(
+            "guard let manager = matches.first else", 1
+        )[1].split(
+            "let origin = try self.validatedOrigin(", 1
+        )[0]
+        self.assertIn(
+            "self.inspectButton.isEnabled = true",
+            no_manager,
+        )
         self.assertLess(
             inspection.index("readAuthenticatedLocalConfiguration()"),
             inspection.index("guard let manager = matches.first else"),

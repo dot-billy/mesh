@@ -212,7 +212,7 @@ credential, local identity, or mobile runtime, while iOS returned the manager
 to disconnected. Provider option delivery, token consumption, and extension
 enrollment remain unproved.
 
-Current build-8 source keeps all manager preparation before OIDC. With exactly
+Current source keeps all manager preparation before OIDC. With exactly
 one structurally valid same-origin disabled Mesh manager and no current,
 candidate, or recovery identity slot, it displays an explicit replacement
 confirmation, revalidates the singleton/disabled/origin/identity conditions,
@@ -223,6 +223,14 @@ absence are checked again. The app preserves the private ephemeral cookie store
 supplied by `URLSessionConfiguration`, requires exactly one session cookie and
 one distinct CSRF cookie for the exact server URL after authorization, then
 requests one fixed-policy self-enrollment.
+
+On launch, setup, start, inspection, and identity removal remain disabled until
+the first VPN and identity inspection completes. If setup concurrently
+discovers an authenticated current identity, it validates and prepares only
+that identity's same-origin manager, skips OIDC and self-enrollment, and returns
+to Start existing tunnel without requesting another token. This prevents a
+stale Sign in action from converting an existing identity into a latched
+setup failure.
 
 The containing app passes the one-time token only to the narrow Go enrollment
 session, which performs preflight and enrollment using the shared, device-only
@@ -525,10 +533,15 @@ iPhone enrollment was reissued, its token was consumed, and node
 `E3kVivz4BJPeBgvh` became active at `2026-07-27T20:39:01Z`. The containing app
 then unexpectedly terminated during the post-enrollment host handoff. No Apple
 crash log was available when checked, so the exact local substage is unknown.
-The successor source contains an unexpected Go enrollment/recovery panic at the
-mobile boundary with a fixed non-secret error and labels complete retained
-authority as `Recover enrolled VPN`; that recovery does not repeat OIDC or
-request another token. Neither source behavior has physical successor proof.
+Build `0.1.0 (9)` subsequently read and displayed the authenticated local
+identity left by that attempt, proving local configuration commit and retained
+identity recovery. Its initial inspection race allowed Sign in to reach fixed
+stage `failed-starting` before Start existing tunnel was enabled. Current
+successor source keeps all actions disabled until initial inspection completes
+and routes a concurrently observed authenticated current identity to its
+prepared same-origin manager without OIDC, self-enrollment, or another token.
+That control-state correction remains source-tested; no physical run has proved
+provider startup or packet exchange.
 
 ## Deliberately unresolved
 

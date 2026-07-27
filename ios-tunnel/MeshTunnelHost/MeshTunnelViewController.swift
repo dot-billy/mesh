@@ -103,6 +103,7 @@ final class MeshTunnelViewController: UIViewController {
 
         signInButton.configuration = .filled()
         signInButton.configuration?.title = "Sign in and set up VPN"
+        signInButton.isEnabled = false
         signInButton.addTarget(
             self,
             action: #selector(signInAndSetUpVPN),
@@ -140,6 +141,7 @@ final class MeshTunnelViewController: UIViewController {
 
         inspectButton.configuration = .bordered()
         inspectButton.configuration?.title = "Inspect installed configuration"
+        inspectButton.isEnabled = false
         inspectButton.addTarget(
             self,
             action: #selector(inspectConfiguration),
@@ -153,6 +155,7 @@ final class MeshTunnelViewController: UIViewController {
         removeIdentityButton.configuration = .bordered()
         removeIdentityButton.configuration?.baseForegroundColor = .systemRed
         removeIdentityButton.configuration?.title = "Remove local node identity"
+        removeIdentityButton.isEnabled = false
         removeIdentityButton.addTarget(
             self,
             action: #selector(confirmIdentityRemoval),
@@ -297,6 +300,34 @@ final class MeshTunnelViewController: UIViewController {
             originField.text = origin
             originField.isEnabled = false
             let currentConfiguration = try loadLocalConfiguration()
+            if let currentConfiguration {
+                guard currentConfiguration.controlPlaneOrigin == origin else {
+                    throw TunnelHostError.originMismatch
+                }
+                stage = .preparingManager
+                recordSetup(stage: stage, result: "running")
+                statusLabel.text = (
+                    "An authenticated local Mesh identity is already "
+                        + "installed. Verifying its Apple VPN configuration "
+                        + "without signing in or requesting another enrollment."
+                )
+                let currentManager =
+                    try await prepareProvisionedManagerForRecovery(
+                        expectedOrigin: origin
+                    )
+                preparedManager = currentManager
+                preparedOrigin = origin
+                setupCompleted = true
+                statusLabel.text = (
+                    "The authenticated local Mesh identity and Apple VPN "
+                        + "configuration are ready. Start the existing tunnel."
+                )
+                recordSetup(
+                    stage: stage,
+                    result: "existing-identity-ready"
+                )
+                return true
+            }
             let authority = try TunnelHighWaterKeychain
                 .localAuthorityState()
             let retainedRecoveryIntent = try TunnelHighWaterKeychain
@@ -1157,6 +1188,7 @@ final class MeshTunnelViewController: UIViewController {
                         && !self.orphanRemovalAvailable
                     self.startButton.isEnabled = false
                     self.stopButton.isEnabled = false
+                    self.inspectButton.isEnabled = true
                     self.removeIdentityButton.isEnabled =
                         current != nil || self.orphanRemovalAvailable
                     if current != nil {
