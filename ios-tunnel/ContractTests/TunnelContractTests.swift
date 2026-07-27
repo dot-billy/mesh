@@ -528,6 +528,106 @@ func enrollmentRequestIsCanonicalBoundedAndSecretOnlyInItsEnvelope() throws {
 }
 
 @Test
+func providerBootstrapIsCanonicalTokenFreeAndOriginBound() throws {
+  let request = try TunnelProviderBootstrapRequest(
+    requestID: "request_1",
+    serverOrigin: "https://mesh.example/"
+  )
+  let encoded = try request.encoded()
+  #expect(
+    try TunnelProviderBootstrapRequest.decodeExact(encoded) == request
+  )
+  let text = String(decoding: encoded, as: UTF8.self)
+  #expect(text.contains("\"operation\":\"await-enrollment\""))
+  #expect(!text.contains("enrollmentToken"))
+  #expect(request.serverOrigin == "https://mesh.example")
+}
+
+@Test
+func providerEnrollmentIPCIsIdentityBoundAndReceiptAuthenticated() throws {
+  let request = try TunnelProviderEnrollmentRequest(
+    requestID: "request_1",
+    serverOrigin: "https://mesh.example",
+    enrollmentToken: base64URL(32, value: 0x33),
+    expectedNodeID: "node_1",
+    expectedNetworkID: "network_1"
+  )
+  #expect(
+    try TunnelProviderEnrollmentRequest.decodeExact(
+      request.encoded()
+    ) == request
+  )
+  let outcome = try TunnelEnrollmentOutcome.running(
+    requestID: request.requestID,
+    serverOrigin: request.serverOrigin,
+    nodeID: request.expectedNodeID,
+    networkID: request.expectedNetworkID
+  )
+  let key = SymmetricKey(data: Data(repeating: 0x44, count: 32))
+  let sealed = try TunnelEnrollmentReceiptAuthenticator.seal(
+    outcome,
+    using: key
+  )
+  #expect(
+    try TunnelEnrollmentReceiptAuthenticator.open(
+      sealed,
+      using: key
+    ) == outcome
+  )
+  #expect(throws: TunnelContractError.authenticationFailed) {
+    try TunnelEnrollmentReceiptAuthenticator.open(
+      sealed,
+      using: SymmetricKey(data: Data(repeating: 0x45, count: 32))
+    )
+  }
+}
+
+@Test
+func enrollmentOutcomeBindsRequestStatusAndCommittedIdentity() throws {
+  let running = try TunnelEnrollmentOutcome.running(
+    requestID: "request_1",
+    serverOrigin: "https://mesh.example",
+    nodeID: "node_1",
+    networkID: "network_1"
+  )
+  #expect(
+    try TunnelEnrollmentOutcome.decodeExact(running.encoded()) == running
+  )
+  let failed = try TunnelEnrollmentOutcome.failed(
+    requestID: "request_1",
+    serverOrigin: "https://mesh.example",
+    nodeID: "node_1",
+    networkID: "network_1",
+    identityCommitted: false,
+    code: "enrollment-failed"
+  )
+  #expect(
+    try TunnelEnrollmentOutcome.decodeExact(failed.encoded()) == failed
+  )
+  #expect(throws: TunnelContractError.self) {
+    try TunnelEnrollmentOutcome(
+      requestID: "request_1",
+      serverOrigin: "https://mesh.example",
+      nodeID: "node_1",
+      networkID: "network_1",
+      status: .running,
+      identityCommitted: false,
+      code: "none"
+    )
+  }
+  #expect(throws: TunnelContractError.self) {
+    try TunnelEnrollmentOutcome.failed(
+      requestID: "request_1",
+      serverOrigin: "https://mesh.example",
+      nodeID: "node_1",
+      networkID: "network_1",
+      identityCommitted: false,
+      code: "none"
+    )
+  }
+}
+
+@Test
 func verifiedEngineDocumentDecodesWithoutAnAppGroupEnvelope() throws {
   let value = payload()
   let encoder = JSONEncoder()
@@ -1354,6 +1454,68 @@ func providerLifecycleGateAllowsRetryAfterStartFailure() {
 }
 
 @Test
+func providerBootstrapGateClaimsOneExactRequest() throws {
+  let gate = TunnelProviderBootstrapGate()
+  let bootstrap = try TunnelProviderBootstrapRequest(
+    requestID: "request_1",
+    serverOrigin: "https://mesh.example"
+  )
+  #expect(gate.arm(bootstrap))
+  #expect(!gate.arm(bootstrap))
+  let wrong = try TunnelProviderEnrollmentRequest(
+    requestID: "request_2",
+    serverOrigin: "https://mesh.example",
+    enrollmentToken: base64URL(32, value: 0x11),
+    expectedNodeID: "node_1",
+    expectedNetworkID: "network_1"
+  )
+  #expect(gate.claim(wrong) == .mismatchWhileAwaiting)
+  let exact = try TunnelProviderEnrollmentRequest(
+    requestID: "request_1",
+    serverOrigin: "https://mesh.example",
+    enrollmentToken: base64URL(32, value: 0x22),
+    expectedNodeID: "node_1",
+    expectedNetworkID: "network_1"
+  )
+  #expect(gate.claim(exact) == .accepted)
+  #expect(gate.claim(exact) == .alreadyClaimed)
+  gate.clear()
+  #expect(gate.arm(bootstrap))
+  gate.stop()
+  #expect(gate.claim(exact) == .stopped)
+  gate.clear()
+  #expect(!gate.arm(bootstrap))
+}
+
+@Test
+func providerBootstrapGateExpiresOnlyThePendingRequest() throws {
+  let gate = TunnelProviderBootstrapGate()
+  let first = try TunnelProviderBootstrapRequest(
+    requestID: "request_1",
+    serverOrigin: "https://mesh.example"
+  )
+  let second = try TunnelProviderBootstrapRequest(
+    requestID: "request_2",
+    serverOrigin: "https://mesh.example"
+  )
+  let enrollment = try TunnelProviderEnrollmentRequest(
+    requestID: "request_1",
+    serverOrigin: "https://mesh.example",
+    enrollmentToken: base64URL(32, value: 0x33),
+    expectedNodeID: "node_1",
+    expectedNetworkID: "network_1"
+  )
+
+  #expect(gate.claim(enrollment) == .unavailable)
+  #expect(gate.arm(first))
+  #expect(!gate.expire(requestID: second.requestID))
+  #expect(gate.expire(requestID: first.requestID))
+  #expect(!gate.expire(requestID: first.requestID))
+  #expect(gate.claim(enrollment) == .unavailable)
+  #expect(gate.arm(second))
+}
+
+@Test
 func providerStartObservationRequiresConnected() {
   var observation = TunnelProviderStartObservation()
   #expect(observation.observe(.disconnected) == .pending)
@@ -1534,6 +1696,29 @@ func configurationSlotsActivateMonotonicallyAndPreserveRecovery() throws {
   #expect(try store.activateCandidate() == second)
   #expect(try store.readCurrent() == second)
   #expect(try store.readRecovery() == first)
+  let candidate = TunnelConfigurationPayload(
+    networkID: second.networkID,
+    nodeID: second.nodeID,
+    controlPlaneOrigin: second.controlPlaneOrigin,
+    agentCredentialGeneration: second.agentCredentialGeneration,
+    agentCredentialExpiresAt: second.agentCredentialExpiresAt,
+    certificateFingerprint: second.certificateFingerprint,
+    certificateGeneration: second.certificateGeneration,
+    configRevision: second.configRevision + 1,
+    configDigest: second.configDigest,
+    engineIdentity: second.engineIdentity,
+    tunnelRemoteAddress: second.tunnelRemoteAddress,
+    networkSettings: second.networkSettings,
+    monotonicCounter: second.monotonicCounter + 1,
+    issuedAtMilliseconds: second.issuedAtMilliseconds + 1,
+    nebula: second.nebula
+  )
+  try store.stage(candidate)
+  #expect(throws: TunnelConfigurationStoreError.invalidSlot) {
+    try store.discardCandidate(matching: first)
+  }
+  #expect(try store.discardCandidate(matching: candidate))
+  #expect(!(try store.discardCandidate(matching: candidate)))
   highWater.value = second.monotonicCounter + 4
   #expect(
     try store.nextMonotonicCounter()

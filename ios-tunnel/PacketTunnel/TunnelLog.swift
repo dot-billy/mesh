@@ -2,6 +2,8 @@ import OSLog
 
 enum TunnelLogEvent: String, CaseIterable {
   case startRequested = "start-requested"
+  case providerBootstrapReady = "provider-bootstrap-ready"
+  case enrollmentHandoffAccepted = "enrollment-handoff-accepted"
   case configurationContainerUnavailable = "configuration-container-unavailable"
   case configurationUnavailable = "configuration-unavailable"
   case configurationInvalid = "configuration-invalid"
@@ -31,6 +33,10 @@ enum TunnelLog {
     switch event {
     case .startRequested:
       logger.notice("start-requested")
+    case .providerBootstrapReady:
+      logger.notice("provider-bootstrap-ready")
+    case .enrollmentHandoffAccepted:
+      logger.notice("enrollment-handoff-accepted")
     case .configurationContainerUnavailable:
       logger.error("configuration-container-unavailable")
     case .configurationUnavailable:

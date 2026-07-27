@@ -10,7 +10,9 @@ on 2026-07-26, approved its Beta App Review, and placed it in external testing.
 Build `3` adds disabled-manager recovery and build `4` adds
 pre-authorization manager readiness. Build `5` retains Apple's
 configuration-provided private ephemeral cookie store and generation-gates
-manager inspection. All are approved and in external testing. A physical
+manager inspection. Build `6` observes the real Apple provider transition and
+requires a request-correlated provider outcome. All are approved and in
+external testing. A physical
 build-5 run completed OIDC, authenticated network selection, and fixed-policy
 self-enrollment: the server created a new pending mobile node and the host
 decoded the response. Its token-bearing Network Extension start call returned
@@ -18,13 +20,15 @@ without a synchronous error. The node remained pending with certificate and
 agent generations zero, no mobile-runtime document, no local identity, and a
 disconnected manager. This proves the host and server path but not that the
 options reached the Packet Tunnel provider or that an extension preflight
-reached the server. Current unshipped successor source observes Apple provider
-status within one absolute 90-second budget, claims success only for a final
-connected state with a changed connection date and same-origin local identity,
-and accepts a fixed provider failure only
-when it is bound to the exact enrollment request. None of these builds is a supported
-application, proven working VPN, production enrollment path, or public App
-Store release.
+reached the server. Build `6` physically returned
+`apple-vpn-disconnected`; server correlation then proved that the host reissued
+the pending enrollment but the provider made zero preflight, enrollment, or
+runtime requests. Current unshipped successor source therefore follows the
+upstream Mobile Nebula two-phase lifecycle: it starts a token-free, bounded
+provider bootstrap, waits for a fresh Apple connected transition, and only then
+requests and sends enrollment through request-correlated provider IPC. None of
+these builds is a supported application, proven working VPN, production
+enrollment path, or public App Store release.
 
 ## What exists
 
@@ -34,9 +38,12 @@ Store release.
   session cookies in ephemeral memory, lists the user's networks, prepares
   exactly one `NETunnelProviderManager` containing only the canonical
   non-secret HTTPS origin, and requests one fixed-policy self enrollment. The
-  returned token is validated and passed directly to the extension through
-  `NETunnelProviderSession.startTunnel(options:)`; it is never displayed or
-  stored in VPN preferences, UserDefaults, the App Group, or the browser URL.
+  host first establishes a token-free provider IPC channel. Only after that
+  channel reaches a fresh Apple connected transition does it request one
+  enrollment, validate the returned node and network, and pass the token in an
+  exact `sendProviderMessage` request. The token is never displayed or stored
+  in VPN preferences, UserDefaults, the App Group, the durable receipt, or the
+  browser URL.
   A stable non-secret device name makes a same-principal pending retry reissue
   rather than duplicate the enrollment. The host can also rediscover exactly
   one Mesh provider, start an
@@ -65,8 +72,14 @@ Store release.
   checks pass.
 - `MeshPacketTunnel`: a Packet Tunnel Provider that authenticates the selected
   App Group configuration, or, when no current configuration exists, strictly
-  decodes the single start-option enrollment request and performs enrollment
-  through the statically linked Go framework. It activates the verified
+  decodes one token-free bootstrap option, completes Apple startup so provider
+  IPC is available, and accepts one exact request/origin/node/network-bound
+  enrollment message. A 180-second provider-owned lease covers the host's
+  Apple-observation and server-request budgets and closes an abandoned
+  bootstrap without consuming a token. Duplicate or unarmed enrollment
+  messages cannot cancel a valid in-progress or running tunnel. The provider
+  rejects the legacy token-bearing `startTunnel` path. It performs accepted
+  enrollment through the statically linked Go framework and activates the verified
   configuration monotonically, enforces the extension's Keychain high-water
   mark, and performs one extension-only agent-authenticated lifecycle refresh
   before every subsequent start. That refresh can renew the same-key
@@ -86,7 +99,10 @@ Store release.
   refresh, startup, packet, and rebind errors stop the coordinator and fail the
   extension closed. A locked provider lifecycle gate rejects duplicate starts,
   prevents a stop racing startup from publishing a running session, and latches
-  stop for the lifetime of that provider instance.
+  stop for the lifetime of that provider instance. Before returning an IPC
+  outcome it writes a token-free HMAC-authenticated receipt. Failure replies
+  receive a bounded delivery grace before provider cancellation, and the host
+  reconciles a lost reply against that receipt and the exact local identity.
 - `Shared`: strict user-authorization, fixed-policy self-enrollment, and
   authenticated handoff schemas; a pure validated
   IPv4/IPv6 remote/address/route/DNS/MTU settings plan, a bounded packet-pump
@@ -102,7 +118,9 @@ Store release.
   failure cleanup, running-evidence requirements, monotonic
   activation/recovery, replay, and symlink rejection.
   It also covers duplicate start, stop-during-start, and failed-start retry
-  transitions for the provider lifecycle gate.
+  transitions for the provider lifecycle and bootstrap gates, exact duplicate
+  claims, bootstrap stop/expiry states, node/network-bound IPC, and
+  authenticated receipt tamper rejection.
 - `engine`: a separate Go module for a reproducible `MeshMobile.xcframework`
   packet-session proof. It pins Nebula 1.10.3, keeps identity custody in the
   extension-only Keychain group, and exports identity creation/public-key
@@ -204,22 +222,31 @@ enabled, identity-bearing, or mismatched configurations fail closed and are
 never automatically removed. A cancellation or Apple failure occurs before
 login. After login, the current manager and identity absence are checked again,
 and only that fresh manager is used for handoff. It also requires Apple to be
-disconnected immediately before requesting a token and immediately before
-dispatch. It preserves the private ephemeral cookie store supplied by
+disconnected before starting a token-free provider bootstrap. The provider
+must reach a fresh connected transition before the host requests a token; the
+host then sends one exact origin-, request-, node-, and network-bound IPC
+enrollment. It preserves the private ephemeral cookie store supplied by
 `URLSessionConfiguration`, requires exactly one session cookie and one distinct
 CSRF cookie for the exact server URL after authorization, and cancels or
 generation-rejects stale configuration inspection before it can replace
 setup-stage text. The UI reports the build and last fixed non-secret setup
 stage without persisting server data, identities, cookies, tokens, request
-identifiers, or raw errors. After dispatch it observes the provider for 180
-half-second samples within one absolute 90-second budget. Reasserting remains
-pending; success requires a final connected state, a changed connection date,
-and a same-origin local identity. A post-progress
-disconnect accepts a fixed provider code only when its schema and request
-identifier match this enrollment. Disconnect-error retrieval has a separate
-two-second bound and stale, unmatched, or arbitrary errors become one generic
-code. Backgrounding after dispatch keeps the observation active without
-extending its budget and does not enable a conflicting retry.
+identifiers, or raw errors. Bootstrap observation uses at most 180 half-second
+samples within one absolute 90-second budget, while the provider independently
+expires an unclaimed bootstrap after 180 seconds. Claimed enrollment has a
+provider-owned 150-second deadline, while host IPC has one 180-second
+reconciliation bound and no automatic retry. The extension durably writes
+a token-free authenticated outcome before replying, and the host can reconcile
+a lost reply only when its request, origin, node, network, committed-identity
+flag, and local configuration agree. Success still requires a final connected
+state, changed connection date, and exact same-origin/node/network identity.
+Background or terminal failure stops an abandoned bootstrap; it cannot enable
+a conflicting token request.
+Candidate stage/activation and stop are serialized, and pre-activation failure
+removes only the exact candidate it staged. A process termination after the
+server commits enrollment but before the local candidate activates still has
+no durable recovery transaction; that crash window remains a physical
+qualification blocker rather than a retry-safe claim.
 This behavior is source/simulator tested only and does not establish physical
 enrollment or tunnel behavior.
 
@@ -440,10 +467,13 @@ pre-enrollment result. TestFlight build `0.1.0 (5)` contains the cookie-store
 correction and physically created a self-enrollment node before submitting its
 token-bearing options to Network Extension without a synchronous error. That
 node stayed pending and the manager disconnected, with no local identity or
-mobile runtime. Current unshipped successor waits for the real provider
-outcome and surfaces a request-correlated fixed provider code or one generic
-Apple code instead of calling an asynchronous dispatch successful. It has not
-yet proved provider enrollment, extension runtime, or packet behavior.
+mobile runtime. Build `0.1.0 (6)` then observed the real provider transition
+and returned fixed host stage `apple-vpn-disconnected`. Sanitized server logs
+for that exact attempt recorded the host self-enrollment reissue but zero
+provider preflight, enrollment, or runtime requests. Current unshipped source
+replaces that direct-start boundary with the token-free bootstrap and exact IPC
+flow described above. It has not yet proved provider enrollment, extension
+runtime, or packet behavior on a physical device.
 
 ## Deliberately unresolved
 

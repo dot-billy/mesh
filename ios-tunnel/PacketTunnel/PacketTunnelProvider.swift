@@ -23,6 +23,18 @@ final class PacketTunnelProvider:
   private var pathMonitor: NWPathMonitor?
   private var observedInitialPath = false
   private let lifecycleGate = TunnelProviderLifecycleGate()
+  private let bootstrapGate = TunnelProviderBootstrapGate()
+  private var identityCommittedForCurrentStart = false
+  private var expectedEnrollmentNodeID: String?
+  private var expectedEnrollmentNetworkID: String?
+  private var bootstrapExpiryTask: Task<Void, Never>?
+  private var enrollmentDeadlineTask: Task<Void, Never>?
+  private var enrollmentCompletion: TunnelOneShotResult<Error?>?
+  private var startupTask: Task<Void, Never>?
+  private let providerStartStopLock = NSLock()
+  private static let bootstrapExpiry = Duration.seconds(180)
+  private static let enrollmentDeadline = Duration.seconds(150)
+  private static let failureResponseGrace = 0.5
 
   override func startTunnel(
     options: [String: NSObject]?,
@@ -55,6 +67,115 @@ final class PacketTunnelProvider:
       }
       return
     }
+    if let options,
+      options.keys.contains(TunnelProviderBootstrapRequest.startOptionKey)
+    {
+      guard
+        options.count == 1,
+        let requestData =
+          options[TunnelProviderBootstrapRequest.startOptionKey] as? Data,
+        let request = try? TunnelProviderBootstrapRequest.decodeExact(
+          requestData
+        )
+      else {
+        completionHandler(Self.failure("provider-bootstrap-invalid"))
+        return
+      }
+      switch lifecycleGate.beginStart() {
+      case .begin:
+        break
+      case .alreadyRunning:
+        completionHandler(
+          Self.failure(
+            "provider-bootstrap-rejected",
+            requestID: request.requestID
+          )
+        )
+        return
+      case .alreadyStarting:
+        completionHandler(
+          Self.failure(
+            "start-already-in-progress",
+            requestID: request.requestID
+          )
+        )
+        return
+      case .stopped:
+        completionHandler(
+          Self.failure(
+            "start-cancelled",
+            requestID: request.requestID
+          )
+        )
+        return
+      }
+      guard bootstrapGate.arm(request) else {
+        lifecycleGate.finishStartFailure()
+        completionHandler(
+          Self.failure(
+            "provider-bootstrap-rejected",
+            requestID: request.requestID
+          )
+        )
+        return
+      }
+      do {
+        try enrollmentReceiptStore().erase()
+      } catch {
+        bootstrapGate.clear()
+        lifecycleGate.finishStartFailure()
+        completionHandler(
+          Self.failure(
+            "provider-receipt-unavailable",
+            requestID: request.requestID
+          )
+        )
+        return
+      }
+      providerStartStopLock.lock()
+      guard
+        lifecycleGate.mayContinueStart(),
+        bootstrapGate.isAwaiting(requestID: request.requestID)
+      else {
+        bootstrapGate.clear()
+        lifecycleGate.finishStartFailure()
+        providerStartStopLock.unlock()
+        completionHandler(
+          Self.failure(
+            "start-cancelled",
+            requestID: request.requestID
+          )
+        )
+        return
+      }
+      TunnelLog.record(.startRequested)
+      sequence &+= 1
+      state = .starting
+      identityCommittedForCurrentStart = false
+      TunnelLog.record(.providerBootstrapReady)
+      bootstrapExpiryTask?.cancel()
+      bootstrapExpiryTask = Task { [weak self] in
+        try? await Task.sleep(for: Self.bootstrapExpiry)
+        guard
+          !Task.isCancelled,
+          let self
+        else {
+          return
+        }
+        guard self.expireBootstrap(requestID: request.requestID) else {
+          return
+        }
+        self.cancelTunnelWithError(
+          Self.failure(
+            "provider-bootstrap-expired",
+            requestID: request.requestID
+          )
+        )
+      }
+      providerStartStopLock.unlock()
+      completionHandler(nil)
+      return
+    }
     let enrollmentRequestID = Self.enrollmentRequestID(options)
     let complete: (Error?) -> Void = { error in
       completionHandler(
@@ -63,6 +184,10 @@ final class PacketTunnelProvider:
           requestID: enrollmentRequestID
         )
       )
+    }
+    if enrollmentRequestID != nil {
+      complete(Self.failure("enrollment-request-rejected"))
+      return
     }
     switch lifecycleGate.beginStart() {
     case .begin:
@@ -81,12 +206,35 @@ final class PacketTunnelProvider:
       complete(Self.failure("start-cancelled"))
       return
     }
-    TunnelLog.record(.startRequested)
-    sequence &+= 1
-    state = .starting
-    Task {
+    startupTask = continueTunnelStart(
+      options: options,
+      recordStart: true,
+      completionHandler: complete
+    )
+  }
+
+  private func continueTunnelStart(
+    options: [String: NSObject]?,
+    recordStart: Bool,
+    completionHandler complete: @escaping (Error?) -> Void
+  ) -> Task<Void, Never> {
+    if recordStart {
+      TunnelLog.record(.startRequested)
+      sequence &+= 1
+      state = .starting
+      identityCommittedForCurrentStart = false
+    }
+    return Task {
       defer {
         self.lifecycleGate.finishStartFailure()
+        self.startupTask = nil
+      }
+      guard
+        !Task.isCancelled,
+        self.lifecycleGate.mayContinueStart()
+      else {
+        self.completeCancelledStart(complete)
+        return
       }
       let configuration: TunnelConfigurationPayload
       do {
@@ -114,6 +262,7 @@ final class PacketTunnelProvider:
         complete(Self.failure("configuration-invalid"))
         return
       }
+      self.identityCommittedForCurrentStart = true
       guard self.lifecycleGate.mayContinueStart() else {
         self.completeCancelledStart(complete)
         return
@@ -318,23 +467,64 @@ final class PacketTunnelProvider:
       )
     }
     do {
+      try Task.checkCancellation()
+      guard lifecycleGate.mayContinueStart() else {
+        throw CancellationError()
+      }
       let counter = try store.nextMonotonicCounter()
       let enrollment = try TunnelEnrollmentSessionFactory.make()
       let configuration = try await enrollment.enroll(
         request: request,
         monotonicCounter: counter
       )
-      try store.stage(configuration)
-      let activated = try store.activateCandidate()
-      guard activated == configuration else {
-        throw TunnelConfigurationStoreError.invalidSlot
+      try Task.checkCancellation()
+      guard
+        lifecycleGate.mayContinueStart(),
+        configuration.nodeID == expectedEnrollmentNodeID,
+        configuration.networkID == expectedEnrollmentNetworkID
+      else {
+        throw CancellationError()
       }
-      return activated
+      return try activateEnrollment(
+        configuration,
+        store: store
+      )
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw TunnelStartupFailure(
         code: "enrollment-failed",
         event: .enrollmentFailed
       )
+    }
+  }
+
+  private func activateEnrollment(
+    _ configuration: TunnelConfigurationPayload,
+    store: TunnelConfigurationStore
+  ) throws -> TunnelConfigurationPayload {
+    providerStartStopLock.lock()
+    defer { providerStartStopLock.unlock() }
+    guard lifecycleGate.mayContinueStart() else {
+      throw CancellationError()
+    }
+    do {
+      try store.stage(configuration)
+      let activated = try store.activateCandidate()
+      guard activated == configuration else {
+        throw TunnelConfigurationStoreError.invalidSlot
+      }
+      identityCommittedForCurrentStart = true
+      return activated
+    } catch {
+      if let current = try? store.readCurrent(),
+        current == configuration
+      {
+        identityCommittedForCurrentStart = true
+        return current
+      }
+      try store.discardCandidate(matching: configuration)
+      throw error
     }
   }
 
@@ -399,9 +589,25 @@ final class PacketTunnelProvider:
     completionHandler: @escaping () -> Void
   ) {
     TunnelLog.record(.stopRequested)
+    providerStartStopLock.lock()
     _ = lifecycleGate.latchStop()
+    bootstrapExpiryTask?.cancel()
+    bootstrapExpiryTask = nil
+    enrollmentDeadlineTask?.cancel()
+    enrollmentDeadlineTask = nil
+    startupTask?.cancel()
+    startupTask = nil
+    bootstrapGate.stop()
+    let pendingEnrollmentCompletion = enrollmentCompletion
+    enrollmentCompletion = nil
     sequence &+= 1
     state = .stopping
+    providerStartStopLock.unlock()
+    if let pendingEnrollmentCompletion {
+      _ = pendingEnrollmentCompletion.resolve(
+        Self.failure("start-cancelled")
+      )
+    }
     stopPathMonitoring()
     cancelPacketTasks()
     cancelLifecycleReporting()
@@ -496,6 +702,89 @@ final class PacketTunnelProvider:
     _ messageData: Data,
     completionHandler: ((Data?) -> Void)?
   ) {
+    if let request = try? TunnelProviderEnrollmentRequest.decodeExact(
+      messageData
+    ) {
+      providerStartStopLock.lock()
+      let claim = bootstrapGate.claim(request)
+      providerStartStopLock.unlock()
+      guard claim == .accepted else {
+        let error = Self.failure("enrollment-request-rejected")
+        let outcome = try? TunnelEnrollmentOutcome.failed(
+          requestID: request.requestID,
+          serverOrigin: request.serverOrigin,
+          nodeID: request.expectedNodeID,
+          networkID: request.expectedNetworkID,
+          identityCommitted: identityCommittedForCurrentStart,
+          code: "enrollment-request-rejected"
+        )
+        completionHandler?(outcome.flatMap { try? $0.encoded() })
+        if claim == .mismatchWhileAwaiting {
+          cancelAfterFailureResponse(error)
+        }
+        return
+      }
+      bootstrapExpiryTask?.cancel()
+      bootstrapExpiryTask = nil
+      let enrollment: TunnelEnrollmentRequest
+      let enrollmentData: Data
+      do {
+        enrollment = try TunnelEnrollmentRequest(
+          requestID: request.requestID,
+          serverOrigin: request.serverOrigin,
+          enrollmentToken: request.enrollmentToken
+        )
+        enrollmentData = try enrollment.encoded()
+      } catch {
+        completionHandler?(nil)
+        cancelAfterFailureResponse(
+          Self.failure("enrollment-request-rejected")
+        )
+        return
+      }
+      expectedEnrollmentNodeID = request.expectedNodeID
+      expectedEnrollmentNetworkID = request.expectedNetworkID
+      TunnelLog.record(.enrollmentHandoffAccepted)
+      let completion = TunnelOneShotResult<Error?> { [weak self] error in
+        self?.completeEnrollmentHandoff(
+          requestID: request.requestID,
+          serverOrigin: request.serverOrigin,
+          nodeID: request.expectedNodeID,
+          networkID: request.expectedNetworkID,
+          error: error,
+          completionHandler: completionHandler
+        )
+      }
+      providerStartStopLock.lock()
+      guard lifecycleGate.mayContinueStart() else {
+        providerStartStopLock.unlock()
+        _ = completion.resolve(Self.failure("start-cancelled"))
+        return
+      }
+      enrollmentCompletion = completion
+      enrollmentDeadlineTask?.cancel()
+      enrollmentDeadlineTask = Task { [weak self] in
+        try? await Task.sleep(for: Self.enrollmentDeadline)
+        guard !Task.isCancelled, let self else {
+          return
+        }
+        self.expireClaimedEnrollment(completion)
+      }
+      providerStartStopLock.unlock()
+      startupTask = continueTunnelStart(
+        options: [
+          TunnelEnrollmentRequest.startOptionKey:
+            enrollmentData as NSData,
+         ],
+        recordStart: false
+      ) { error in
+        self.resolveClaimedEnrollment(
+          completion,
+          error: error
+        )
+      }
+      return
+    }
     if let request = try? TunnelIdentityRemovalRequest.decodeExact(
       messageData
     ) {
@@ -557,6 +846,129 @@ final class PacketTunnelProvider:
         completionHandler?(nil)
       }
     }
+  }
+
+  private func expireBootstrap(requestID: String) -> Bool {
+    providerStartStopLock.lock()
+    defer { providerStartStopLock.unlock() }
+    guard bootstrapGate.expire(requestID: requestID) else {
+      return false
+    }
+    lifecycleGate.finishStartFailure()
+    state = .extensionError
+    errorCode = "provider-bootstrap-expired"
+    return true
+  }
+
+  private func expireClaimedEnrollment(
+    _ completion: TunnelOneShotResult<Error?>
+  ) {
+    providerStartStopLock.lock()
+    guard enrollmentCompletion === completion else {
+      providerStartStopLock.unlock()
+      return
+    }
+    _ = lifecycleGate.latchStop()
+    bootstrapGate.stop()
+    startupTask?.cancel()
+    state = .extensionError
+    errorCode = "provider-enrollment-timeout"
+    TunnelLog.record(.enrollmentFailed)
+    enrollmentCompletion = nil
+    enrollmentDeadlineTask = nil
+    providerStartStopLock.unlock()
+    _ = completion.resolve(
+      Self.failure("provider-enrollment-timeout")
+    )
+  }
+
+  private func resolveClaimedEnrollment(
+    _ completion: TunnelOneShotResult<Error?>,
+    error: Error?
+  ) {
+    providerStartStopLock.lock()
+    guard enrollmentCompletion === completion else {
+      providerStartStopLock.unlock()
+      return
+    }
+    enrollmentDeadlineTask?.cancel()
+    enrollmentDeadlineTask = nil
+    enrollmentCompletion = nil
+    providerStartStopLock.unlock()
+    _ = completion.resolve(error)
+  }
+
+  private func completeEnrollmentHandoff(
+    requestID: String,
+    serverOrigin: String,
+    nodeID: String,
+    networkID: String,
+    error: Error?,
+    completionHandler: ((Data?) -> Void)?
+  ) {
+    var outcome: TunnelEnrollmentOutcome?
+    var terminalError = error
+    if let error {
+      outcome = try? TunnelEnrollmentOutcome.failed(
+        requestID: requestID,
+        serverOrigin: serverOrigin,
+        nodeID: nodeID,
+        networkID: networkID,
+        identityCommitted: identityCommittedForCurrentStart,
+        code: Self.fixedFailureCode(error)
+      )
+    } else {
+      outcome = try? TunnelEnrollmentOutcome.running(
+        requestID: requestID,
+        serverOrigin: serverOrigin,
+        nodeID: nodeID,
+        networkID: networkID
+      )
+    }
+    do {
+      guard let outcome else {
+        throw TunnelContractError.invalidDocument
+      }
+      try enrollmentReceiptStore().write(outcome)
+    } catch {
+      terminalError = Self.failure("provider-receipt-unavailable")
+      outcome = try? TunnelEnrollmentOutcome.failed(
+        requestID: requestID,
+        serverOrigin: serverOrigin,
+        nodeID: nodeID,
+        networkID: networkID,
+        identityCommitted: identityCommittedForCurrentStart,
+        code: "provider-receipt-unavailable"
+      )
+    }
+    completionHandler?(outcome.flatMap { try? $0.encoded() })
+    if let terminalError {
+      cancelAfterFailureResponse(terminalError)
+    }
+  }
+
+  private func cancelAfterFailureResponse(_ error: Error) {
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + Self.failureResponseGrace
+    ) { [weak self] in
+      self?.cancelTunnelWithError(error)
+    }
+  }
+
+  private func enrollmentReceiptStore()
+    throws -> TunnelEnrollmentReceiptStore
+  {
+    guard
+      let container = FileManager.default.containerURL(
+        forSecurityApplicationGroupIdentifier: Self.applicationGroup
+      )
+    else {
+      throw TunnelContractError.invalidDocument
+    }
+    return try TunnelEnrollmentReceiptStore(
+      containerURL: container,
+      key: try TunnelHandoffKeychain.loadOrCreate()
+    )
   }
 
   private func removeIdentity(
@@ -896,6 +1308,20 @@ final class PacketTunnelProvider:
       return error
     }
     return failure(code, requestID: requestID)
+  }
+
+  private static func fixedFailureCode(_ error: Error) -> String {
+    let value = error as NSError
+    guard
+      value.domain == TunnelProviderFailureContract.domain,
+      value.userInfo[TunnelProviderFailureContract.schemaKey] as? String
+        == TunnelProviderFailureContract.schema,
+      let code =
+        value.userInfo[TunnelProviderFailureContract.codeKey] as? String
+    else {
+      return "provider-start-failed"
+    }
+    return code
   }
 
   private static func failure(

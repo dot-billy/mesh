@@ -95,6 +95,20 @@ public final class TunnelConfigurationStore {
     try read(slot: Self.recoverySlot)
   }
 
+  @discardableResult
+  public func discardCandidate(
+    matching payload: TunnelConfigurationPayload
+  ) throws -> Bool {
+    guard let candidate = try read(slot: Self.candidateSlot) else {
+      return false
+    }
+    guard candidate == payload else {
+      throw TunnelConfigurationStoreError.invalidSlot
+    }
+    try directory.remove(Self.candidateSlot)
+    return true
+  }
+
   public func nextMonotonicCounter() throws -> UInt64 {
     let current = try read(slot: Self.currentSlot)
     let floor = max(
@@ -113,6 +127,7 @@ public final class TunnelConfigurationStore {
     try directory.remove(Self.candidateSlot)
     try directory.remove(Self.recoverySlot)
     try directory.remove(Self.currentSlot)
+    try directory.remove(TunnelEnrollmentReceiptStore.receiptSlot)
   }
 
   private func read(slot: String) throws -> TunnelConfigurationPayload? {
@@ -120,6 +135,46 @@ public final class TunnelConfigurationStore {
       return nil
     }
     return try TunnelEnvelopeAuthenticator.open(data, using: key)
+  }
+}
+
+public final class TunnelEnrollmentReceiptStore {
+  public static let receiptSlot = "enrollment-receipt.envelope"
+
+  private let directory: SecureSlotDirectory
+  private let key: SymmetricKey
+
+  public init(containerURL: URL, key: SymmetricKey) throws {
+    directory = try SecureSlotDirectory(url: containerURL)
+    self.key = key
+  }
+
+  deinit {
+    directory.close()
+  }
+
+  public func write(_ outcome: TunnelEnrollmentOutcome) throws {
+    try directory.write(
+      TunnelEnrollmentReceiptAuthenticator.seal(
+        outcome,
+        using: key
+      ),
+      to: Self.receiptSlot
+    )
+  }
+
+  public func read() throws -> TunnelEnrollmentOutcome? {
+    guard let data = try directory.read(Self.receiptSlot) else {
+      return nil
+    }
+    return try TunnelEnrollmentReceiptAuthenticator.open(
+      data,
+      using: key
+    )
+  }
+
+  public func erase() throws {
+    try directory.remove(Self.receiptSlot)
   }
 }
 
@@ -266,6 +321,7 @@ private final class SecureSlotDirectory {
         TunnelConfigurationStore.candidateSlot,
         TunnelConfigurationStore.currentSlot,
         TunnelConfigurationStore.recoverySlot,
+        TunnelEnrollmentReceiptStore.receiptSlot,
       ].contains(name)
     else {
       throw TunnelConfigurationStoreError.invalidSlot

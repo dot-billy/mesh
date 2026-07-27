@@ -515,6 +515,10 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         'mesh-ios-tunnel-configuration-v4',
         'mesh-ios-tunnel-envelope-v4',
         'mesh-ios-tunnel-enrollment-v1',
+        'mesh-ios-provider-bootstrap-v1',
+        'mesh-ios-provider-enrollment-v1',
+        'mesh-ios-enrollment-outcome-v1',
+        'mesh-ios-enrollment-receipt-envelope-v1',
         'mesh-ios-tunnel-control-outcome-v1',
         'mesh-ios-tunnel-evidence-v1',
         'mesh-ios-lifecycle-refresh-v1',
@@ -560,9 +564,22 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "current?.monotonicCounter ?? 0",
         "guard floor < UInt64.max",
         "return floor + 1",
+        "public func discardCandidate(",
+        "matching payload: TunnelConfigurationPayload",
     ):
         if required not in sources["configuration_store"]:
             raise ReceiptError("Mesh Tunnel monotonic configuration store is incomplete")
+    for required in (
+        "public final class TunnelEnrollmentReceiptStore",
+        '"enrollment-receipt.envelope"',
+        "TunnelEnrollmentReceiptAuthenticator.seal(",
+        "TunnelEnrollmentReceiptAuthenticator.open(",
+        "public init(containerURL: URL, key: SymmetricKey) throws",
+    ):
+        if required not in sources["configuration_store"]:
+            raise ReceiptError(
+                "Mesh Tunnel authenticated enrollment receipt store is incomplete"
+            )
     for required in (
         "NEPacketTunnelNetworkSettings(",
         "NEIPv4Settings(",
@@ -707,6 +724,24 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "lifecycleGate.mayContinueStart()",
         "lifecycleGate.markRunning()",
         "lifecycleGate.latchStop()",
+        "bootstrapGate.arm(request)",
+        "bootstrapGate.claim(request)",
+        "expireBootstrap(requestID: request.requestID)",
+        "bootstrapGate.expire(requestID: requestID)",
+        "Duration.seconds(180)",
+        "Duration.seconds(150)",
+        "providerStartStopLock.lock()",
+        "expireClaimedEnrollment(",
+        "resolveClaimedEnrollment(",
+        "activateEnrollment(",
+        "store.discardCandidate(matching: configuration)",
+        "TunnelProviderEnrollmentRequest.decodeExact(",
+        "request.expectedNodeID",
+        "request.expectedNetworkID",
+        "TunnelEnrollmentOutcome.failed(",
+        "TunnelEnrollmentOutcome.running(",
+        "enrollmentReceiptStore()",
+        "completeEnrollmentHandoff(",
         '"start-already-in-progress"',
         '"start-cancelled"',
     ):
@@ -719,9 +754,40 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "public func mayContinueStart() -> Bool",
         "public func markRunning() -> Bool",
         "public func latchStop() -> Bool",
+        "public final class TunnelProviderBootstrapGate",
+        "public func arm(_ request: TunnelProviderBootstrapRequest) -> Bool",
+        "public func claim(",
+        "public func isAwaiting(requestID: String) -> Bool",
     ):
         if required not in sources["provider_lifecycle_gate"]:
             raise ReceiptError("Mesh Tunnel provider lifecycle gate is incomplete")
+    bootstrap_source = sources["provider"].split(
+        "if let options,\n      options.keys.contains("
+        "TunnelProviderBootstrapRequest.startOptionKey)",
+        1,
+    )[1].split("let enrollmentRequestID =", 1)[0]
+    stop_source = sources["provider"].split(
+        "override func stopTunnel(", 1
+    )[1].split("override func sleep(", 1)[0]
+    expiry_source = sources["provider"].split(
+        "private func expireClaimedEnrollment(", 1
+    )[1].split("private func resolveClaimedEnrollment(", 1)[0]
+    resolution_source = sources["provider"].split(
+        "private func resolveClaimedEnrollment(", 1
+    )[1].split("private func completeEnrollmentHandoff(", 1)[0]
+    if not (
+        bootstrap_source.rindex("providerStartStopLock.unlock()")
+        < bootstrap_source.rindex("completionHandler(nil)")
+        and stop_source.index("providerStartStopLock.unlock()")
+        < stop_source.index("pendingEnrollmentCompletion.resolve(")
+        and expiry_source.index("providerStartStopLock.unlock()")
+        < expiry_source.index("completion.resolve(")
+        and resolution_source.index("providerStartStopLock.unlock()")
+        < resolution_source.index("completion.resolve(error)")
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel invokes an Apple or XPC callback while provider state is locked"
+        )
     provider_start_index = sources["provider"].index(
         "try await coordinator.start()"
     )
@@ -756,12 +822,20 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
     for required in (
         "NETunnelProviderManager.loadAllFromPreferences",
         "TunnelEnrollmentRequest.normalizedOrigin(",
-        "TunnelEnrollmentRequest(",
+        "TunnelProviderEnrollmentRequest(",
+        "TunnelProviderBootstrapRequest(",
+        "TunnelProviderBootstrapRequest.startOptionKey",
+        "expectedNodeID: enrollment.node.id",
+        "expectedNetworkID: enrollment.node.networkID",
         "request.encoded()",
         "eraseTransientEnrollment()",
         "NETunnelProviderSession",
         "session.startTunnel(options:",
-        "TunnelEnrollmentRequest.startOptionKey: data as NSData",
+        "sendProviderMessage(",
+        "TunnelEnrollmentOutcome.decodeExact(",
+        "loadEnrollmentReceipt()",
+        "outcome.nodeID == expectedNodeID",
+        "outcome.networkID == expectedNetworkID",
         "tunnelProtocol.serverAddress = origin",
         "tunnelProtocol.providerConfiguration = [",
         '"schema": TunnelEnrollmentRequest.schema',
@@ -800,6 +874,7 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "return try await createManager(",
         "stage = .preparingManager",
         "stage = .verifyingManager",
+        "stage = .preparingProvider",
         "setupFailureIsVisible = true",
         "guard setupTask == nil, !setupFailureIsVisible",
         "guard setupTask == nil else {",
@@ -822,6 +897,7 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "TunnelOneShotResult<Error?>",
         "providerStartObservationInProgress",
         "requireDisconnectedProvider(",
+        "requireProviderChannelReady(",
         "providerConnectedWithoutIdentity",
         "providerStartFailed(String)",
         "if completed {",
@@ -843,6 +919,9 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         raise ReceiptError(
             "Mesh Tunnel provider-start observation bound changed"
         )
+    bootstrap_index = sources["host_controller"].index(
+        "private func prepareProviderForEnrollment("
+    )
     handoff_index = sources["host_controller"].index(
         "private func handOffEnrollment("
     )
@@ -850,13 +929,29 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "private func waitForProviderStart(",
         handoff_index,
     )
+    bootstrap_source = sources["host_controller"][
+        bootstrap_index:handoff_index
+    ]
     handoff_source = sources["host_controller"][handoff_index:handoff_end]
     if not (
-        handoff_source.index("session.startTunnel(options:")
-        < handoff_source.index("try await waitForProviderStart(")
+        bootstrap_source.index("session.startTunnel(options:")
+        < bootstrap_source.index("try await waitForProviderStart(")
     ):
         raise ReceiptError(
-            "Mesh Tunnel claims handoff before observing provider startup"
+            "Mesh Tunnel claims provider readiness before observing startup"
+        )
+    automatic_setup = sources["host_controller"].split(
+        "private func runAutomaticSetup(", 1
+    )[1].split("private func beginAuthorizationBrowser(", 1)[0]
+    if not (
+        automatic_setup.index("prepareProviderForEnrollment(")
+        < automatic_setup.index("createSelfEnrollment(")
+        and handoff_source.index("sendProviderMessage(")
+        < handoff_source.index("TunnelEnrollmentOutcome.decodeExact(")
+        and "startTunnel(options:" not in handoff_source
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel token issuance precedes provider IPC readiness"
         )
     observation_start = sources["host_controller"].index(
         "private func waitForProviderStart("
@@ -882,9 +977,9 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         not in observation_source
         or "min(Self.providerStartObservationDelay, remaining)"
         not in observation_source
-        or "sameOriginIdentity: current?.controlPlaneOrigin == origin"
+        or "current?.controlPlaneOrigin == context.origin"
         not in handoff_source
-        or "connectionDateChanged: connectedAt != previousConnectedAt"
+        or "connectedAt != context.previousConnectedAt"
         not in handoff_source
         or "Self.disconnectErrorFetchTimeout" not in disconnect_source
         or "resolver.resolve(nil)" not in disconnect_source
@@ -903,7 +998,11 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
             raise ReceiptError(
                 "Mesh Tunnel provider failure is not request-correlated"
             )
-    already_running = sources["provider"].split(
+    enrollment_start = sources["provider"].split(
+        "let enrollmentRequestID = Self.enrollmentRequestID(options)",
+        1,
+    )[1]
+    already_running = enrollment_start.split(
         "case .alreadyRunning:", 1
     )[1].split("case .alreadyStarting:", 1)[0]
     if (
@@ -924,7 +1023,12 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "private static let providerFailureCodes: Set<String> = [",
         1,
     )[1].split("]", 1)[0]
-    if set(re.findall(r'"([a-z0-9-]+)"', allowlist_source)) != provider_codes:
+    allowlist = set(re.findall(r'"([a-z0-9-]+)"', allowlist_source))
+    if (
+        not provider_codes.issubset(allowlist)
+        or allowlist - provider_codes
+        != {"provider-message-unavailable", "provider-start-failed"}
+    ):
         raise ReceiptError(
             "Mesh Tunnel provider failure allowlist does not match provider"
         )
@@ -938,6 +1042,15 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "TunnelProviderStartProof",
         "TunnelProviderFailureClassifier",
         "TunnelOneShotResult",
+        "TunnelProviderBootstrapRequest",
+        '"mesh-ios-provider-bootstrap-v1"',
+        "TunnelProviderEnrollmentRequest",
+        '"mesh-ios-provider-enrollment-v1"',
+        "TunnelEnrollmentOutcome",
+        '"mesh-ios-enrollment-outcome-v1"',
+        "TunnelEnrollmentReceiptEnvelope",
+        '"mesh-ios-enrollment-receipt-envelope-v1"',
+        "TunnelEnrollmentReceiptAuthenticator",
     ):
         if required not in sources["contract"]:
             raise ReceiptError(
@@ -1004,8 +1117,9 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
     if not (
         setup_source.index("networks()")
         < setup_source.index("reloadReadyManagerAfterAuthorization(")
+        < setup_source.index("prepareProviderForEnrollment(")
         < setup_source.index("createSelfEnrollment(")
-        < setup_source.index("manager: currentManager")
+        < setup_source.index("context: providerContext")
     ):
         raise ReceiptError(
             "Mesh Tunnel can request enrollment against a cached manager"
@@ -1139,6 +1253,8 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "enum TunnelLogEvent: String, CaseIterable",
         "static func record(_ event: TunnelLogEvent)",
         'logger.notice("start-requested")',
+        'logger.notice("provider-bootstrap-ready")',
+        'logger.notice("enrollment-handoff-accepted")',
         'logger.error("configuration-container-unavailable")',
         'logger.error("configuration-unavailable")',
         'logger.error("configuration-invalid")',
@@ -1164,6 +1280,8 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         raise ReceiptError("Mesh Tunnel logging accepts dynamic text")
     for event in (
         ".startRequested",
+        ".providerBootstrapReady",
+        ".enrollmentHandoffAccepted",
         ".configurationContainerUnavailable",
         ".configurationUnavailable",
         ".configurationInvalid",
@@ -1194,15 +1312,16 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "packet_pump": "bounded-apple-flow-source-wired-static-engine",
         "runtime_coordinator": "ordered-rebind-cleanup-source-proven",
         "provider": (
-            "coordinator-apple-flow-extension-enrollment-lifecycle-mobile-"
-            "evidence-identity-removal-static-engine-network-path-source-wired"
+            "coordinator-apple-flow-extension-bootstrap-ipc-enrollment-"
+            "lifecycle-mobile-evidence-identity-removal-static-engine-"
+            "network-path-source-wired"
         ),
         "engine_adapter": (
             "gomobile-extension-enrollment-lifecycle-renewal-credential-"
             "rotation-mobile-evidence-identity-removal-signed-config-packet-"
             "session-source-wired"
         ),
-        "extension_logging": "fixed-reviewed-18-event-codes-only",
+        "extension_logging": "fixed-reviewed-20-event-codes-only",
         "host_runtime_controls": (
             "request-bound-real-evidence-start-stop-inspect-source-proven"
         ),

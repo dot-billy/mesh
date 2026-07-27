@@ -71,3 +71,96 @@ public final class TunnelProviderLifecycleGate: @unchecked Sendable {
     return stopped
   }
 }
+
+public enum TunnelProviderBootstrapClaim:
+  Equatable,
+  Sendable
+{
+  case accepted
+  case mismatchWhileAwaiting
+  case alreadyClaimed
+  case unavailable
+  case stopped
+}
+
+public final class TunnelProviderBootstrapGate: @unchecked Sendable {
+  private let lock = NSLock()
+  private var pending: TunnelProviderBootstrapRequest?
+  private var claimedRequestID: String?
+  private var stopped = false
+
+  public init() {}
+
+  public func arm(_ request: TunnelProviderBootstrapRequest) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    guard pending == nil, claimedRequestID == nil, !stopped else {
+      return false
+    }
+    pending = request
+    return true
+  }
+
+  public func claim(
+    _ request: TunnelProviderEnrollmentRequest
+  ) -> TunnelProviderBootstrapClaim {
+    lock.lock()
+    defer { lock.unlock() }
+    guard !stopped else {
+      return .stopped
+    }
+    if claimedRequestID != nil {
+      return .alreadyClaimed
+    }
+    guard let pending else {
+      return .unavailable
+    }
+    guard
+      pending.requestID == request.requestID,
+      pending.serverOrigin == request.serverOrigin
+    else {
+      return .mismatchWhileAwaiting
+    }
+    claimedRequestID = request.requestID
+    self.pending = nil
+    return .accepted
+  }
+
+  public func expire(requestID: String) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    guard
+      let pending,
+      pending.requestID == requestID,
+      claimedRequestID == nil,
+      !stopped
+    else {
+      return false
+    }
+    self.pending = nil
+    return true
+  }
+
+  public func isAwaiting(requestID: String) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return
+      pending?.requestID == requestID
+      && claimedRequestID == nil
+      && !stopped
+  }
+
+  public func clear() {
+    lock.lock()
+    pending = nil
+    claimedRequestID = nil
+    lock.unlock()
+  }
+
+  public func stop() {
+    lock.lock()
+    pending = nil
+    stopped = true
+    lock.unlock()
+  }
+}

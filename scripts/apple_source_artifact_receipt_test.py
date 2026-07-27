@@ -240,8 +240,9 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
         )
         self.assertEqual(
             boundary["provider"],
-            "coordinator-apple-flow-extension-enrollment-lifecycle-mobile-"
-            "evidence-identity-removal-static-engine-network-path-source-wired",
+            "coordinator-apple-flow-extension-bootstrap-ipc-enrollment-"
+            "lifecycle-mobile-evidence-identity-removal-static-engine-"
+            "network-path-source-wired",
         )
         self.assertEqual(
             boundary["engine_adapter"],
@@ -255,7 +256,7 @@ class AppleSourceArtifactReceiptTest(unittest.TestCase):
         )
         self.assertEqual(
             boundary["extension_logging"],
-            "fixed-reviewed-18-event-codes-only",
+            "fixed-reviewed-20-event-codes-only",
         )
         self.assertEqual(
             boundary["host_manager_recovery"],
