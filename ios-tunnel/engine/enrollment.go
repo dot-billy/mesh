@@ -124,7 +124,8 @@ func (s *EnrollmentSession) Enroll(
 	serverURL string,
 	enrollmentToken string,
 	monotonicCounter int64,
-) (string, error) {
+) (document string, err error) {
+	defer recoverEnrollmentBoundaryPanic(&document, &err)
 	if s == nil ||
 		s.loadPrivateKey == nil ||
 		s.loadAgentSecret == nil ||
@@ -215,7 +216,8 @@ func (s *EnrollmentSession) Enroll(
 func (s *EnrollmentSession) Recover(
 	serverURL string,
 	monotonicCounter int64,
-) (string, error) {
+) (document string, err error) {
+	defer recoverEnrollmentBoundaryPanic(&document, &err)
 	if s == nil ||
 		s.loadExistingPrivateKey == nil ||
 		s.loadExistingAgentSecret == nil ||
@@ -311,6 +313,14 @@ func (s *EnrollmentSession) Recover(
 		enrollmentRecoveryReady,
 		configuration,
 	)
+}
+
+func recoverEnrollmentBoundaryPanic(document *string, err *error) {
+	if recover() == nil {
+		return
+	}
+	*document = ""
+	*err = errors.New("iOS enrollment processing failed safely")
 }
 
 func recoveryEnrollmentPlan(

@@ -65,6 +65,7 @@ final class MeshTunnelViewController: UIViewController {
     private var setupBackgroundTask = UIBackgroundTaskIdentifier.invalid
     private var orphanRemovalAvailable = false
     private var retainedIntentMismatchAvailable = false
+    private var interruptedEnrollmentRecoveryAvailable = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -1109,8 +1110,11 @@ final class MeshTunnelViewController: UIViewController {
                 }
                 let current = try self.readAuthenticatedLocalConfiguration()
                 let retainedIntentMismatch: Bool
+                let recoverableIntent: TunnelInitialEnrollmentIntent?
                 if let current {
                     self.orphanRemovalAvailable = false
+                    self.interruptedEnrollmentRecoveryAvailable = false
+                    recoverableIntent = nil
                     retainedIntentMismatch =
                         try self.reconcileCommittedEnrollmentIntent(
                             configuration: current
@@ -1121,23 +1125,36 @@ final class MeshTunnelViewController: UIViewController {
                         .localAuthorityState()
                     let intent = try TunnelHighWaterKeychain
                         .loadInitialEnrollmentIntent()
+                    recoverableIntent =
+                        authority.isRecoverableInitialEnrollment
+                        ? intent
+                        : nil
+                    self.interruptedEnrollmentRecoveryAvailable =
+                        recoverableIntent != nil
                     self.orphanRemovalAvailable =
-                        authority.hasAnyAuthority
-                        && (!authority.isRecoverableInitialEnrollment
-                            || intent == nil)
+                        (authority.hasAnyAuthority || intent != nil)
+                        && recoverableIntent == nil
                 }
                 guard let manager = matches.first else {
                     try self.requireCurrentInspection(generation)
                     self.preparedManager = nil
-                    self.preparedOrigin = current?.controlPlaneOrigin
+                    self.preparedOrigin =
+                        current?.controlPlaneOrigin
+                        ?? recoverableIntent?.controlPlaneOrigin
                     self.retainedIntentMismatchAvailable =
                         retainedIntentMismatch
-                    self.originField.text = current?.controlPlaneOrigin
-                    self.originField.isEnabled = current == nil
+                    self.originField.text =
+                        current?.controlPlaneOrigin
+                        ?? recoverableIntent?.controlPlaneOrigin
+                    self.originField.isEnabled =
+                        current == nil && recoverableIntent == nil
                     self.signInButton.configuration?.title =
-                        "Sign in and set up VPN"
+                        recoverableIntent == nil
+                        ? "Sign in and set up VPN"
+                        : "Recover enrolled VPN"
                     self.signInButton.isEnabled =
-                        current == nil && !self.orphanRemovalAvailable
+                        current == nil
+                        && !self.orphanRemovalAvailable
                     self.startButton.isEnabled = false
                     self.stopButton.isEnabled = false
                     self.removeIdentityButton.isEnabled =
@@ -1163,6 +1180,13 @@ final class MeshTunnelViewController: UIViewController {
                             "Incomplete local Mesh authority exists without a "
                                 + "VPN configuration. Review it with an "
                                 + "administrator, then explicitly reset it."
+                        )
+                    } else if recoverableIntent != nil {
+                        self.statusLabel.text = (
+                            "The server enrolled this device before the prior "
+                                + "setup was interrupted. Recover the verified "
+                                + "Nebula site without signing in or requesting "
+                                + "another one-time token."
                         )
                     } else {
                         self.statusLabel.text = (
@@ -1492,15 +1516,25 @@ final class MeshTunnelViewController: UIViewController {
             return
         }
         if !manager.isEnabled {
-            signInButton.configuration?.title = hasLocalIdentity
-                ? "Sign in and set up VPN"
-                : "Replace VPN and sign in"
+            signInButton.configuration?.title =
+                interruptedEnrollmentRecoveryAvailable
+                ? "Recover enrolled VPN"
+                : (
+                    hasLocalIdentity
+                    ? "Sign in and set up VPN"
+                    : "Replace VPN and sign in"
+                )
             startButton.isEnabled = hasLocalIdentity
             stopButton.isEnabled = false
-            signInButton.isEnabled = !hasLocalIdentity
+            signInButton.isEnabled =
+                !hasLocalIdentity
+                && !orphanRemovalAvailable
             return
         }
-        signInButton.configuration?.title = "Sign in and set up VPN"
+        signInButton.configuration?.title =
+            interruptedEnrollmentRecoveryAvailable
+            ? "Recover enrolled VPN"
+            : "Sign in and set up VPN"
         switch manager.connection.status {
         case .disconnected:
             startButton.isEnabled = hasLocalIdentity
@@ -1580,6 +1614,14 @@ final class MeshTunnelViewController: UIViewController {
             )
         case .disconnected:
             if current == nil {
+                if interruptedEnrollmentRecoveryAvailable {
+                    return (
+                        "The server enrolled this device before the prior "
+                            + "setup was interrupted. Recover the verified "
+                            + "Nebula site without signing in or requesting "
+                            + "another one-time token."
+                    )
+                }
                 return (
                     "The VPN configuration is prepared but no authenticated "
                         + "local identity is present. Sign in to enroll this "
@@ -1654,9 +1696,12 @@ final class MeshTunnelViewController: UIViewController {
             let hasLocalIdentity =
                 (try? readAuthenticatedLocalConfiguration()) != nil
             signInButton.isEnabled =
-                !hasLocalIdentity && !orphanRemovalAvailable
+                !hasLocalIdentity
+                && !orphanRemovalAvailable
             originField.isEnabled =
-                !hasLocalIdentity && !orphanRemovalAvailable
+                !hasLocalIdentity
+                && !orphanRemovalAvailable
+                && !interruptedEnrollmentRecoveryAvailable
             inspectButton.isEnabled = true
             removeIdentityButton.isEnabled =
                 hasLocalIdentity || orphanRemovalAvailable

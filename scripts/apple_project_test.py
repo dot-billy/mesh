@@ -880,6 +880,10 @@ class AppleProjectTest(unittest.TestCase):
             "readAuthenticatedLocalConfiguration()",
             "reconcileCommittedEnrollmentIntent(",
             "retainedIntentMismatchAvailable",
+            "interruptedEnrollmentRecoveryAvailable",
+            "recoverableIntent",
+            '\"Recover enrolled VPN\"',
+            "without signing in or requesting ",
             "Tunnel start is blocked.",
             "current != nil || self.orphanRemovalAvailable",
         ):

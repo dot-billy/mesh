@@ -526,8 +526,13 @@ network access or uses complete non-rotating existing authority for one
 bootstrap of an already committed node bound to that same intent. Recovery has exact
 ready, deferred, and unauthorized outcomes; only ready carries a verified
 configuration, and the other outcomes preserve authority without requesting
-another token. An uncommitted pending node still requires administrator
-reconciliation and crash/restart remains a qualification blocker. Incomplete
+another token. An unexpected panic within the containing-app Go enrollment or
+recovery boundary is reduced to one fixed non-secret error instead of crossing
+the mobile ABI. Complete retained private-key and current-agent authority is
+presented as `Recover enrolled VPN`; that path uses existing-agent bootstrap
+without repeating OIDC or requesting a token. An uncommitted pending node still
+requires administrator reconciliation and crash/restart remains a qualification
+blocker. Incomplete
 or unauthorized no-configuration authority can be reset only through explicit
 destructive confirmation after administrator review; deferred or ambiguous
 recovery preserves it and never exposes automatic reset.
@@ -554,8 +559,9 @@ identity-group access exists only so the narrow Go session can provision the
 site before provider startup; no Swift API returns either credential. Separate
 development, TestFlight, and Custom App entitlement documents prevent one
 distribution path from silently selecting another path's capability file.
-Historical profiles do not prove this new shared-custody entitlement set and
-must be regenerated and reverified for build 8. Enabling Network Extension on
+Historical profiles do not prove this new shared-custody entitlement set. The
+current profiles were regenerated and reverified for build 8. Enabling Network
+Extension on
 the host invalidated historical profile
 `ee85c79b-dd9b-444b-a0c3-4dd2b06885e2`; regenerated host profile
 `9ae4c36f-22a0-4d67-b078-f40049321616` and extension profile

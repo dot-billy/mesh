@@ -499,6 +499,81 @@ func TestExtensionEnrollmentResolvesPreflightBeforeCreatingOrConsumingIdentity(
 	}
 }
 
+func TestExtensionEnrollmentContainsUnexpectedNativeBoundaryPanic(
+	t *testing.T,
+) {
+	now := time.Now().UTC().Round(time.Second)
+	token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x78}, 32))
+	server := httptest.NewTLSServer(http.HandlerFunc(
+		func(response http.ResponseWriter, request *http.Request) {
+			response.Header().Set("Cache-Control", "no-store")
+			if request.URL.Path != "/api/v1/enroll/preflight" {
+				t.Errorf("unexpected request path %q", request.URL.Path)
+				http.NotFound(response, request)
+				return
+			}
+			writeEnrollmentTestJSON(t, response, enrollmentPreflight{
+				Schema:              enrollmentPreflightV1,
+				TargetRole:          "member",
+				NetworkCIDR:         "10.88.0.0/24",
+				LighthouseEndpoints: []string{"panic.example:4242"},
+				TokenExpiresAt:      now.Add(10 * time.Minute),
+			})
+		},
+	))
+	defer server.Close()
+
+	session := newEnrollmentSession(
+		func() ([]byte, error) {
+			t.Fatal("panic containment crossed the identity boundary")
+			return nil, nil
+		},
+		func() ([]byte, error) {
+			t.Fatal("panic containment crossed the agent boundary")
+			return nil, nil
+		},
+		server.Client(),
+		func(_ context.Context, _ string) ([]netip.Addr, error) {
+			panic("untrusted resolver panic must not terminate the app")
+		},
+		func() time.Time { return now },
+	)
+	document, err := session.Enroll(server.URL, token, 1)
+	if document != "" ||
+		err == nil ||
+		err.Error() != "iOS enrollment processing failed safely" {
+		t.Fatalf("panic result document=%q error=%v", document, err)
+	}
+}
+
+func TestInterruptedEnrollmentContainsUnexpectedNativeBoundaryPanic(
+	t *testing.T,
+) {
+	session := &EnrollmentSession{
+		loadExistingPrivateKey: func() ([]byte, error) {
+			panic("existing Keychain boundary panic must not terminate the app")
+		},
+		loadExistingAgentSecret: func() ([]byte, error) {
+			t.Fatal("panic containment crossed the agent boundary")
+			return nil, nil
+		},
+		httpClient: &http.Client{},
+		resolve: func(
+			_ context.Context,
+			_ string,
+		) ([]netip.Addr, error) {
+			return nil, nil
+		},
+		now: time.Now,
+	}
+	document, err := session.Recover("https://mesh.example", 1)
+	if document != "" ||
+		err == nil ||
+		err.Error() != "iOS enrollment processing failed safely" {
+		t.Fatalf("panic result document=%q error=%v", document, err)
+	}
+}
+
 func TestSignedNativeDNSPolicyBindsCertificateAndRejectsAmbiguity(
 	t *testing.T,
 ) {

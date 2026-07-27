@@ -516,12 +516,19 @@ and returned fixed host stage `apple-vpn-disconnected`. Sanitized server logs
 for that exact attempt recorded the host self-enrollment reissue but zero
 provider preflight, enrollment, or runtime requests. Build `0.1.0 (7)` then
 physically reached `running-preparingProvider` and remained there without
-requesting a token. The build-8 candidate removes that circular
+requesting a token. Build `0.1.0 (8)` removes that circular
 provider-readiness dependency and uses the provision-first/connect-second flow
 described above. It also recovers a matching authenticated candidate or an
-already committed active node without requesting a second token. It has not
-yet proved completed enrollment, extension runtime, crash recovery, or packet
-behavior on a physical device.
+already committed active node without requesting a second token. The physical
+Build-8 attempt completed OIDC and server enrollment: audit proves the existing
+iPhone enrollment was reissued, its token was consumed, and node
+`E3kVivz4BJPeBgvh` became active at `2026-07-27T20:39:01Z`. The containing app
+then unexpectedly terminated during the post-enrollment host handoff. No Apple
+crash log was available when checked, so the exact local substage is unknown.
+The successor source contains an unexpected Go enrollment/recovery panic at the
+mobile boundary with a fixed non-secret error and labels complete retained
+authority as `Recover enrolled VPN`; that recovery does not repeat OIDC or
+request another token. Neither source behavior has physical successor proof.
 
 ## Deliberately unresolved
 
@@ -544,8 +551,8 @@ source-defined enrollment and identity-removal ceremonies, an Apple-supported
 transport review, physical-device network-settings, Keychain, UDP, packet, and
 resource measurements, roaming/suspension/crash/reboot evidence,
 heartbeat/renewal/rotation/revocation convergence, cutoff, response-loss,
-reinstall, and transfer coverage, privacy and legal review, installed
-TestFlight execution for build `8`, and Custom App distribution evidence. The
+reinstall, and transfer coverage, privacy and legal review, installed successor
+TestFlight execution, and Custom App distribution evidence. The
 earlier framework-v4 build `0.1.0 (1)` entered `Testing` and was installed on
 2026-07-25. Its launch and VPN permission screens do not prove that an
 enrollment request reached Mesh or that any packet traversed the tunnel.
