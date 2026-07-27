@@ -784,6 +784,9 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "if let manager = matches.first {",
         "prepareManagerBeforeAuthorization(",
         "reloadReadyManagerAfterAuthorization(",
+        "loadReadyManagerAfterAuthorization(",
+        "postAuthorizationManagerReadinessAttempts",
+        "postAuthorizationManagerReadinessDelay",
         "confirmStaleManagerReplacement(",
         'title: "Replace disabled VPN configuration?"',
         'title: "Replace VPN configuration"',
@@ -797,6 +800,8 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "return try await createManager(",
         "stage = .preparingManager",
         "stage = .verifyingManager",
+        "setupFailureIsVisible = true",
+        "guard setupTask == nil, !setupFailureIsVisible",
         "guard setupTask == nil else {",
         "if completed {",
     ):
@@ -832,18 +837,47 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "private func reloadReadyManagerAfterAuthorization("
     )
     postauth_end = sources["host_controller"].index(
-        "private func confirmStaleManagerReplacement(",
+        "private func loadReadyManagerAfterAuthorization(",
         postauth_index,
     )
     postauth_source = sources["host_controller"][
         postauth_index:postauth_end
     ]
     if not (
-        "guard matches.count == 1" in postauth_source
-        and postauth_source.index("let managers = try await loadManagers()")
-        < postauth_source.index("try await reload(currentManager)")
-        < postauth_source.index("try requireNoLocalIdentity()")
-        < postauth_source.index("validatedOrigin(for: currentManager)")
+        "1...Self.postAuthorizationManagerReadinessAttempts"
+        in postauth_source
+        and "return try await loadReadyManagerAfterAuthorization("
+        in postauth_source
+        and "catch TunnelHostError.managerNotReady" in postauth_source
+        and "for: Self.postAuthorizationManagerReadinessDelay"
+        in postauth_source
+        and "createSelfEnrollment(" not in postauth_source
+        and "save(" not in postauth_source
+        and "remove(" not in postauth_source
+    ):
+        raise ReceiptError(
+            "Mesh Tunnel post-authorization manager retry is not bounded"
+        )
+    ready_index = sources["host_controller"].index(
+        "private func loadReadyManagerAfterAuthorization("
+    )
+    ready_end = sources["host_controller"].index(
+        "private func confirmStaleManagerReplacement(",
+        ready_index,
+    )
+    ready_source = sources["host_controller"][
+        ready_index:ready_end
+    ]
+    if not (
+        "guard matches.count <= 1" in ready_source
+        and "throw TunnelHostError.managerNotReady" in ready_source
+        and ready_source.index("let managers = try await loadManagers()")
+        < ready_source.index("try await reload(currentManager)")
+        < ready_source.index("try requireNoLocalIdentity()")
+        < ready_source.index("validatedOrigin(")
+        < ready_source.index("guard currentManager.isEnabled")
+        and "save(" not in ready_source
+        and "remove(" not in ready_source
     ):
         raise ReceiptError(
             "Mesh Tunnel does not refresh manager readiness after authorization"
@@ -997,7 +1031,7 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         ),
         "host_manager_recovery": (
             "preauth-confirmed-disabled-no-identity-exact-replacement-"
-            "postauth-fresh-manager-source-proven"
+            "postauth-bounded-fresh-manager-retry-terminal-status-source-proven"
         ),
         "physical_device_validated": False,
         "source_sha256": {

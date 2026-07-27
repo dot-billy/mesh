@@ -626,6 +626,9 @@ class AppleProjectTest(unittest.TestCase):
             "if let manager = matches.first {",
             "prepareManagerBeforeAuthorization(",
             "reloadReadyManagerAfterAuthorization(",
+            "loadReadyManagerAfterAuthorization(",
+            "postAuthorizationManagerReadinessAttempts",
+            "postAuthorizationManagerReadinessDelay",
             "confirmStaleManagerReplacement(",
             'title: "Replace disabled VPN configuration?"',
             'title: "Replace VPN configuration"',
@@ -639,6 +642,7 @@ class AppleProjectTest(unittest.TestCase):
             "return try await createManager(",
             "stage = .preparingManager",
             "stage = .verifyingManager",
+            "setupFailureIsVisible = true",
             "guard setupTask == nil else {",
             "if completed {",
         ):
@@ -666,20 +670,57 @@ class AppleProjectTest(unittest.TestCase):
             "private func reloadReadyManagerAfterAuthorization("
         )
         postauth_end = host.index(
-            "private func confirmStaleManagerReplacement(",
+            "private func loadReadyManagerAfterAuthorization(",
             postauth_start,
         )
         postauth = host[postauth_start:postauth_end]
-        self.assertIn("let managers = try await loadManagers()", postauth)
-        self.assertIn("guard matches.count == 1", postauth)
-        self.assertLess(
-            postauth.index("try await reload(currentManager)"),
-            postauth.index("try requireNoLocalIdentity()"),
+        self.assertIn(
+            "1...Self.postAuthorizationManagerReadinessAttempts",
+            postauth,
+        )
+        self.assertIn(
+            "return try await loadReadyManagerAfterAuthorization(",
+            postauth,
+        )
+        self.assertIn(
+            "catch TunnelHostError.managerNotReady",
+            postauth,
+        )
+        self.assertIn(
+            "for: Self.postAuthorizationManagerReadinessDelay",
+            postauth,
+        )
+        self.assertNotIn("createSelfEnrollment(", postauth)
+        self.assertNotIn("save(", postauth)
+        self.assertNotIn("remove(", postauth)
+        ready_start = host.index(
+            "private func loadReadyManagerAfterAuthorization("
+        )
+        ready_end = host.index(
+            "private func confirmStaleManagerReplacement(",
+            ready_start,
+        )
+        ready = host[ready_start:ready_end]
+        self.assertIn("let managers = try await loadManagers()", ready)
+        self.assertIn("guard matches.count <= 1", ready)
+        self.assertIn(
+            "throw TunnelHostError.managerNotReady",
+            ready,
         )
         self.assertLess(
-            postauth.index("try requireNoLocalIdentity()"),
-            postauth.index("validatedOrigin(for: currentManager)"),
+            ready.index("try await reload(currentManager)"),
+            ready.index("try requireNoLocalIdentity()"),
         )
+        self.assertLess(
+            ready.index("try requireNoLocalIdentity()"),
+            ready.index("validatedOrigin("),
+        )
+        self.assertLess(
+            ready.index("validatedOrigin("),
+            ready.index("guard currentManager.isEnabled"),
+        )
+        self.assertNotIn("save(", ready)
+        self.assertNotIn("remove(", ready)
         preflight_start = host.index(
             "private func prepareManagerBeforeAuthorization("
         )
@@ -740,6 +781,17 @@ class AppleProjectTest(unittest.TestCase):
             "func sceneDidEnterBackground", 1
         )[1].split("func sceneDidBecomeActive", 1)[0]
         self.assertIn(".protectForBackground()", background_body)
+        status_change = host.split(
+            "private func vpnStatusDidChange()", 1
+        )[1].split("private func startExistingTunnel()", 1)[0]
+        self.assertIn(
+            "guard setupTask == nil, !setupFailureIsVisible",
+            status_change,
+        )
+        inspect = host.split(
+            "private func inspectConfiguration()", 1
+        )[1].split("private func vpnStatusDidChange()", 1)[0]
+        self.assertIn("setupFailureIsVisible = false", inspect)
         for forbidden in ("startVPNTunnel",):
             self.assertNotIn(forbidden, host)
 

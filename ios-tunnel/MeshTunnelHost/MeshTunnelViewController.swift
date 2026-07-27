@@ -5,6 +5,9 @@ import UIKit
 final class MeshTunnelViewController: UIViewController {
     private static let providerBundleIdentifier =
         "io.rw0.mesh.tunnel.mobile.packet-tunnel"
+    private static let postAuthorizationManagerReadinessAttempts = 6
+    private static let postAuthorizationManagerReadinessDelay =
+        Duration.milliseconds(500)
 
     private let statusLabel = UILabel()
     private let originField = UITextField()
@@ -19,6 +22,7 @@ final class MeshTunnelViewController: UIViewController {
     private var authorizationSession: ASWebAuthenticationSession?
     private var authorizationWasCancelled = false
     private var isCompletingAuthorization = false
+    private var setupFailureIsVisible = false
     private var setupTask: Task<Void, Never>?
     private var enrollmentClient: TunnelUserEnrollmentClient?
 
@@ -188,6 +192,7 @@ final class MeshTunnelViewController: UIViewController {
         guard setupTask == nil else {
             return
         }
+        setupFailureIsVisible = false
         setControlsBusy(true)
         let rawOrigin = originField.text ?? ""
         setupTask = Task { @MainActor [weak self] in
@@ -302,6 +307,7 @@ final class MeshTunnelViewController: UIViewController {
         } catch {
             setControlsBusy(false)
             statusLabel.text = setupFailureText(error, stage: stage)
+            setupFailureIsVisible = true
             return false
         }
     }
@@ -431,6 +437,7 @@ final class MeshTunnelViewController: UIViewController {
     }
 
     @objc private func inspectConfiguration() {
+        setupFailureIsVisible = false
         Task { @MainActor [weak self] in
             guard let self else {
                 return
@@ -493,7 +500,7 @@ final class MeshTunnelViewController: UIViewController {
     }
 
     @objc private func vpnStatusDidChange() {
-        guard setupTask == nil else {
+        guard setupTask == nil, !setupFailureIsVisible else {
             return
         }
         inspectConfiguration()
@@ -1098,21 +1105,52 @@ final class MeshTunnelViewController: UIViewController {
     private func reloadReadyManagerAfterAuthorization(
         expectedOrigin: String
     ) async throws -> NETunnelProviderManager {
+        for attempt in
+            1...Self.postAuthorizationManagerReadinessAttempts
+        {
+            do {
+                return try await loadReadyManagerAfterAuthorization(
+                    expectedOrigin: expectedOrigin
+                )
+            } catch TunnelHostError.managerNotReady {
+                guard attempt
+                    < Self.postAuthorizationManagerReadinessAttempts
+                else {
+                    throw TunnelHostError.managerNotReady
+                }
+                try await Task.sleep(
+                    for: Self.postAuthorizationManagerReadinessDelay
+                )
+            }
+        }
+        throw TunnelHostError.managerNotReady
+    }
+
+    private func loadReadyManagerAfterAuthorization(
+        expectedOrigin: String
+    ) async throws -> NETunnelProviderManager {
         let managers = try await loadManagers()
         let matches = managers.filter { manager in
             (manager.protocolConfiguration as? NETunnelProviderProtocol)?
                 .providerBundleIdentifier
                 == Self.providerBundleIdentifier
         }
-        guard matches.count == 1,
-              let currentManager = matches.first
-        else {
+        guard matches.count <= 1 else {
             throw TunnelHostError.ambiguousManager
+        }
+        guard let currentManager = matches.first else {
+            throw TunnelHostError.managerNotReady
         }
         try await reload(currentManager)
         try requireNoLocalIdentity()
-        guard try validatedOrigin(for: currentManager) == expectedOrigin else {
+        guard try validatedOrigin(
+            for: currentManager,
+            requireEnabled: false
+        ) == expectedOrigin else {
             throw TunnelHostError.originMismatch
+        }
+        guard currentManager.isEnabled else {
+            throw TunnelHostError.managerNotReady
         }
         return currentManager
     }
@@ -1490,6 +1528,7 @@ private enum TunnelHostError: Error {
     case localIdentityAlreadyInstalled
     case localIdentityStateUnavailable
     case staleManagerReplacementCancelled
+    case managerNotReady
     case authenticationCookiesUnavailable
     case invalidServerResponse
     case httpStatus(Int)
@@ -1524,8 +1563,9 @@ private enum TunnelAutomaticSetupStage {
             )
         case .verifyingManager:
             return (
-                "Sign-in succeeded, but the ready VPN configuration changed. "
-                    + "No enrollment token was requested."
+                "Sign-in succeeded, but iOS did not return the ready VPN "
+                    + "configuration after a bounded recheck. No enrollment "
+                    + "token was requested."
             )
         case .requestingEnrollment:
             return (
