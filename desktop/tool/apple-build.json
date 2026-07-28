@@ -112,9 +112,9 @@
       "canonical_source_root": "/private/var/tmp/mesh-apple-ios-mobile-source-v5"
     },
     "packet_bridge": {
-      "nebula_adapter": "github.com/slackhq/nebula/overlay.UserDevice",
-      "apple_transport": "NEPacketTunnelFlow callbacks",
-      "status": "authenticated-udp-exported-source-wired"
+      "nebula_adapter": "github.com/slackhq/nebula/overlay.NewFdDeviceFromConfig",
+      "apple_transport": "NetworkExtension utun descriptor",
+      "status": "mobile-nebula-native-utun-source-wired"
     },
     "runtime_startup": {
       "configuration_schema": "mesh-ios-tunnel-configuration-v4",
@@ -124,7 +124,6 @@
         "engine-identity",
         "engine-prepare",
         "apple-network-settings",
-        "packet-pump",
         "engine-start"
       ],
       "status": "static-linked-simulator-build-proven-device-pending"

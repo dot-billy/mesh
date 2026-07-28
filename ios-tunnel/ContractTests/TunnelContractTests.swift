@@ -874,6 +874,42 @@ func runtimeCoordinatorOrdersStartupPacketsEvidenceAndCleanup() async throws {
 }
 
 @Test
+func nativeUTUNRuntimeStartsWithoutTheSwiftPacketBridge() async throws {
+  let recorder = RuntimeEventRecorder()
+  let engine = RecordingEngineSession(recorder: recorder)
+  let settings = RecordingNetworkSettingsSession(recorder: recorder)
+  let coordinator = TunnelRuntimeCoordinator(
+    configuration: payload(),
+    engine: engine,
+    networkSettings: settings,
+    limits: try TunnelPacketFlowPumpLimits(),
+    packetTransport: .nativeUTUN
+  )
+
+  try await coordinator.start()
+  #expect(
+    await recorder.snapshot() == [
+      "engine-identity",
+      "engine-prepare-7",
+      "settings-apply-192.0.2.9-1300",
+      "engine-start",
+    ])
+  await #expect(throws: TunnelRuntimeCoordinatorError.invalidTransition) {
+    try await coordinator.sendFromApple([try ipv4Packet(1)])
+  }
+  let evidence = try await coordinator.runtimeEvidence(sequence: 12)
+  #expect(evidence.packetsRead == 0)
+  #expect(evidence.packetsWritten == 0)
+
+  await coordinator.stop()
+  #expect(
+    await recorder.snapshot().suffix(2) == [
+      "engine-stop",
+      "settings-clear",
+    ])
+}
+
+@Test
 func runtimeCoordinatorFailsClosedBeforeSettingsOnIdentityMismatch() async throws {
   let recorder = RuntimeEventRecorder()
   let engine = RecordingEngineSession(

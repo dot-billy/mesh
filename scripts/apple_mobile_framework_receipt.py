@@ -217,9 +217,11 @@ def load_inputs() -> tuple[dict[str, object], str]:
         }
         or tunnel.get("packet_bridge")
         != {
-            "nebula_adapter": "github.com/slackhq/nebula/overlay.UserDevice",
-            "apple_transport": "NEPacketTunnelFlow callbacks",
-            "status": "authenticated-udp-exported-source-wired",
+            "nebula_adapter": (
+                "github.com/slackhq/nebula/overlay.NewFdDeviceFromConfig"
+            ),
+            "apple_transport": "NetworkExtension utun descriptor",
+            "status": "mobile-nebula-native-utun-source-wired",
         }
         or tunnel.get("runtime_startup")
         != {
@@ -230,7 +232,6 @@ def load_inputs() -> tuple[dict[str, object], str]:
                 "engine-identity",
                 "engine-prepare",
                 "apple-network-settings",
-                "packet-pump",
                 "engine-start",
             ],
             "status": "static-linked-simulator-build-proven-device-pending",
@@ -637,6 +638,15 @@ def inspect_engine_sources(inputs: dict[str, object]) -> dict[str, object]:
             raise ReceiptError("framework packet callback adapter is incomplete")
     if re.search(r"^func\s+[A-Z]", bridge_source, re.MULTILINE):
         raise ReceiptError("framework packet callback adapter is unexpectedly exported")
+    utun_source = (ENGINE / "utun_fd_darwin.go").read_text()
+    for required in (
+        "com.apple.net.utun_control",
+        "unix.Getpeername(",
+        "unix.IoctlCtlInfo(",
+        "maximumProviderFileFD",
+    ):
+        if required not in utun_source:
+            raise ReceiptError("framework native utun discovery is incomplete")
     session_source = (ENGINE / "engine_session.go").read_text()
     session_methods = sorted(
         set(
@@ -661,6 +671,8 @@ def inspect_engine_sources(inputs: dict[str, object]) -> dict[str, object]:
     for required in (
         "configsignature.Verify(",
         "newPacketFlowBridge(",
+        "overlay.NewFdDeviceFromConfig(",
+        "nativeUTUNDeviceFactory",
         "nebula.Main(",
         "loadPrivateKey(",
     ):
@@ -886,6 +898,8 @@ def inspect_engine_sources(inputs: dict[str, object]) -> dict[str, object]:
         "mobile_test.go",
         "packet_bridge.go",
         "packet_bridge_test.go",
+        "utun_fd_darwin.go",
+        "utun_fd_unsupported.go",
         "vault_ios.go",
         "vault_unsupported.go",
     )

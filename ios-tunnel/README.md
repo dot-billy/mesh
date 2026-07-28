@@ -1,44 +1,24 @@
 # Mesh Tunnel iOS source proof
 
-This directory is the source and controlled-beta qualification boundary for a
-future Mesh Tunnel application on iPhone and iPad. Version `0.1.0` build `1`
-contains the earlier framework-v4 pre-start lifecycle source and remains in
-TestFlight. Version `0.1.0` build `2` contains the framework-v5 lifecycle,
-runtime-evidence, identity-removal, host-control, and self-service OIDC
-onboarding changes; Apple accepted its upload and export-compliance declaration
-on 2026-07-26, approved its Beta App Review, and placed it in external testing.
-Build `3` adds disabled-manager recovery and build `4` adds
-pre-authorization manager readiness. Build `5` retains Apple's
-configuration-provided private ephemeral cookie store and generation-gates
-manager inspection. Build `6` observes the real Apple provider transition and
-requires a request-correlated provider outcome. Build `7` adds the token-free
-provider bootstrap and enrollment IPC experiment. All are approved and in
-external testing. A physical
-build-5 run completed OIDC, authenticated network selection, and fixed-policy
-self-enrollment: the server created a new pending mobile node and the host
-decoded the response. Its token-bearing Network Extension start call returned
-without a synchronous error. The node remained pending with certificate and
-agent generations zero, no mobile-runtime document, no local identity, and a
-disconnected manager. This proves the host and server path but not that the
-options reached the Packet Tunnel provider or that an extension preflight
-reached the server. Build `6` physically returned
-`apple-vpn-disconnected`; server correlation then proved that the host reissued
-the pending enrollment but the provider made zero preflight, enrollment, or
-runtime requests. Build `7` physically stalled at
-`running-preparingProvider` before requesting a token. That exposed a circular
-wait: the host waited for a connected provider, while the provider did not yet
-have an installed identity from which it could connect. The build `8`
-candidate follows Mobile Nebula's provision-first/connect-second lifecycle:
-the containing app completes bounded enrollment into shared Keychain custody,
-activates the verified site configuration, and only then starts the provider
-with one exact Keychain-backed start authorization and no enrollment material.
-Before every start it also performs Mobile
-Nebula's manager enable/save/reload sequence. The provider's Apple start
-callback loads only that durable site, applies settings, and starts Nebula;
-control-plane reporting begins only after the callback succeeds. None of these
-builds is a supported
-application, proven working VPN, production enrollment path, or public App
-Store release.
+This directory is the source and controlled-beta qualification boundary for
+Mesh Tunnel on iPhone and iPad. TestFlight builds `1` through `10` exercised
+the signed application, OIDC, manager recovery, provision-first enrollment,
+retained identity, provider startup, and host inspection in successive bounded
+steps. Builds `8` and `9` proved that an authenticated local identity can be
+enrolled, committed, and recovered, but no released build established a
+running packet path. Build `10` corrects the initial-inspection race around an
+already enrolled identity.
+
+The current successor changes the runtime architecture instead of adding
+another host-state workaround. It keeps Mesh OIDC, fixed-policy
+self-enrollment, device-only Go/Keychain custody, signed configuration, and the
+normal Apple VPN manager flow. The Packet Tunnel now follows Mobile Nebula's
+production transport: Go discovers the provider-owned `utun` descriptor and
+constructs pinned Nebula 1.10.3 with
+`overlay.NewFdDeviceFromConfig`. The production provider does not start the
+Swift `NEPacketTunnelFlow` packet-copy loops. This source is a TestFlight
+qualification candidate, not yet physical packet-path evidence or a supported
+VPN.
 
 ## What exists
 
@@ -60,9 +40,10 @@ Store release.
   existing authenticated local identity without a new enrollment token,
   request stop, and inspect a request-bound status response. A running response
   comes from the live coordinator and includes the exact configuration
-  revision, certificate generation, engine identity, and directional Apple
-  callback counters. Neither those counters nor `NEVPNStatus` proves a peer
-  reply or end-to-end connectivity. The onboarding view scrolls so the
+  revision, certificate generation, engine identity, and legacy counter
+  fields. Native-`utun` mode leaves those callback fields at zero. Neither
+  runtime state nor `NEVPNStatus` proves a peer reply or end-to-end
+  connectivity. The onboarding view scrolls so the
   controls remain reachable on compact iPhones and with larger text. The
   current source also accepts one structurally valid but disabled saved manager
   after reinstall and presents a `Replace VPN and sign in` recovery action.
@@ -84,7 +65,7 @@ Store release.
   App Group configuration and fails closed when no current configuration is
   installed. It rejects enrollment-bearing start options; enrollment is not a
   provider-start operation. It enforces the shared Keychain high-water mark,
-  constructs the engine, applies Apple settings, starts the packet loops, and
+  constructs the native-`utun` engine, applies Apple settings, and
   completes Apple's start callback without a control-plane HTTP dependency.
   Only after that local running commit does it create the runtime reporter and
   publish
@@ -97,9 +78,10 @@ Store release.
   qualification item. It also accepts an exact-node, confirmation-gated
   deletion-only local identity-removal request even when ordinary startup
   cannot authorize. It then constructs the engine session, applies
-  validated Apple settings, starts the bounded packet loops, and requests an
+  validated Apple settings, starts Nebula on Network Extension's native
+  descriptor, and requests an
   engine UDP rebind after subsequent `NWPathMonitor` updates. Enrollment,
-  refresh, startup, packet, and rebind errors stop the coordinator and fail the
+  refresh, startup, and rebind errors stop the coordinator and fail the
   extension closed. A locked provider lifecycle gate rejects duplicate starts,
   prevents a stop racing startup from attaching a running session, compensates
   a post-connect report if stop wins, and resets only after stop completion so
@@ -107,9 +89,9 @@ Store release.
 - `Shared`: strict user-authorization, fixed-policy self-enrollment, and
   authenticated configuration schemas; a pure validated
   IPv4/IPv6 remote/address/route/DNS/MTU settings plan, a bounded packet-pump
-  state machine, an exact Apple protocol-family batch codec, an ordered
-  startup/cleanup coordinator, and a durable candidate/current/recovery
-  configuration store.
+  test state machine, an exact Apple protocol-family batch codec, a
+  native-`utun`-aware ordered startup/cleanup coordinator, and a durable
+  candidate/current/recovery configuration store.
 - `ContractTests`: Swift Testing coverage for same-origin user authorization,
   self-enrollment permission and fixed-policy responses, exact extension
   enrollment, lifecycle refresh, runtime-report and identity-removal contracts, configuration
@@ -121,7 +103,7 @@ Store release.
   It also covers duplicate start, stop-during-start, failed-start retry,
   restart-after-stop, and ambiguous high-water commit reconciliation.
 - `engine`: a separate Go module for a reproducible `MeshMobile.xcframework`
-  packet-session proof. It pins Nebula 1.10.3, keeps identity custody in the
+  engine-session proof. It pins Nebula 1.10.3, keeps identity custody in the
   app-and-extension shared, device-only Keychain group, and exports identity creation/public-key
   derivation, non-secret framework identity, one bounded enrollment session,
   one existing-credential lifecycle session with refresh and runtime-report
@@ -132,12 +114,15 @@ Store release.
 The unsigned source build binds the exact reproducible
 `MeshMobile.xcframework` tree and statically links its Go/Nebula archive into
 the extension; no dynamic engine framework is embedded. The provider adapter
-applies and clears mapped `NEPacketTunnelNetworkSettings`, and two
-lifecycle-owned tasks connect Apple `packetFlow` reads and writes to the
-engine session through the validated bounded coordinator. Builds that omit the
+applies and clears mapped `NEPacketTunnelNetworkSettings`. The production
+engine scans only the Packet Tunnel process's bounded descriptor table,
+validates `com.apple.net.utun_control`, and gives that descriptor directly to
+Nebula's upstream iOS device. The callback bridge and packet pump remain test
+fixtures and are not wired by the production provider. Builds that omit the
 module retain a fail-closed unavailable-engine adapter. The simulator receipt
-proves the static symbols and source wiring, not an executed Network Extension
-packet callback, applied interface settings, or physical packet path.
+proves the static symbols and native-transport source selection, not an
+executed Network Extension, applied interface settings, or physical packet
+path.
 
 ## Registered capability boundary
 
@@ -545,24 +530,22 @@ provider startup or packet exchange.
 
 ## Deliberately unresolved
 
-Apple's documented Packet Tunnel flow is a packet callback interface. Mesh has
-not adopted the current upstream mobile integration's utun-descriptor
-discovery. Pinned Nebula 1.10.3 also exposes an in-memory
-`overlay.UserDevice`, and `engine/packet_bridge.go` proves a bounded,
-copy-owning IPv4/IPv6 adapter for that documented callback shape. The adapter
-also normalizes close to Nebula's production-loop contract. A native-host test
-runs two real Nebula engines over real loopback UDP and proves
-certificate-authenticated direct request/reply packets, empty relay state, and
-post-rebind traffic plus repeatable clean shutdown. The bounded adapter now
-backs the exported engine session and is statically connected to the Swift
-coordinator in the simulator build. The source also implements callback
-cancellation and network-path-triggered rebind, but no valid device handoff
-has started the extension and no physical packet callback has executed.
+The successor deliberately follows upstream Mobile Nebula's `utun` transport.
+The bounded `overlay.UserDevice` callback adapter remains a native-host test
+fixture, where two real Nebula engines prove certificate-authenticated direct
+request/reply packets, empty relay state, post-rebind traffic, and repeatable
+clean shutdown over loopback UDP. Production source instead selects
+`overlay.NewFdDeviceFromConfig` after bounded validation of the provider-owned
+`com.apple.net.utun_control` descriptor. Source and simulator checks prove that
+selection and reject provider packet-copy tasks, but no physical successor run
+has yet proved that descriptor discovery, Apple settings, iOS UDP, or peer
+traffic succeeds.
 
 The project still needs security approval and live execution of the
-source-defined enrollment and identity-removal ceremonies, an Apple-supported
-transport review, physical-device network-settings, Keychain, UDP, packet, and
-resource measurements, roaming/suspension/crash/reboot evidence,
+source-defined enrollment and identity-removal ceremonies, review of the
+upstream-aligned transport boundary, physical-device network-settings,
+Keychain, UDP, packet, and resource measurements,
+roaming/suspension/crash/reboot evidence,
 heartbeat/renewal/rotation/revocation convergence, cutoff, response-loss,
 reinstall, and transfer coverage, privacy and legal review, installed successor
 TestFlight execution, and Custom App distribution evidence. The

@@ -14,7 +14,6 @@ final class PacketTunnelProvider:
   private var errorCode: String?
   private var runtime: TunnelRuntimeCoordinator?
   private var runtimeGeneration: UInt64?
-  private var packetTasks: [Task<Void, Never>] = []
   private var lifecycleTask: Task<Void, Never>?
   private var runtimeReporter: TunnelMobileRuntimeReporter?
   private let pathQueue = DispatchQueue(
@@ -163,11 +162,8 @@ final class PacketTunnelProvider:
           networkSettings: ProviderNetworkSettingsSession(
             provider: self
           ),
-          limits: limits
-        )
-        let packetFlow = ProviderPacketFlowSession(
-          provider: self,
-          limits: limits
+          limits: limits,
+          packetTransport: .nativeUTUN
         )
         do {
           try await coordinator.start()
@@ -191,10 +187,6 @@ final class PacketTunnelProvider:
               self.errorCode = nil
               self.state = .running
               self.startPathMonitoring(coordinator: coordinator)
-              self.startPacketLoops(
-                coordinator: coordinator,
-                packetFlow: packetFlow
-              )
             }
           ) else {
             await coordinator.stop()
@@ -316,7 +308,6 @@ final class PacketTunnelProvider:
     sequence &+= 1
     state = .stopping
     stopPathMonitoring()
-    cancelPacketTasks()
     cancelLifecycleReporting()
     guard let runtime else {
       if let pendingStartup {
@@ -586,7 +577,6 @@ final class PacketTunnelProvider:
     }
     state = .stopping
     stopPathMonitoring()
-    cancelPacketTasks()
     cancelLifecycleReporting()
     let reporter = runtimeReporter
     if let coordinator = runtime {
@@ -609,43 +599,6 @@ final class PacketTunnelProvider:
       requestID: request.requestID,
       nodeID: current.nodeID
     )
-  }
-
-  private func startPacketLoops(
-    coordinator: TunnelRuntimeCoordinator,
-    packetFlow: ProviderPacketFlowSession
-  ) {
-    cancelPacketTasks()
-    let appleToEngine = Task { [weak self] in
-      do {
-        while !Task.isCancelled {
-          let packets = try await packetFlow.read()
-          try Task.checkCancellation()
-          try await coordinator.sendFromApple(packets)
-        }
-      } catch is CancellationError {
-        return
-      } catch {
-        await self?.packetFlowFailed(coordinator: coordinator)
-      }
-    }
-    let engineToApple = Task { [weak self] in
-      do {
-        while !Task.isCancelled {
-          let packets = try await coordinator.receiveForApple()
-          try Task.checkCancellation()
-          try packetFlow.write(packets)
-        }
-      } catch is CancellationError {
-        return
-      } catch {
-        await self?.packetFlowFailed(coordinator: coordinator)
-      }
-    }
-    packetTasks = [appleToEngine, engineToApple]
-    if runtime !== coordinator || state != .running {
-      cancelPacketTasks()
-    }
   }
 
   private func startLifecycleReporting(
@@ -919,7 +872,6 @@ final class PacketTunnelProvider:
     runtime = nil
     runtimeGeneration = nil
     stopPathMonitoring()
-    cancelPacketTasks()
     cancelLifecycleReporting()
     let reporter = runtimeReporter
     runtimeReporter = nil
@@ -933,44 +885,6 @@ final class PacketTunnelProvider:
       return
     }
     cancelTunnelWithError(Self.failure("network-rebind-failed"))
-  }
-
-  private func packetFlowFailed(
-    coordinator: TunnelRuntimeCoordinator
-  ) async {
-    guard runtime === coordinator, state == .running else {
-      return
-    }
-    guard let cleanupBarrier = beginTerminalCleanup() else {
-      return
-    }
-    defer {
-      finishTerminalCleanup(cleanupBarrier)
-    }
-    runtime = nil
-    runtimeGeneration = nil
-    stopPathMonitoring()
-    cancelPacketTasks()
-    cancelLifecycleReporting()
-    let reporter = runtimeReporter
-    runtimeReporter = nil
-    await reporter?.terminalize()
-    reportStoppedBestEffort(reporter)
-    errorCode = "packet-flow-failed"
-    state = .extensionError
-    TunnelLog.record(.packetFlowFailed)
-    await coordinator.stop()
-    guard runtime == nil, state == .extensionError else {
-      return
-    }
-    cancelTunnelWithError(Self.failure("packet-flow-failed"))
-  }
-
-  private func cancelPacketTasks() {
-    for task in packetTasks {
-      task.cancel()
-    }
-    packetTasks.removeAll(keepingCapacity: false)
   }
 
   private func mobileRuntimeFailed(
@@ -991,7 +905,6 @@ final class PacketTunnelProvider:
     runtime = nil
     runtimeGeneration = nil
     stopPathMonitoring()
-    cancelPacketTasks()
     cancelLifecycleReporting()
     let reporter = runtimeReporter
     runtimeReporter = nil

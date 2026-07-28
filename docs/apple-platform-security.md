@@ -499,8 +499,8 @@ Packet Tunnel extension, binds the exact reproducible framework-v5
 `MeshMobile.xcframework` input, and statically links its Go/Nebula archive into
 the extension without a dynamic framework dependency. The compiled
 enrollment, renewal, credential-rotation, runtime-report, identity-removal,
-engine, settings, Apple callback, and network-path rebind paths are present,
-but no receipt or TestFlight state claims an executed callback, applied
+engine, settings, native `utun`, and network-path rebind paths are present,
+but no receipt or TestFlight state claims an executed provider, applied
 interface setting, installed Keychain item, lifecycle convergence, secure
 deletion, or physical packet path.
 The containing app and extension implement the provision-first ceremony from
@@ -631,7 +631,7 @@ runtime modules, 65 Syft packages, 66 SPDX packages, two empty privacy
 manifests, and two empty Gitleaks reports. Grype database schema v6.1.9 built at
 `2026-07-24T07:05:19Z` reports two non-fixable Unknown matches for advisory
 `GO-2026-5932`, and no High/Critical or published-fix finding. The receipt
-records static engine linkage and source-wired Apple packet callbacks, but
+records the pre-successor static engine linkage and Apple packet callbacks, but
 runtime packet-flow connection, applied network settings, signature,
 entitlements, physical-device validation, and distribution validation remain
 false. Its clean-source local simulator boundary is not an independent CI
@@ -718,23 +718,19 @@ framework. Physical-device packet-path and Apple release gates remain
 independent.
 
 Apple's documented `NEPacketTunnelFlow` API exposes packet read/write
-callbacks. Mesh does not adopt the current upstream mobile implementation's
-utun-descriptor discovery. Nebula 1.10.3 also exports an in-memory
-`overlay.UserDevice`; the bounded Mesh adapter validates and copies complete
-IPv4/IPv6 packets between that device and the exported engine callback loop.
-Go tests prove both directions, ownership, malformed-length rejection, bounds,
-and close behavior. A native-host feasibility test also runs two pinned Nebula
-engines with callback devices and real loopback UDP, proves
-certificate-authenticated direct ICMP request/reply packets with no relay,
-rebinds the real UDP listener and proves post-rebind traffic, and repeats clean
-start/stop after translating `UserDevice` closure to the `os.ErrClosed`
-condition required by Nebula's production loop. The engine session now
-connects that adapter to Swift in the universal simulator build, and the
-provider maps Apple callback batches into the bounded coordinator. This
-remains source/link and native-host compatibility evidence only: no valid
-device handoff has started the extension, and there is no physical-device,
-accepted Apple interface, iOS UDP, resource, roaming, or iOS packet evidence.
-Apple-supported API review and physical native proofs must precede a tunnel
+callbacks. Mobile Nebula's production iOS implementation instead discovers the
+provider's `com.apple.net.utun_control` descriptor and constructs Nebula with
+`overlay.NewFdDeviceFromConfig`. After the separate callback transport failed
+to produce a working physical tunnel, Mesh adopted that upstream-aligned path
+for the controlled-beta successor. Descriptor discovery remains inside Go,
+scans only 0 through 1024, validates `AF_SYSTEM` and the control ID, and
+returns no descriptor, packet, path, or credential to Swift. The callback
+adapter remains a deterministic native-host test fixture: it still proves
+certificate-authenticated direct packets, rebind, bounds, ownership, and clean
+shutdown over loopback UDP. Production source tests require native transport
+and reject provider packet-copy task wiring. This remains source/link evidence
+only; a physical successor must still prove descriptor discovery, accepted
+Apple settings, iOS UDP, resources, roaming, and peer traffic before any
 support claim.
 
 The authenticated payload also contains a data-only network-settings plan.
@@ -848,10 +844,12 @@ the Mesh extension identifier, starts an existing authenticated local identity
 without another enrollment token, requests stop, and sends a fresh
 request-ID-bound status request. A running response is produced from the real
 coordinator and carries its configuration revision, certificate generation,
-engine identity, and directional Apple callback counters; non-running states
-cannot carry those fields. The host verifies the response request ID and exact
-schema before display. Neither the counters nor `NEVPNStatus` is presented as
-peer authentication or end-to-end connectivity. The onboarding surface is
+engine identity, and legacy counter fields; non-running states cannot carry
+those fields. Native-`utun` mode leaves the legacy callback counters at zero
+and the host does not present them as transport evidence. The host verifies the
+response request ID and exact schema before display. Neither the runtime state
+nor `NEVPNStatus` is presented as peer authentication or end-to-end
+connectivity. The onboarding surface is
 scrollable for compact iPhones and enlarged text. These controls are current
 unsigned source evidence and are not present in the uploaded framework-v4
 TestFlight build.
@@ -862,24 +860,24 @@ rotation, revocation cutoff, Keychain deletion, or lifecycle convergence
 evidence.
 
 A tested runtime coordinator enforces engine identity, engine preparation,
-Apple settings, packet-pump start, and engine start in that order. Stop and
-startup, packet, and rebind failures run reverse cleanup, and running evidence
-is not emitted before all stages complete. Its packet-pump actor copies and validates complete
-packets, bounds batches and directional queues, rejects a whole batch under
-pressure, preserves accepted order, records directional counters, and clears
-queued bytes on idempotent stop. Terminal failure and identity-removal cleanup
+Apple settings, and engine start in that order. Native-`utun` mode skips the
+packet pump and rejects callback send or receive operations. Stop, startup, and
+rebind failures run reverse cleanup, and running evidence is not emitted before
+all stages complete. The retained test packet-pump actor copies and validates
+complete packets, bounds batches and directional queues, rejects a whole batch
+under pressure, preserves accepted order, records directional counters, and
+clears queued bytes on idempotent stop. Terminal failure and identity-removal cleanup
 also own a completion barrier. A concurrent Apple stop waits for that barrier
 before resetting the lifecycle gate, preventing an older cleanup task from
 reopening or overwriting a replacement start.
 
-The reviewed unsigned provider build uses the statically linked engine
-adapter. Its two `NEPacketTunnelFlow` tasks start only after engine
-preparation, settings, pump, and engine startup succeed. After the initial
-network observation, `NWPathMonitor` changes invoke the engine's UDP rebind;
-failure cancels both tasks, stops the engine, clears settings, and terminates
-the tunnel with a fixed code. The artifact receipt proves those symbols and
-source paths but records no executed callback or applied setting, so packet
-transport and roaming remain source-contract evidence, not iOS device evidence.
+The successor provider uses the statically linked engine adapter and selects
+native `utun` transport. It does not create `NEPacketTunnelFlow` packet-copy
+tasks. After the initial network observation, `NWPathMonitor` changes invoke
+the engine's UDP rebind; failure stops the engine, clears settings, and
+terminates the tunnel with a fixed code. Source gates prove that selection but
+record no executed provider or applied setting, so packet transport and roaming
+remain source-contract evidence, not iOS device evidence.
 
 ## Evidence classification
 
@@ -1046,12 +1044,12 @@ UI language separately presents control-plane reachability, signed lifecycle
 state, tunnel runtime, peer authentication, relay use, and packet-path proof.
 It never collapses these into “connected.”
 
-The Packet Tunnel extension source logs only eighteen fixed reviewed event
+The Packet Tunnel extension source logs only fifteen fixed reviewed event
 codes: start and stop requests, three configuration rejection classes,
-enrollment-request rejection, enrollment failure, lifecycle deferral,
-lifecycle failure, agent-authorization rejection, unavailable engine,
-network-rebind failure, packet-flow failure, and accepted or rejected bounded
-status requests, plus identity-removal requested, completed, or failed.
+lifecycle deferral, lifecycle failure, agent-authorization rejection,
+unavailable engine,
+network-rebind failure, accepted or rejected bounded status requests, and
+identity-removal requested, completed, or failed.
 Its logging API accepts an enum rather than text and never receives the
 provider stop reason, configuration, errors, identities, packet content, or
 dynamic values. A simulator build proves that wrapper is compiled into the

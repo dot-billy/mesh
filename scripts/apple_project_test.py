@@ -448,21 +448,14 @@ class AppleProjectTest(unittest.TestCase):
         self.assertIn("NWPathMonitor()", provider)
         self.assertIn("TunnelRuntimeCoordinator(", provider)
         self.assertIn("TunnelEngineSessionFactory.make(", provider)
+        self.assertIn("packetTransport: .nativeUTUN", provider)
         self.assertIn("TunnelLifecycleSessionFactory.make()", provider)
         self.assertIn("startPostConnectControlPlaneWork(", provider)
         self.assertIn("reportStoppedBestEffort(", provider)
-        self.assertIn("ProviderPacketFlowSession(", provider)
-        self.assertIn("self.startPacketLoops(", provider)
-        self.assertIn("try await packetFlow.read()", provider)
-        self.assertIn(
-            "try await coordinator.sendFromApple(packets)",
-            provider,
-        )
-        self.assertIn(
-            "try await coordinator.receiveForApple()",
-            provider,
-        )
-        self.assertIn("try packetFlow.write(packets)", provider)
+        self.assertNotIn("ProviderPacketFlowSession(", provider)
+        self.assertNotIn("self.startPacketLoops(", provider)
+        self.assertNotIn("packetFlow.read()", provider)
+        self.assertNotIn("packetFlow.write(", provider)
         self.assertIn(
             "self.startPathMonitoring(coordinator: coordinator)",
             provider,
@@ -510,6 +503,9 @@ class AppleProjectTest(unittest.TestCase):
         ).read_text()
         for required in (
             "public actor TunnelRuntimeCoordinator",
+            "public enum TunnelRuntimePacketTransport",
+            "case nativeUTUN",
+            "packetTransport == .packetFlow",
             "try await engine.prepare(configuration: configuration)",
             "try await networkSettings.apply(",
             "try await pump.start()",
@@ -614,6 +610,24 @@ class AppleProjectTest(unittest.TestCase):
             "enum TunnelEngineSessionFactory",
         ):
             self.assertIn(required, go_adapter)
+        engine_session = (
+            IOS_TUNNEL / "engine" / "engine_session.go"
+        ).read_text()
+        for required in (
+            "nativeUTUNDeviceFactory",
+            "overlay.NewFdDeviceFromConfig(",
+            "discoverUTUNFileDescriptor()",
+        ):
+            self.assertIn(required, engine_session)
+        utun = (
+            IOS_TUNNEL / "engine" / "utun_fd_darwin.go"
+        ).read_text()
+        for required in (
+            "com.apple.net.utun_control",
+            "unix.Getpeername(",
+            "unix.IoctlCtlInfo(",
+        ):
+            self.assertIn(required, utun)
         host_enrollment = (
             IOS_TUNNEL
             / "MeshTunnelHost"
@@ -1428,14 +1442,13 @@ class AppleProjectTest(unittest.TestCase):
             3,
         )
         for start, end in (
-            ("private func removeIdentity(", "private func startPacketLoops("),
             (
-                "private func networkRebindFailed(",
-                "private func packetFlowFailed(",
+                "private func removeIdentity(",
+                "private func startLifecycleReporting(",
             ),
             (
-                "private func packetFlowFailed(",
-                "private func cancelPacketTasks(",
+                "private func networkRebindFailed(",
+                "private func mobileRuntimeFailed(",
             ),
             (
                 "private func mobileRuntimeFailed(",
@@ -1491,7 +1504,6 @@ class AppleProjectTest(unittest.TestCase):
                 "agent-authorization-rejected",
                 "engine-unavailable",
                 "network-rebind-failed",
-                "packet-flow-failed",
                 "stop-requested",
                 "status-request-accepted",
                 "status-request-rejected",
@@ -1549,10 +1561,10 @@ class AppleProjectTest(unittest.TestCase):
             tunnel["packet_bridge"],
             {
                 "nebula_adapter": (
-                    "github.com/slackhq/nebula/overlay.UserDevice"
+                    "github.com/slackhq/nebula/overlay.NewFdDeviceFromConfig"
                 ),
-                "apple_transport": "NEPacketTunnelFlow callbacks",
-                "status": "authenticated-udp-exported-source-wired",
+                "apple_transport": "NetworkExtension utun descriptor",
+                "status": "mobile-nebula-native-utun-source-wired",
             },
         )
         self.assertEqual(
@@ -1567,7 +1579,6 @@ class AppleProjectTest(unittest.TestCase):
                     "engine-identity",
                     "engine-prepare",
                     "apple-network-settings",
-                    "packet-pump",
                     "engine-start",
                 ],
                 "status": (
@@ -2100,8 +2111,12 @@ class AppleProjectTest(unittest.TestCase):
         self.assertTrue(darwin_packages)
         for package in sorted(darwin_packages):
             with self.subTest(darwin_package=package):
-                self.assertIn(f"./{package}", workflow)
-                self.assertIn(f"./{package}", makefile)
+                if package == "ios-tunnel/engine":
+                    self.assertIn("cd ios-tunnel/engine", workflow)
+                    self.assertIn("cd ios-tunnel/engine", makefile)
+                else:
+                    self.assertIn(f"./{package}", workflow)
+                    self.assertIn(f"./{package}", makefile)
         desktop_test = (
             DESKTOP
             / "test"

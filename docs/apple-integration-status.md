@@ -18,7 +18,7 @@ The goal-to-evidence mapping and remaining external dependencies are tracked in
 | Mesh Admin for macOS | A sandboxed full-window Flutter runner builds unsigned Debug arm64 and unsigned Release arm64+x86_64 applications from the pinned SDK. Source tests cover strict browser authorization, exact-origin device-only Keychain configuration, one-time-secret lifecycle erasure including fixed data-free native lock, screen sleep, system sleep, application hide, main-window close, and termination events, keyboard and enlarged-text behavior, viewer-denied mutation behavior, and authoritative session refresh on every foreground fleet poll. A fixed data-free native menu bridge wires only Refresh and Preferences into the same Flutter controller/navigation path. A role or exact-permission downgrade removes privileged presentation and one-time material; a server-revoked session signs out and erases local cookie custody. An exact-confirmation pre-uninstall action attempts both the session and saved-profile Keychain deletions even if one fails, clears in-process custody, and explicitly retains MDM, OS permissions, server records, and any separately installed Node. The source also provides an explicit bounded diagnostic-copy schema containing only aggregate state and fixed remediation codes, truthfully declaring non-expiring macOS clipboard custody and recipient deletion limits, and an Apple Unified Logging wrapper that accepts only a closed enum of reviewed lifecycle codes. A native reader and Dart independently validate a strict non-secret managed-preferences schema; a verifier pins an unsigned `com.apple.ManagedClient.preferences` source example. A native test performs an isolated file-Keychain round trip. A cross-language test runs every current `MeshApi` read and mutation against the real file-backed Go control plane with exact Nebula 1.10.3 certificate operations. The packaged app contains the exact minimal UserDefaults required-reason privacy manifest. Historical protected bytes authenticated to the live test control plane as `legacy_admin`, displayed one network and two active nodes, and restored the Keychain session after process termination and relaunch; their nonportable v2 receipt is superseded. A clean replacement build, exact-tree security scan, protected signing/notarization job, and ordinary-umask second extraction now produce a v3 archive whose pre-archive and extracted tree identities match and whose portable verification, deep signature, profile, staple, and Gatekeeper checks pass. An explicitly disposable local-test root and two-of-two release threshold exercised the complete downloaded-artifact native verifier; its receipt binds all inputs and the private test keys were removed. | This is bounded local test evidence, not a release-authority decision. Embedded notice coverage is not legal approval, and final signed dependency/privacy reconciliation remains pending. No approved production root or manifest, signed MDM profile, managed-device installation, publication, public re-download, production-root native receipt, or clean-host evidence exists. Prove actual lock/sleep/hide/window-close erasure on the replacement signed app, run real OIDC-provider and physical-browser flows, complete physical accessibility and clean-host matrices, and pass release-metadata, publication, update, uninstall, real log-collection/redaction, MDM, and support gates. |
 | Mesh Node for macOS | The Darwin build of the narrow `mesh-install` command now composes authenticated online/offline intake, immutable publication, journal recovery, fixed launchd activation, post-enrollment runtime-gate opening, exact persisted-previous rollback, and state-last runtime deactivation with retained trust/enrollment state. A compiled-policy adapter derives exact Developer ID requirements for all three executables, strictly invokes the fixed Apple codesign tool, authenticates launchctl's Apple designated requirement, and is wired before activation and enrollment execution. Its development sentinel fails closed. Protected authoring source now converts exact unsigned bundle-v1 inputs into deterministic signed bundle-v2 artifacts only after proving signature-region-only Mach-O replacement and matching a fresh native receipt; release preflight requires that native receipt plus a final package-security receipt. A Darwin `meshctl` source boundary authenticates the exact active installed release, current selector, live plist, quiescent installer state, closed gate, and compiled code-signature policy before any runtime execution, then deliberately rejects production enrollment. Existing Darwin code-signing-policy, bundle, package-security, launchd, native-evidence, and node-agent source tests pass on the development Mac. A fresh root-owned Apple Silicon v3 receipt binds the macOS 26.5 `O_NOFOLLOW_ANY`, symlink-mode, and artifact-lock compatibility fixes and passes every enabled native path, installer-gate, exact-child, process-group, and reap test; it explicitly records no bundle and no system-launchctl mutation. A separately gated attempt exercised and cleaned the exact proof launchd label before the unsigned staging bundle was rejected by the fail-closed code-signature admission policy. Two locally installed Developer ID Installer identities were enumerated by exact SHA-1 fingerprint, and one signed a new payload-free proof package whose signature validates as trusted with a secure timestamp; the proof package was never installed or notarized. | Final Team ID and code identifiers are not approved or embedded; no real Developer ID signed bundle-v2, installer payload package, or full verifier-accepted native receipt exists. The partial receipt and payload-free signature prove only bounded native and local Installer-identity feasibility. Phase 3 production-command execution, enrollment, immutable-runtime, full system-launchd lifecycle, reboot, interruption, upgrade, rollback, uninstall, revocation, packet, Intel and full Apple-silicon, native signature, protected signing, notarization, clean-host, and MDM proofs remain pending. Production enrollment stays disabled. |
 | Mesh Admin for iPhone and iPad | A pinned Flutter iOS runner now compiles as an unsigned universal iPhone/iPad simulator application with a create-only source receipt. It uses the shared API/auth/RBAC/transport/presentation code, including authoritative session refresh on every foreground fleet poll, exact server-returned permission presentation, downgrade-driven removal of privileged state and one-time material, and fail-closed sign-out after server revocation. It also has iPhone and iPad compact layouts, explicit device-only Keychain options, separate development/TestFlight/App Store/managed entitlement files, a minimal privacy manifest, lifecycle and protected-data secret erasure, app-switcher redaction, foreground-only polling, and a local-only two-minute iOS pasteboard boundary that now fails closed if the native bridge is absent. The explicit bounded diagnostic-copy schema uses the same expiring boundary and excludes origins, names, IDs, credentials, raw errors, logs, and configuration. A native Unified Logging wrapper accepts only fixed lifecycle codes and cannot receive arbitrary strings. Native and Dart managed-application readers independently accept only seven reviewed non-secret fields; locked origin and notification policy are enforced in the controller/UI, and a verifier pins the MDM dictionary source example. Widget evidence now covers iPhone portrait/landscape, iPad split/portrait/full landscape, 100%/200%/320% text scaling, reduced-motion and high-contrast propagation, labeled controls, iOS target sizes, and contrast. Shared tests and native simulator XCTest cover the implemented source contracts. A local create-only simulator security receipt binds the exact app tree, reconciles 49 runtime hosted packages with 68 Syft/69 SPDX packages and all 49 embedded notice headings, validates the exact four-manifest packaged privacy inventory, reports zero matches against a fresh Grype database, and requires empty metadata and all-app-file string Gitleaks reports. Apple Team `Y3P5UNNG23` registered `io.rw0.mesh.admin.mobile`; App Store Connect app `6794340010` and a valid App Store profile exist. A local signed Release archive passed store and signature validation, and Xcode successfully exported a strictly reverified App Store IPA under the exact manual export policy. Product-specific distribution receipt v3 independently binds the Admin profile, archive tree, exported IPA digest, Team, and Admin-specific limitations without coupling the gate to Mesh Tunnel. | The local security receipt is from a dirty-checkout debug simulator build and cannot satisfy a signed distribution release; it has not been refreshed for the local signed archive. Notice coverage is not legal approval, and the reviewed packaged privacy inventory is not a final App Store declaration. The MDM dictionary is an unsigned source example, not distribution evidence. The IPA was not uploaded and is not release-authorized. No physical-device installation, physical Keychain access-group proof, real browser return, lock/unlock, screenshot, notification, supervised/unsupervised result, signed managed configuration, VPN/on-demand profile, network-transition, update, TestFlight upload, Custom App selection, App Store declaration, real log-collection/redaction, or distribution evidence exists. The generic generated app icon is also not release artwork. |
-| Mesh Tunnel for iPhone and iPad | The UIKit host, Packet Tunnel extension, framework v5, shared device-only Keychain custody, lifecycle refresh, runtime evidence, and identity removal compile and pass local source/security gates. Build 8 follows Mobile Nebula's provision-first/connect-second sequence: validate one manager, self-enroll, perform bounded Go enrollment and authenticated site activation in the host, enable/save/reload the manager, refresh with the existing credential, write one exact Keychain-backed start authorization, and then start the provider. The provider rejects Settings-only starts and performs only local configuration, Apple settings, and Nebula startup before completing Apple's callback; reporting begins afterward. Exact intent and candidate checks support interrupted enrollment without another token. Builds 2 through 9 are externally distributed. Build 5 physically proved OIDC, network selection, and host self-enrollment; Build 6 returned `apple-vpn-disconnected` with zero provider requests; Build 7 stalled before token issuance. Build 8 physically completed OIDC and server enrollment: audit proves the existing iPhone enrollment was reissued and node `E3kVivz4BJPeBgvh` became active at `2026-07-27T20:39:01Z`. The containing app then unexpectedly terminated during post-enrollment host handoff. Build 9 subsequently read and displayed the authenticated local identity, proving that the local configuration commit survived. Its initial inspection race allowed Sign in to enter `failed-starting` before Start existing tunnel was enabled. Current successor source disables all actions until that inspection completes and redirects a concurrently observed current identity to its prepared same-origin manager without OIDC, self-enrollment, or another token. | Committed local configuration and retained identity recovery are now physically proved. No build has proved a running extension or packet callback. Initial control gating and the no-login existing-identity redirect are source-tested only. Installed-device provider startup, lifecycle, credential rotation, roaming, response-loss, crash/restart, packets, and successor distribution remain required. |
+| Mesh Tunnel for iPhone and iPad | The UIKit host, Packet Tunnel extension, framework v5, shared device-only Keychain custody, lifecycle refresh, runtime evidence, and identity removal compile and pass local gates. Builds 2 through 10 are externally distributed. Build 8 physically completed provision-first OIDC and server enrollment; Build 9 recovered and displayed the committed authenticated local identity; Build 10 corrects its first-inspection race. No released build proved packet transport. The current successor retains Mesh authentication, signed configuration, Go/Keychain custody, and Mobile Nebula's manager lifecycle, but replaces the separate Swift packet-copy path with Mobile Nebula's production transport: Go validates the provider-owned `utun` descriptor and constructs pinned Nebula with `overlay.NewFdDeviceFromConfig`. Production source does not start `NEPacketTunnelFlow` copy tasks. | Committed local configuration and retained identity recovery are physically proved. Native-transport selection passes source and simulator gates only. Installed-device provider startup, lighthouse reachability, authenticated peer traffic, lifecycle, credential rotation, roaming, response loss, crash/restart, resource measurements, and successor distribution remain required. |
 | Existing platforms | Public/API documentation checks and the exact Nebula 1.10.3 `internal/httpapi` test pass on the development Mac. Targeted Darwin Go tests pass with a private physical temporary directory. A digest-pinned Go 1.26.5 Debian 12 LinuxKit VM also passed the cold-cache dual-architecture Darwin staging-bundle smoke and the Linux-verifiable Darwin path-security cross-build; its receipt explicitly denies native-host and release-authority claims. A separate exact-Go non-root Linux container passes corrected `mesh-install`, `mesh-release`, and every `linuxinstall` test except the three that explicitly need host anonymous-file, authentic systemd, or unified-cgroup behavior. An isolated current-working-copy snapshot cross-compiles the complete root-module Windows test graph and all packages for both `amd64` and `arm64`; the tests were deliberately not executed through that cross-compile. | The repository-wide Linux and Windows build, test, package, storage, backup, and packet gates must run on their native CI hosts before any Apple release. Cross-compilation, the LinuxKit VM, and the Docker Desktop container are supplementary and do not replace native Windows or Linux CI or the root-only native-Mac lifecycle harness. `make test` is not a valid macOS-wide gate because the repository contains Linux- and Windows-host-specific packages. |
 
 ### Current TestFlight successor state
@@ -43,6 +43,9 @@ terminated in post-enrollment host handoff. Build 9 then displayed the
 authenticated local identity retained from that attempt, proving local
 configuration commit and recovery, but its first-inspection race allowed
 Sign in to enter `failed-starting` before Start existing tunnel was enabled.
+Build 10 corrects that inspection race. The current successor additionally
+adopts Mobile Nebula's native `utun`-descriptor engine transport; this is
+source-tested and not yet physical packet-path evidence.
 The successor keeps every action disabled until initial inspection completes;
 if setup concurrently discovers an authenticated current identity, it
 prepares only the same-origin manager and returns to Start existing tunnel
@@ -243,7 +246,7 @@ The unsigned universal Tunnel simulator tree is
 its nested extension tree is
 `68d08e1d106c6158580bdca6fe30f61f80d81ee450a6d401dd156f5f38cce6fe`.
 Both targets report version `0.1.0` build `2`.
-Source receipt SHA-256
+Historical source receipt SHA-256
 `9a065b593c8a0133282f957bfece392ea76dd228f69376e57b8a3375db93375e`
 binds the exact enrollment, lifecycle, runtime-report and identity-removal
 adapters, monotonic activation, authenticated remote endpoint, runtime
@@ -257,7 +260,7 @@ binds all ten product files, an independently empty SwiftPM dependency graph,
 the same exact 29-module runtime, 65 Syft and 66 SPDX packages, two empty
 privacy manifests, two non-fixable Unknown `GO-2026-5932` matches, no
 High/Critical or published-fix finding, and two empty Gitleaks reports. It
-records static engine linkage and source-wired Apple packet flow but no
+records the pre-successor static engine linkage and Apple packet flow but no
 executed callback, applied setting, signature, physical-device validation, or
 distribution validation. These v5 bytes are not the earlier signed/TestFlight
 build.
@@ -626,8 +629,9 @@ The current source boundary provides:
   local identity without re-enrollment, request stop, and inspect a
   request-ID-bound extension outcome. Running evidence comes from the live
   coordinator and includes configuration revision, certificate generation,
-  engine identity, and directional Apple callback counters. The UI does not
-  present those counters or `NEVPNStatus` as peer or end-to-end connectivity,
+  engine identity, and legacy counter fields. Native-`utun` mode leaves the
+  callback counters at zero, and the UI does not present runtime state or
+  `NEVPNStatus` as peer or end-to-end connectivity,
   and its scrollable surface keeps every control reachable on compact iPhones
   and with larger text;
 - exact, unknown-field-rejecting control, configuration, authenticated
@@ -700,16 +704,16 @@ The current source boundary provides:
   activation complete before provider start and engine construction. Start
   generations prevent a
   detached continuation from an earlier stopped start from attaching to a
-  later start or clearing its task. Its two
-  source-wired `packetFlow` tasks start only after engine preparation,
-  settings, pump, and engine startup; subsequent `NWPathMonitor` updates invoke
-  bounded UDP rebind, and any packet or rebind failure cancels the tasks and
-  fails the tunnel closed;
+  later start or clearing its task. Production sessions discover and validate
+  the provider-owned `utun` descriptor inside Go and construct Nebula with
+  `overlay.NewFdDeviceFromConfig`; no Swift packet-copy tasks are started.
+  Subsequent `NWPathMonitor` updates invoke bounded UDP rebind, and rebind
+  failure stops the engine and fails the tunnel closed;
 - an extension-only Unified Logging wrapper that accepts a closed enum of
-  sixteen fixed start, stop, configuration-rejection, enrollment-rejection,
+  fifteen fixed start, stop, configuration-rejection,
   lifecycle-deferred, lifecycle-failure,
   agent-authorization-rejection, unavailable-engine, network-rebind-failure,
-  packet-flow-failure, status-request, and identity-removal codes; no stop
+  status-request, and identity-removal codes; no stop
   reason, configuration content, error value, identity, packet data, or
   arbitrary string can enter the logging call;
 - an unsigned simulator build receipt proving one universal iPhone/iPad host,
@@ -721,9 +725,9 @@ The current source boundary provides:
   identity-removal/engine static symbols plus the settings contract,
   authenticated remote endpoint, Apple mapper, packet pump, runtime
   coordinator, provider adapters, provider, network-path rebind, and Xcode
-  project source digests. It records a statically linked engine and
-  source-wired Apple packet callbacks, but no runtime packet connection or
-  physical-device validation. It also binds the current request-bound status,
+  project source digests. The successor receipt records a statically linked
+  engine and native-`utun` source selection, but no runtime packet connection
+  or physical-device validation. It also binds the current request-bound status,
   existing-identity start, stop, and scrollable-host source boundaries; and
 - a separate Go packet-session framework source boundary pinned to Nebula 1.10.3 and
   gomobile
@@ -753,27 +757,21 @@ linkage and physical-device validation are separate receipt scopes. A dirty
 working path and separately committed clean-source path produced the exact
 same framework tree.
 
-This remains source/link and reproducibility evidence, not a tunnel. Apple's
-documented `NEPacketTunnelFlow` interface presents packet read/write callbacks.
-Although the current upstream mobile integration discovers a utun descriptor,
-Mesh has not adopted that technique: pinned Nebula 1.10.3 also exposes an
-in-memory `overlay.UserDevice`. A bounded Mesh adapter validates and copies
-exact IPv4/IPv6 packets between that device's pipes and the exported engine
-callback loop, bounds packets to 65,575 bytes, rejects malformed lengths, and
-proves both directions and close behavior in Go tests. A separate
-native-host test constructs two real pinned Nebula controls with ephemeral
-certificates, callback devices, and actual loopback UDP sockets; an ICMP
-request and reply cross the authenticated direct tunnel unchanged, certificate
-fingerprints match, relay state stays empty, and 20 repeated start/packet/stop
-runs pass after the adapter translates close into Nebula's expected
-`os.ErrClosed` contract. Each run also rebinds the member's real UDP listener
-through Nebula's mobile rebind method and proves another authenticated packet
-arrives. The engine session exports that callback boundary to Swift and is
-statically linked into the unsigned simulator extension. The coordinator
-proves bounded queue backpressure, startup ordering, reverse cleanup,
-network-path rebind, lifecycle gating, scheduled runtime evidence, and
-source-wired Apple packet-flow handling. Framework-v5 TestFlight builds 2
-through 8 reached controlled external testing. Build 5 physically completed
+This remains source/link and reproducibility evidence, not a tunnel. Mobile
+Nebula's production iOS runtime discovers the provider-owned `utun` descriptor
+and constructs Nebula with `overlay.NewFdDeviceFromConfig`. The successor now
+uses that same path. Go bounds the descriptor scan to 0 through 1024, validates
+the `AF_SYSTEM` control ID, retains key custody, and returns no descriptor or
+packet surface to Swift. Production provider source selects native transport
+and starts no `NEPacketTunnelFlow` copy tasks. The in-memory
+`overlay.UserDevice` adapter remains a deterministic test fixture: tests still
+prove exact IPv4/IPv6 validation, bounds, ownership, both directions, clean
+closure, two real pinned Nebula controls over loopback UDP, authenticated
+direct packets, empty relay state, and post-rebind traffic. The coordinator
+proves native-mode startup ordering, reverse cleanup, network-path rebind,
+lifecycle gating, and scheduled runtime evidence. These do not prove physical
+descriptor discovery or traffic. Framework-v5 TestFlight builds 2
+through 10 reached controlled external testing. Build 5 physically completed
 the containing-app OIDC, network-selection, and self-enrollment write. Build 6
 reported fixed stage `apple-vpn-disconnected`; exact sanitized server
 correlation recorded the self-enrollment reissue and zero extension preflight,
@@ -809,8 +807,8 @@ bytes or that a physical extension emitted the record.
 
 Security approval, physical secure-removal and
 heartbeat/renewal/rotation/revocation behavior, physical-device feasibility,
-executed callback cancellation, accepted Apple network settings, iOS UDP
-operation, resource measurement, and real-device packet evidence remain
+native descriptor discovery, accepted Apple network settings, iOS UDP
+operation, resource measurement, and real-device peer evidence remain
 required before any tunnel claim may be made.
 
 ## Phase 4 application-release source boundary

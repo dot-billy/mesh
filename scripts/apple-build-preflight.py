@@ -226,10 +226,10 @@ def require_configuration(inputs: dict[str, object], flutter: dict[str, object])
         or ios_tunnel.get("packet_bridge")
         != {
             "nebula_adapter": (
-                "github.com/slackhq/nebula/overlay.UserDevice"
+                "github.com/slackhq/nebula/overlay.NewFdDeviceFromConfig"
             ),
-            "apple_transport": "NEPacketTunnelFlow callbacks",
-            "status": "authenticated-udp-exported-source-wired",
+            "apple_transport": "NetworkExtension utun descriptor",
+            "status": "mobile-nebula-native-utun-source-wired",
         }
         or ios_tunnel.get("runtime_startup")
         != {
@@ -240,7 +240,6 @@ def require_configuration(inputs: dict[str, object], flutter: dict[str, object])
                 "engine-identity",
                 "engine-prepare",
                 "apple-network-settings",
-                "packet-pump",
                 "engine-start",
             ],
             "status": "static-linked-simulator-build-proven-device-pending",

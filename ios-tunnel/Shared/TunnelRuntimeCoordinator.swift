@@ -17,6 +17,11 @@ public enum TunnelRuntimeCoordinatorError: Error, Equatable {
   case packetBackpressure
 }
 
+public enum TunnelRuntimePacketTransport: Equatable, Sendable {
+  case nativeUTUN
+  case packetFlow
+}
+
 public protocol TunnelEngineSession: AnyObject, Sendable {
   func frameworkIdentity() async throws -> String
   func prepare(configuration: TunnelConfigurationPayload) async throws
@@ -48,6 +53,7 @@ public actor TunnelRuntimeCoordinator {
   private let engine: any TunnelEngineSession
   private let networkSettings: any TunnelNetworkSettingsSession
   private let pump: TunnelPacketFlowPump
+  private let packetTransport: TunnelRuntimePacketTransport
 
   private var state: TunnelRuntimeCoordinatorState = .idle
   private var enginePrepared = false
@@ -59,12 +65,14 @@ public actor TunnelRuntimeCoordinator {
     configuration: TunnelConfigurationPayload,
     engine: any TunnelEngineSession,
     networkSettings: any TunnelNetworkSettingsSession,
-    limits: TunnelPacketFlowPumpLimits
+    limits: TunnelPacketFlowPumpLimits,
+    packetTransport: TunnelRuntimePacketTransport = .packetFlow
   ) {
     self.configuration = configuration
     self.engine = engine
     self.networkSettings = networkSettings
     pump = TunnelPacketFlowPump(limits: limits)
+    self.packetTransport = packetTransport
   }
 
   public func start() async throws {
@@ -88,7 +96,9 @@ public actor TunnelRuntimeCoordinator {
       )
       settingsApplied = true
 
-      try await pump.start()
+      if packetTransport == .packetFlow {
+        try await pump.start()
+      }
       state = .startingEngine
       try await engine.start()
       engineStarted = true
@@ -100,7 +110,7 @@ public actor TunnelRuntimeCoordinator {
   }
 
   public func sendFromApple(_ packets: [TunnelPacket]) async throws {
-    guard state == .running else {
+    guard state == .running, packetTransport == .packetFlow else {
       throw TunnelRuntimeCoordinatorError.invalidTransition
     }
     guard try await pump.offerFromApple(packets) == .accepted else {
@@ -128,7 +138,7 @@ public actor TunnelRuntimeCoordinator {
   }
 
   public func receiveForApple() async throws -> [TunnelPacket] {
-    guard state == .running else {
+    guard state == .running, packetTransport == .packetFlow else {
       throw TunnelRuntimeCoordinatorError.invalidTransition
     }
     do {
@@ -189,7 +199,9 @@ public actor TunnelRuntimeCoordinator {
 
   private func cleanUp(failed: Bool) async {
     state = .stopping
-    await pump.stop()
+    if packetTransport == .packetFlow {
+      await pump.stop()
+    }
     if engineStarted || enginePrepared {
       await engine.stop()
     }

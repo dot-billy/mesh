@@ -10,7 +10,6 @@ enum TunnelLogEvent: String, CaseIterable {
   case agentAuthorizationRejected = "agent-authorization-rejected"
   case engineUnavailable = "engine-unavailable"
   case networkRebindFailed = "network-rebind-failed"
-  case packetFlowFailed = "packet-flow-failed"
   case stopRequested = "stop-requested"
   case statusRequestAccepted = "status-request-accepted"
   case statusRequestRejected = "status-request-rejected"
@@ -45,8 +44,6 @@ enum TunnelLog {
       logger.error("engine-unavailable")
     case .networkRebindFailed:
       logger.error("network-rebind-failed")
-    case .packetFlowFailed:
-      logger.error("packet-flow-failed")
     case .stopRequested:
       logger.notice("stop-requested")
     case .statusRequestAccepted:

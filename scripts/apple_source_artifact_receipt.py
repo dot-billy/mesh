@@ -635,6 +635,9 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
             raise ReceiptError("Mesh Tunnel packet pump boundary is incomplete")
     for required in (
         "public actor TunnelRuntimeCoordinator",
+        "public enum TunnelRuntimePacketTransport",
+        "case nativeUTUN",
+        "packetTransport == .packetFlow",
         "try await engine.prepare(configuration: configuration)",
         "try await networkSettings.apply(",
         "try await pump.start()",
@@ -777,17 +780,11 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "NWPathMonitor()",
         "TunnelRuntimeCoordinator(",
         "TunnelEngineSessionFactory.make(",
-        "ProviderPacketFlowSession(",
-        "self.startPacketLoops(",
-        "try await packetFlow.read()",
-        "try await coordinator.sendFromApple(packets)",
-        "try await coordinator.receiveForApple()",
-        "try packetFlow.write(packets)",
+        "packetTransport: .nativeUTUN",
         "self.startPathMonitoring(coordinator: coordinator)",
         "try await coordinator.rebind()",
         "stopPathMonitoring()",
         "cancelTunnelWithError(Self.failure(\"network-rebind-failed\"))",
-        "cancelTunnelWithError(Self.failure(\"packet-flow-failed\"))",
         "let request = try? TunnelControlRequest.decodeExact(messageData)",
         "responseRuntime.runtimeEvidence(",
         "TunnelControlOutcome(",
@@ -879,14 +876,13 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
             "reset lifecycle before completion"
         )
     for start, end in (
-        ("private func removeIdentity(", "private func startPacketLoops("),
         (
-            "private func networkRebindFailed(",
-            "private func packetFlowFailed(",
+            "private func removeIdentity(",
+            "private func startLifecycleReporting(",
         ),
         (
-            "private func packetFlowFailed(",
-            "private func cancelPacketTasks(",
+            "private func networkRebindFailed(",
+            "private func mobileRuntimeFailed(",
         ),
         (
             "private func mobileRuntimeFailed(",
@@ -966,10 +962,6 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
             "self.startPathMonitoring(coordinator: coordinator)",
             provider_running_index,
         )
-        < sources["provider"].index(
-            "self.startPacketLoops(",
-            provider_running_index,
-        )
         < provider_completion_index
         < provider_post_connect_index
     ):
@@ -984,7 +976,6 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         or "packetFlow" in sources["apple_settings"]
         or "NetworkExtension" in sources["packet_pump"]
         or "NEPacketTunnelFlow" in sources["packet_pump"]
-        or "packetFlow" in sources["runtime_coordinator"]
     ):
         raise ReceiptError("Mesh Tunnel provider is not fail-closed")
     for required in (
@@ -1036,7 +1027,7 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "outcome.requestID == request.requestID",
         "evidence.packetsRead",
         "evidence.packetsWritten",
-        "do not by themselves prove",
+        "does not prove a peer reply",
         "UIScrollView()",
         "requireEnabled: false",
         "try await enableManager(",
@@ -1744,7 +1735,6 @@ def inspect_tunnel_source_boundary() -> dict[str, object]:
         "agentAuthorizationRejected": "agent-authorization-rejected",
         "engineUnavailable": "engine-unavailable",
         "networkRebindFailed": "network-rebind-failed",
-        "packetFlowFailed": "packet-flow-failed",
         "stopRequested": "stop-requested",
         "statusRequestAccepted": "status-request-accepted",
         "statusRequestRejected": "status-request-rejected",

@@ -27,7 +27,6 @@ final class MeshTunnelViewController: UIViewController {
         "mobile-runtime-evidence-stale",
         "mobile-runtime-refresh-required",
         "network-rebind-failed",
-        "packet-flow-failed",
         "provider-message-unavailable",
         "provider-start-failed",
         "start-already-in-progress",
@@ -1691,14 +1690,11 @@ final class MeshTunnelViewController: UIViewController {
             return (
                 "The Packet Tunnel runtime reports running at configuration "
                     + "revision \(revision) and certificate generation "
-                    + "\(certificateGeneration). Apple supplied "
-                    + "\(packetsRead) packet"
-                    + (packetsRead == 1 ? "" : "s")
-                    + " to the engine; the engine returned "
-                    + "\(packetsWritten) packet"
-                    + (packetsWritten == 1 ? "" : "s")
-                    + " to Apple. These counters do not by themselves prove "
-                    + "a peer reply or end-to-end connectivity."
+                    + "\(certificateGeneration). Nebula is attached to the "
+                    + "Packet Tunnel's native interface. Legacy callback "
+                    + "counters are \(packetsRead)/\(packetsWritten) and are "
+                    + "not traffic evidence in this mode. Runtime state alone "
+                    + "does not prove a peer reply or end-to-end connectivity."
             )
         case .extensionError:
             guard let errorCode = evidence.errorCode else {
