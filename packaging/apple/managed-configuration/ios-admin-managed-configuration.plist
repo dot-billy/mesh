@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>MeshManagedSchema</key>
+	<string>mesh-apple-managed-configuration-v1</string>
+	<key>ControlPlaneOrigin</key>
+	<string>https://mesh.example.com</string>
+	<key>AllowOriginChanges</key>
+	<false/>
+	<key>ReleaseChannel</key>
+	<string>stable</string>
+	<key>UpdateRing</key>
+	<string>pilot</string>
+	<key>ShowLocalStatus</key>
+	<false/>
+	<key>NotificationsEnabled</key>
+	<true/>
+</dict>
+</plist>

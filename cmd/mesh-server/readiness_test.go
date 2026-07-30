@@ -91,6 +91,9 @@ func TestRuntimeReadinessCheckRequiresDurableStoresAndCurrentCredentialBinding(t
 	if err := service.EnsureFirewallScopeSchema(); err != nil {
 		t.Fatal(err)
 	}
+	if err := service.EnsureSecurityGroupSchema(); err != nil {
+		t.Fatal(err)
+	}
 	if err := check(context.Background()); err != nil {
 		t.Fatalf("fully initialized runtime was not ready: %v", err)
 	}

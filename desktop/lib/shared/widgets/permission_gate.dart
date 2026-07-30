@@ -5,6 +5,7 @@ import '../models/presentation_models.dart';
 class PermissionGate extends StatelessWidget {
   const PermissionGate({
     required this.role,
+    required this.permissions,
     required this.permission,
     required this.child,
     this.readOnlyChild,
@@ -12,13 +13,14 @@ class PermissionGate extends StatelessWidget {
   });
 
   final MeshRole role;
+  final Set<MeshPermission> permissions;
   final MeshPermission permission;
   final Widget child;
   final Widget? readOnlyChild;
 
   @override
   Widget build(BuildContext context) {
-    if (role.allows(permission)) return child;
+    if (permissions.contains(permission)) return child;
     if (readOnlyChild != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,13 +44,15 @@ class _PermissionNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final requiredRole = switch (permission) {
-      MeshPermission.networksRead || MeshPermission.auditRead => 'Viewer',
+      MeshPermission.networksRead || MeshPermission.nodesEnrollSelf => 'Member',
+      MeshPermission.auditRead => 'Viewer',
       MeshPermission.networksWrite => 'Operator',
       MeshPermission.networksSecurity ||
       MeshPermission.identityManage => 'Admin',
     };
     final message =
-        '$requiredRole permission required. Current role: ${role.label}.';
+        '$requiredRole permission required. Current role: ${role.label}; '
+        'this session does not include ${_permissionLabel(permission)}.';
     return Semantics(
       label: message,
       container: true,
@@ -71,3 +75,12 @@ class _PermissionNotice extends StatelessWidget {
     );
   }
 }
+
+String _permissionLabel(MeshPermission permission) => switch (permission) {
+  MeshPermission.networksRead => 'network-read permission',
+  MeshPermission.networksWrite => 'network-write permission',
+  MeshPermission.networksSecurity => 'network-security permission',
+  MeshPermission.nodesEnrollSelf => 'self-enrollment permission',
+  MeshPermission.identityManage => 'identity-management permission',
+  MeshPermission.auditRead => 'audit-read permission',
+};

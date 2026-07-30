@@ -2,6 +2,7 @@ package darwinnativeevidence
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
@@ -15,6 +16,13 @@ import (
 
 func TestInspectAndMatchFullNativeEvidence(t *testing.T) {
 	directory := t.TempDir()
+	directory, err := filepath.EvalSymlinks(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	system := []byte("ProductName:\tmacOS\ngo_version=go version go1.26.5 darwin/arm64\n")
 	tests := []byte("PASS\n")
 	source := fixtureSourceInventory()
@@ -55,7 +63,11 @@ func TestNativeEvidenceRejectsPartialAndDrift(t *testing.T) {
 		t.Fatal("noncanonical native receipt was accepted")
 	}
 	drifted := append([]byte(nil), source...)
-	drifted[len(drifted)/2] ^= 1
+	separator := bytes.Index(drifted, []byte("  "))
+	if separator < 0 || separator+2 >= len(drifted) {
+		t.Fatal("fixture source inventory has no path")
+	}
+	drifted[separator+2] ^= 1
 	if err := validateSourceInventory(drifted); err == nil {
 		t.Fatal("drifted source inventory was accepted")
 	}

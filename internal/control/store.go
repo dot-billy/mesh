@@ -102,7 +102,7 @@ func OpenStore(path string) (*Store, error) {
 		s.Close()
 		return nil, fmt.Errorf("decode store: %w", err)
 	}
-	if s.state.Version != 1 && s.state.Version != ControlStateVersionCredentialBinding && s.state.Version != ControlStateVersionTopology && s.state.Version != ControlStateVersionNetworkDNS && s.state.Version != ControlStateVersionNetworkRelays && s.state.Version != ControlStateVersionCARotation && s.state.Version != ControlStateVersionFirewallRollout && s.state.Version != ControlStateVersionFirewallPause && s.state.Version != ControlStateVersionRouteTransfer && s.state.Version != ControlStateVersionRouteProfileEdit && s.state.Version != ControlStateVersionRoutePolicies && s.state.Version != ControlStateVersionNativeDNS && s.state.Version != ControlStateVersionFirewallScopes {
+	if s.state.Version != 1 && s.state.Version != ControlStateVersionCredentialBinding && s.state.Version != ControlStateVersionTopology && s.state.Version != ControlStateVersionNetworkDNS && s.state.Version != ControlStateVersionNetworkRelays && s.state.Version != ControlStateVersionCARotation && s.state.Version != ControlStateVersionFirewallRollout && s.state.Version != ControlStateVersionFirewallPause && s.state.Version != ControlStateVersionRouteTransfer && s.state.Version != ControlStateVersionRouteProfileEdit && s.state.Version != ControlStateVersionRoutePolicies && s.state.Version != ControlStateVersionNativeDNS && s.state.Version != ControlStateVersionFirewallScopes && s.state.Version != ControlStateVersionSecurityGroups {
 		s.Close()
 		return nil, fmt.Errorf("unsupported store version %d", s.state.Version)
 	}
@@ -272,6 +272,7 @@ func cloneState(in State) (State, error) {
 	out.Networks = append([]Network(nil), in.Networks...)
 	for i := range out.Networks {
 		out.Networks[i].FirewallPolicy = cloneFirewallPolicy(in.Networks[i].FirewallPolicy)
+		out.Networks[i].SecurityGroups = cloneNetworkSecurityGroups(in.Networks[i].SecurityGroups)
 		out.Networks[i].RelaySettings = cloneNetworkRelaySettings(in.Networks[i].RelaySettings)
 		out.Networks[i].RouteTransfer = cloneNetworkRouteTransfer(in.Networks[i].RouteTransfer)
 		out.Networks[i].RouteProfileEdit = cloneNetworkRouteProfileEdit(in.Networks[i].RouteProfileEdit)
@@ -440,7 +441,7 @@ func decodePersistedState(data []byte, state *State) error {
 // key-pair validation remains in Service.EnsureManagedNetworks because it
 // requires the separately supplied master key.
 func validateStateGraph(state State) error {
-	if state.Version != 1 && state.Version != ControlStateVersionCredentialBinding && state.Version != ControlStateVersionTopology && state.Version != ControlStateVersionNetworkDNS && state.Version != ControlStateVersionNetworkRelays && state.Version != ControlStateVersionCARotation && state.Version != ControlStateVersionFirewallRollout && state.Version != ControlStateVersionFirewallPause && state.Version != ControlStateVersionRouteTransfer && state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes {
+	if state.Version != 1 && state.Version != ControlStateVersionCredentialBinding && state.Version != ControlStateVersionTopology && state.Version != ControlStateVersionNetworkDNS && state.Version != ControlStateVersionNetworkRelays && state.Version != ControlStateVersionCARotation && state.Version != ControlStateVersionFirewallRollout && state.Version != ControlStateVersionFirewallPause && state.Version != ControlStateVersionRouteTransfer && state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes && state.Version != ControlStateVersionSecurityGroups {
 		return fmt.Errorf("unsupported store version %d", state.Version)
 	}
 	// Version 1 is the pre-binding compatibility schema. A successful server
@@ -487,6 +488,13 @@ func validateStateGraph(state State) error {
 		}
 		if state.Version < ControlStateVersionFirewallScopes && firewallPolicyUsesNodeScopes(network.FirewallPolicy) {
 			return fmt.Errorf("network %q has scoped firewall fields before control state v13", network.ID)
+		}
+		if state.Version < ControlStateVersionSecurityGroups {
+			if network.SecurityGroups != nil {
+				return fmt.Errorf("network %q has a security-group catalog before control state v14", network.ID)
+			}
+		} else if err := validateNetworkSecurityGroups(network.SecurityGroups); err != nil {
+			return fmt.Errorf("network %q has an invalid security-group catalog: %w", network.ID, err)
 		}
 		if state.Version < ControlStateVersionNetworkDNS {
 			if network.DNSSettings != (NetworkDNSSettings{}) {

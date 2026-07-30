@@ -144,6 +144,20 @@ func (publisher *LaunchdPlistPublisher) Inspect() error {
 	return proveLaunchdPlist(publisher)
 }
 
+// RemoveExact removes only the exact authenticated live plist and proves the
+// destination directory contains neither live nor recovery state afterward.
+func (publisher *LaunchdPlistPublisher) RemoveExact() error {
+	if publisher == nil {
+		return errors.New("Darwin launchd plist publisher is required")
+	}
+	publisher.mu.Lock()
+	defer publisher.mu.Unlock()
+	if err := publisher.validateDirectoryLocked(); err != nil {
+		return err
+	}
+	return removeLaunchdPlist(publisher)
+}
+
 func (publisher *LaunchdPlistPublisher) InspectLive() (launchdPlistFileState, error) {
 	snapshot, err := publisher.inspectFileLocked(LaunchdPlistName, false)
 	return snapshot.state, err
@@ -165,7 +179,7 @@ func (publisher *LaunchdPlistPublisher) CreatePending() (returnErr error) {
 	if snapshot.found {
 		return errors.New("Darwin launchd pending plist already exists")
 	}
-	fd, err := unix.Openat(publisher.fd, launchdPlistPendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, uint32(launchdPlistPendingMode))
+	fd, err := unix.Openat(publisher.fd, launchdPlistPendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY, uint32(launchdPlistPendingMode))
 	if err != nil {
 		return err
 	}
@@ -213,7 +227,7 @@ func (publisher *LaunchdPlistPublisher) SyncPending() (returnErr error) {
 	if !before.found {
 		return errors.New("Darwin launchd pending plist is absent before sync")
 	}
-	fd, err := unix.Openat(publisher.fd, launchdPlistPendingName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(publisher.fd, launchdPlistPendingName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return err
 	}
@@ -254,7 +268,7 @@ func (publisher *LaunchdPlistPublisher) FinalizePending() (returnErr error) {
 	if !before.found || before.mode != launchdPlistPendingMode || !bytes.Equal(before.contents, publisher.expected) {
 		return errors.New("Darwin launchd pending plist is not the complete private recovery object")
 	}
-	fd, err := unix.Openat(publisher.fd, launchdPlistPendingName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(publisher.fd, launchdPlistPendingName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return err
 	}
@@ -305,6 +319,34 @@ func (publisher *LaunchdPlistPublisher) RemovePending() error {
 	}
 	if after.found {
 		return errors.New("Darwin launchd pending plist remains after removal")
+	}
+	return nil
+}
+
+func (publisher *LaunchdPlistPublisher) RemoveLive() error {
+	before, err := publisher.inspectFileLocked(LaunchdPlistName, false)
+	if err != nil {
+		return err
+	}
+	if before.state != launchdPlistComplete {
+		return errors.New("Darwin live launchd plist is not exact before removal")
+	}
+	again, err := publisher.inspectFileLocked(LaunchdPlistName, false)
+	if err != nil {
+		return err
+	}
+	if !sameLaunchdPlistSnapshot(before, again) {
+		return errors.New("Darwin live launchd plist changed before removal")
+	}
+	if err := unix.Unlinkat(publisher.fd, LaunchdPlistName, 0); err != nil {
+		return err
+	}
+	after, err := publisher.inspectFileLocked(LaunchdPlistName, false)
+	if err != nil {
+		return err
+	}
+	if after.found {
+		return errors.New("Darwin live launchd plist remains after removal")
 	}
 	return nil
 }
@@ -371,7 +413,7 @@ func (publisher *LaunchdPlistPublisher) inspectFileLocked(name string, pending b
 	if err := nodeagent.InspectDarwinSensitivePath(path); err != nil {
 		return result, err
 	}
-	fd, err := unix.Openat(publisher.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(publisher.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return result, err
 	}

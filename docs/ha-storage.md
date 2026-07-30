@@ -11,7 +11,10 @@ PostgreSQL stores exactly two authoritative application documents:
 
 It also stores one independently versioned, reconstructible
 `runtime_telemetry` document. This third document is not part of recovery
-`ReadPair`, authenticated backup import source data, or the control document schema.
+`ReadPair`, authenticated backup import source data, or the control document
+schema. Schema v8 keeps the existing desktop observation records and the
+separate mobile runtime records in that one document; both record types are
+reconstructible and start empty after authenticated import.
 
 The control document remains bounded at 64 MiB, identity at 8 MiB, and runtime
 telemetry at 32 MiB. All are stored as `BYTEA`, not `JSONB`, with a monotonic
@@ -22,7 +25,10 @@ forces `search_path=pg_catalog`.
 The checked-in, checksummed migrations are
 [`001_documents.sql`](../internal/postgresstore/migrations/001_documents.sql),
 [`002_runtime_telemetry.sql`](../internal/postgresstore/migrations/002_runtime_telemetry.sql),
-and [`003_control_topology_import.sql`](../internal/postgresstore/migrations/003_control_topology_import.sql). They create and extend:
+[`003_control_topology_import.sql`](../internal/postgresstore/migrations/003_control_topology_import.sql),
+[`004_control_import_range.sql`](../internal/postgresstore/migrations/004_control_import_range.sql),
+and [`005_control_security_groups_import.sql`](../internal/postgresstore/migrations/005_control_security_groups_import.sql).
+They create and extend:
 
 | Table | Purpose |
 | --- | --- |
@@ -175,8 +181,8 @@ After a successful import and offline verification, disable the import role's lo
 
 Cutover is offline and one-way. Never dual-write and never place multiple servers on the JSON directory.
 
-1. Upgrade the JSON server, start it once with the authoritative `MESH_MASTER_KEY` and `MESH_ADMIN_TOKEN` so control schema v13 and identity v2 are durable, then stop it. Existing control-v2 nodes migrate to explicit `unassigned` placement, existing control-v3 networks migrate to explicit disabled DNS settings on port 53, existing control-v4 networks migrate to disabled relays with an exact empty selection, existing control-v5 certificates are bound to the active CA, existing control-v6 networks migrate to stable firewall-rollout state, existing control-v7 rollouts gain explicit unpaused state, existing control-v8 networks gain an empty route-transfer receipt, existing control-v9 networks gain an empty route-profile edit receipt, existing control-v10 networks gain empty route-policy state, existing control-v11 networks gain disabled native resolver state with an empty search domain, and existing control-v12 networks gain the firewall-scope compatibility boundary without scoped rules. These migrations do not change signed config bytes, revisions, or timestamps. Prove the service is stopped.
-2. Create and verify a fresh control-v13 encrypted backup. The importer also accepts authenticated bound v2 through v12 archives for ordered one-way migration after import. Record the returned 32-character backup ID, archive SHA-256, sequence, location, and key-custody reference in the external catalog. Select that ID independently for import.
+1. Upgrade the JSON server, start it once with the authoritative `MESH_MASTER_KEY` and `MESH_ADMIN_TOKEN` so control schema v14 and identity v2 are durable, then stop it. Existing control-v2 nodes migrate to explicit `unassigned` placement, existing control-v3 networks migrate to explicit disabled DNS settings on port 53, existing control-v4 networks migrate to disabled relays with an exact empty selection, existing control-v5 certificates are bound to the active CA, existing control-v6 networks migrate to stable firewall-rollout state, existing control-v7 rollouts gain explicit unpaused state, existing control-v8 networks gain an empty route-transfer receipt, existing control-v9 networks gain an empty route-profile edit receipt, existing control-v10 networks gain empty route-policy state, existing control-v11 networks gain disabled native resolver state with an empty search domain, existing control-v12 networks gain the firewall-scope compatibility boundary without scoped rules, and existing control-v13 networks gain the canonical security-group catalog without changing effective policy. These migrations do not change signed config bytes, revisions, or timestamps. Prove the service is stopped.
+2. Create and verify a fresh control-v14 encrypted backup. The importer also accepts authenticated bound v2 through v14 archives for ordered one-way migration after import. Record the returned 32-character backup ID, archive SHA-256, sequence, location, and key-custody reference in the external catalog. Select that ID independently for import.
 3. Provision the empty dedicated database and three roles above. Put each DSN in a separate owner-private file. Use the migration-role DSN only for schema setup:
 
    ```bash
@@ -184,7 +190,7 @@ Cutover is offline and one-way. Never dual-write and never place multiple server
      --postgres-dsn-file /etc/mesh/postgres-migrate.dsn
    ```
 
-4. Through the cluster-administration channel, transfer only the `pgcrypto` member functions as documented above; then apply and independently inspect the `mesh_migrate` grants. With every JSON and PostgreSQL Mesh writer still stopped, use only the import-role DSN to authenticate the catalog-selected archive. The command atomically installs both authoritative revision-1 documents, one two-document receipt, and import provenance; only after that succeeds, it idempotently creates a separate empty revision-1 telemetry document and receipt before reporting success:
+4. Through the cluster-administration channel, transfer only the `pgcrypto` member functions as documented above; then apply and independently inspect the `mesh_migrate` grants. With every JSON and PostgreSQL Mesh writer still stopped, use only the import-role DSN to authenticate the catalog-selected archive. The command atomically installs both authoritative revision-1 documents, one two-document receipt, and import provenance; only after that succeeds, it idempotently creates a separate empty revision-1 schema-v8 telemetry document and receipt before reporting success. Desktop and mobile runtime observations are reconstructible evidence and therefore restart empty rather than entering the authority backup:
 
    ```bash
    ./bin/mesh-storage import-backup \
@@ -243,6 +249,7 @@ All replicas must use the same canonical `--public-url`, identity policy, master
 The implemented repository proofs include:
 
 - a PostgreSQL 17 single-node integration test for migration, checksums, exact no-ops, concurrent stores, import/provenance, corruption rejection, schema-security drift, concurrent two-pool shared readiness, and exclusive migration-lock exclusion; and
+- `make postgres-mobile-runtime-smoke`, which uses one exact loopback-only PostgreSQL 17 container to prove that a current control-v14 authenticated import passes the compiled version range, initializes an empty schema-v8 reconstructible telemetry document, persists a non-empty mobile record through the production adapter, exposes it to a second independent application pool, commits an identical concurrent transition exactly once, preserves continuous receipt revisions, and removes only its exact labeled container; and
 - `make postgres-multi-replica-smoke`, which uses one disposable `postgres:17-alpine` database and two independent `mesh-server` processes to prove shared concurrent control writes/inventory/audit, cross-replica session and CSRF revocation, surviving-replica mutation, and restarted-replica convergence; and
 - `make postgres-sync-failover-smoke`, which builds a uniquely labeled disposable PostgreSQL 17 primary and physical standby, enables `synchronous_commit=remote_apply` with one named synchronous standby only after streaming replay is proven, exercises migration/import/verification and two application replicas through a primary-first multi-host `target_session_attrs=read-write` DSN, records the exact acknowledged document revisions and receipt ledger, hard-terminates the primary, explicitly promotes the standby, proves every pre-failover inventory item, session, audit event, revision, and receipt survived, commits fresh control and identity mutations, and proves restarted-replica convergence. Cleanup removes only exact ID/label-verified containers, network, volumes, processes, and workspace; and
 - `make postgres-ambiguous-commit-smoke`, which uses a package-internal test-only transaction wrapper around real PostgreSQL operations. It proves definite callback cancellation before receipt SQL, strict uncertainty after a rolled-back pre-`COMMIT` transport error with no callback replay, exact receipt resolution after a real `remote_apply` commit plus hard primary loss and explicit standby promotion, and one fresh post-resolution write. It then routes a real committed write's resolution to a writable authority with a distinct system identifier and missing receipt, proves `ErrUncertainCommit`, and gates readiness, reads, and writes. Exact labeled resource and private-workspace cleanup is enforced; and

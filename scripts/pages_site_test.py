@@ -47,6 +47,7 @@ def tree_digest(root: pathlib.Path) -> dict[str, str]:
 
 
 def assert_local_references(page: pathlib.Path, output: pathlib.Path) -> None:
+    output = output.resolve()
     parser = AssetParser()
     parser.feed(page.read_text())
     for reference in parser.references:

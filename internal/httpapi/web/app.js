@@ -14,12 +14,14 @@ const routePoliciesModel = globalThis.MeshRoutePolicies;
 const firewallRolloutModel = globalThis.MeshFirewallRollout;
 const certificateRotationModel = globalThis.MeshCertificateRotation;
 const nodeRevocationModel = globalThis.MeshNodeRevocation;
+const nodeSearchModel = globalThis.MeshNodeSearch;
+const securityGroupsModel = globalThis.MeshSecurityGroups;
 const desktopAuthorizationModel = globalThis.MeshDesktopAuthorization;
 const READINESS_REFRESH_INTERVAL_MS = 10000;
 const NODE_ARCHIVE_CERTIFICATE_SAFETY_MARGIN_MS = 5 * 60 * 1000;
 const CERTIFICATE_ROTATION_STORAGE_PREFIX = 'mesh-certificate-rotation:';
 const NODE_REVOCATION_STORAGE_PREFIX = 'mesh-node-revocation:';
-const ACCESS_PERMISSIONS = new Set(['networks.read', 'networks.write', 'networks.security', 'identity.manage', 'audit.read']);
+const ACCESS_PERMISSIONS = new Set(['networks.read', 'networks.write', 'networks.security', 'nodes.enroll.self', 'identity.manage', 'audit.read']);
 
 if (!healthModel) throw new Error('Fleet health model is unavailable');
 if (!setupGuideModel) throw new Error('Network setup guide is unavailable');
@@ -35,6 +37,8 @@ if (!routePoliciesModel) throw new Error('Network route policies model is unavai
 if (!firewallRolloutModel) throw new Error('Network firewall rollout model is unavailable');
 if (!certificateRotationModel) throw new Error('Certificate rotation model is unavailable');
 if (!nodeRevocationModel) throw new Error('Node revocation model is unavailable');
+if (!nodeSearchModel) throw new Error('Node search model is unavailable');
+if (!securityGroupsModel) throw new Error('Security-group model is unavailable');
 if (!desktopAuthorizationModel) throw new Error('Desktop authorization model is unavailable');
 
 const desktopAuthorizationLaunch = desktopAuthorizationModel.captureLaunch(location.href, history);
@@ -63,6 +67,8 @@ const state = {
 	routeProfile: { networkID: '', nodeID: '', nodeName: '', requestID: 0, mutationID: '', busy: false, formSeeded: false, document: null, refreshTimer: null },
 	routePolicies: { networkID: '', networkName: '', requestID: 0, mutationID: '', busy: false, document: null, selectedPrefix: '' },
 	nodeSecurity: { networkID: '', nodeID: '', requestID: '', expectedRevision: 0, busy: false, currentGroups: [] },
+  nodeSearch: { global: '', byNetwork: new Map() },
+  securityGroups: { networkID: '', networkName: '', requestID: 0, busy: false, membershipBusy: false, document: null, selectedName: '', message: '' },
   enrollmentNextNetworkID: '',
   enrollmentNextAction: '',
   installGuide: installGuideModel.validate({
@@ -83,6 +89,7 @@ const state = {
 		refreshTimer: null,
 		action: '',
 		defaultTargetNodeID: '',
+		securityGroups: null,
   },
   authMethods: { oidc: false, legacy_browser_login: false, break_glass: false },
   currentSession: null,
@@ -97,7 +104,7 @@ let authenticated = false;
 
 function validateSessionAccess(session) {
   if (!session || session.authenticated !== true || !session.principal || typeof session.principal.kind !== 'string') throw new Error('Invalid session response');
-  if (!['viewer', 'operator', 'admin'].includes(session.role) || !Array.isArray(session.permissions) || session.permissions.some((permission) => typeof permission !== 'string' || !ACCESS_PERMISSIONS.has(permission)) || new Set(session.permissions).size !== session.permissions.length) throw new Error('Invalid session access policy');
+  if (!['member', 'viewer', 'operator', 'admin'].includes(session.role) || !Array.isArray(session.permissions) || session.permissions.some((permission) => typeof permission !== 'string' || !ACCESS_PERMISSIONS.has(permission)) || new Set(session.permissions).size !== session.permissions.length) throw new Error('Invalid session access policy');
   return session;
 }
 
@@ -298,7 +305,7 @@ async function showLogin(callbackFailed) {
     $('#login-error').textContent = 'Sign-in is temporarily unavailable.';
   }
   if (callbackFailed) $('#login-error').textContent = 'Single sign-on could not be completed. Please try again.';
-  else if (state.desktopAuthorization.invalid) $('#login-error').textContent = 'The Mesh Desktop authorization link is invalid.';
+  else if (state.desktopAuthorization.invalid) $('#login-error').textContent = 'The native Mesh app authorization link is invalid.';
 }
 
 function consumeOIDCCallbackError() {
@@ -321,7 +328,7 @@ async function showApp() {
 function presentDesktopAuthorization() {
   if (state.desktopAuthorization.invalid) {
     state.desktopAuthorization.invalid = false;
-    flash('The Mesh Desktop authorization link is invalid.');
+    flash('The native Mesh app authorization link is invalid.');
     return;
   }
   if (!state.desktopAuthorization.requestID || !authenticated) return;
@@ -333,7 +340,7 @@ function presentDesktopAuthorization() {
     });
   } catch {
     state.desktopAuthorization.requestID = '';
-    flash('The Mesh Desktop authorization request could not be verified.');
+    flash('The native Mesh app authorization request could not be verified.');
     return;
   }
   const role = state.currentSession?.role;
@@ -358,9 +365,9 @@ async function submitDesktopAuthorization(decision) {
     state.desktopAuthorization.flow = null;
     dialog.close();
     if (result.state === 'expired') {
-      flash('This Mesh Desktop authorization request expired or is no longer available.');
+      flash('This native Mesh app authorization request expired or is no longer available.');
     } else {
-      flash(result.state === 'approved' ? 'Mesh Desktop access approved.' : 'Mesh Desktop access denied.');
+      flash(result.state === 'approved' ? 'Native Mesh app access approved.' : 'Native Mesh app access denied.');
     }
   } catch (error) {
     if (error.status === 401) {
@@ -495,9 +502,7 @@ async function refreshFleetSnapshot() {
   } catch {
     clearFleet('Authoritative fleet health could not be verified. Inventory and health status were cleared; retrying on the next refresh.');
   }
-  renderNetworksSafely();
-  if (!state.fleet) return;
-  await refreshRuntimeTelemetry();
+  if (state.fleet) await refreshRuntimeTelemetry();
   renderNetworksSafely();
 }
 
@@ -543,9 +548,48 @@ function clearFleet(reason) {
   clearRuntimeTelemetry();
 }
 
-function renderNetworksSafely() {
+function captureNetworkUIState() {
+  const grid = $('#network-grid');
+  if (!grid) return null;
+  const active = document.activeElement;
+  const focusKey = grid.contains(active) ? active?.dataset?.persistFocusKey || '' : '';
+  const selection = focusKey && typeof active.selectionStart === 'number'
+    ? { start: active.selectionStart, end: active.selectionEnd }
+    : null;
+  return {
+    renderedView: grid.dataset.renderedView || '',
+    renderedNetworkID: grid.dataset.renderedNetworkId || '',
+    openDetails: $$('details[open][data-persist-key]', grid).map((details) => details.dataset.persistKey),
+    focusKey,
+    selection,
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+  };
+}
+
+function restoreNetworkUIState(snapshot) {
+  const grid = $('#network-grid');
+  if (!snapshot || !grid || grid.dataset.renderedView !== snapshot.renderedView || grid.dataset.renderedNetworkId !== snapshot.renderedNetworkID) return;
+  for (const details of $$('details[data-persist-key]', grid)) {
+    details.open = snapshot.openDetails.includes(details.dataset.persistKey);
+  }
+  if (snapshot.focusKey) {
+    const target = $$('[data-persist-focus-key]', grid).find((element) => element.dataset.persistFocusKey === snapshot.focusKey);
+    if (target) {
+      target.focus({ preventScroll: true });
+      if (snapshot.selection && typeof target.setSelectionRange === 'function') {
+        target.setSelectionRange(snapshot.selection.start, snapshot.selection.end);
+      }
+    }
+  }
+  requestAnimationFrame(() => window.scrollTo(snapshot.scrollX, snapshot.scrollY));
+}
+
+function renderNetworksSafely({ preserveInteraction = true } = {}) {
+  const snapshot = preserveInteraction ? captureNetworkUIState() : null;
   try {
     renderNetworks();
+    restoreNetworkUIState(snapshot);
   } catch {
     clearFleet('Authoritative fleet health could not be rendered safely. Inventory and health status were cleared.');
     setNetworkWorkspaceChrome(false);
@@ -617,6 +661,16 @@ function setupActionDescription(setup, nodes) {
 function focusManagedNode(nodeList, nodeID) {
   const row = [...nodeList.children].find((item) => item.dataset.nodeId === nodeID);
   if (!row) {
+    const networkID = nodeList.dataset.networkId || '';
+    if (networkID && state.nodeSearch.byNetwork.get(networkID)) {
+      state.nodeSearch.byNetwork.set(networkID, '');
+      renderNetworksSafely({ preserveInteraction: false });
+      requestAnimationFrame(() => {
+        const refreshed = $$('.node-list[data-network-id]').find((list) => list.dataset.networkId === networkID);
+        if (refreshed) focusManagedNode(refreshed, nodeID);
+      });
+      return;
+    }
     flash('The selected machine changed. Refresh authoritative inventory before continuing.');
     return;
   }
@@ -627,6 +681,57 @@ function focusManagedNode(nodeList, nodeID) {
   const action = row.querySelector('.reissue, .placement, button');
   action?.focus({ preventScroll: true });
   setTimeout(() => row.classList.remove('node-row-highlighted'), 2400);
+}
+
+function filteredNetworkNodes(networkID, nodes) {
+  return nodeSearchModel.filter(nodes, state.nodeSearch.byNetwork.get(networkID) || '');
+}
+
+function renderWorkspaceNodeRows(nodeList, nodes, network, countLabel) {
+  const query = state.nodeSearch.byNetwork.get(network.id) || '';
+  const filtered = filteredNetworkNodes(network.id, nodes);
+  nodeList.replaceChildren();
+  countLabel.textContent = query ? `Manage nodes (${filtered.length} of ${nodes.length})` : `Manage nodes (${nodes.length})`;
+  if (!nodes.length) {
+    const empty = document.createElement('li'); empty.className = 'node-row node-row-empty'; empty.textContent = 'No nodes yet'; nodeList.append(empty);
+  } else if (!filtered.length) {
+    const empty = document.createElement('li'); empty.className = 'node-row node-row-empty';
+    empty.textContent = `No nodes match “${query}”. Search by name, address, role, placement, lifecycle, route, or health.`;
+    nodeList.append(empty);
+  } else {
+    for (const node of filtered) nodeList.append(nodeRow(node, network));
+  }
+}
+
+function renderWorkspaceNodeSearch(nodes, network, nodeList, countLabel) {
+  const toolbar = document.createElement('div'); toolbar.className = 'node-search-toolbar';
+  const label = document.createElement('label'); label.className = 'node-search-field';
+  const icon = meshIcon('search');
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.maxLength = nodeSearchModel.MAX_QUERY_LENGTH;
+  input.placeholder = 'Search nodes';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.value = state.nodeSearch.byNetwork.get(network.id) || '';
+  input.dataset.persistFocusKey = `network-node-search:${network.id}`;
+  input.setAttribute('aria-label', `Search nodes in ${network.name}`);
+  input.setAttribute('aria-controls', nodeList.id);
+  const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'node-search-clear secondary'; clear.textContent = 'Clear';
+  clear.classList.toggle('hidden', input.value.length === 0);
+  const apply = () => {
+    state.nodeSearch.byNetwork.set(network.id, input.value);
+    clear.classList.toggle('hidden', input.value.length === 0);
+    renderWorkspaceNodeRows(nodeList, nodes, network, countLabel);
+  };
+  input.addEventListener('input', apply);
+  clear.addEventListener('click', () => {
+    input.value = '';
+    apply();
+    input.focus();
+  });
+  label.append(icon, input); toolbar.append(label, clear);
+  return toolbar;
 }
 
 function performSetupAction(setup, network, nodeList) {
@@ -675,7 +780,11 @@ function heartbeatEvidence(node, className) {
     ? received.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
     : received.toLocaleString();
   const agent = node.agent_status === 'healthy' ? 'Agent healthy' : node.agent_status === 'degraded' ? 'Agent degraded' : 'Agent status unavailable';
-  const nebula = node.nebula_running ? 'Nebula running' : 'Nebula stopped';
+  const nebula = node.runtime_state === 'running'
+    ? 'Nebula running'
+    : node.runtime_state === 'stopped'
+      ? 'Nebula stopped'
+      : `Nebula state unknown · last reported ${node.nebula_running ? 'running' : 'stopped'}`;
   const primary = document.createElement('span');
   primary.className = 'heartbeat-primary';
   primary.append(
@@ -736,7 +845,7 @@ function settingsButton(label, iconName, handler, className = '') {
 }
 
 function renderNetworkSettings(network, nodes) {
-  const settings = document.createElement('details'); settings.className = 'network-settings';
+  const settings = document.createElement('details'); settings.className = 'network-settings'; settings.dataset.persistKey = 'network-settings';
   const summary = document.createElement('summary');
   summary.append(meshIcon('cog'), document.createTextNode('Settings'), meshIcon('angle-down'));
   const menu = document.createElement('div'); menu.className = 'network-settings-menu';
@@ -744,9 +853,10 @@ function renderNetworkSettings(network, nodes) {
   menu.append(nodeCount);
   if (hasPermission('networks.write')) menu.append(settingsButton('Add node', 'plus', () => openNode(network.id, nodes.length === 0, nodes.length === 0 ? 'lighthouse' : '')));
   menu.append(settingsButton('Deployment readiness', 'check-circle-o', () => openReadiness(network)));
+  const services = document.createElement('p'); services.className = 'network-settings-heading'; services.textContent = 'Services and policy';
+  menu.append(services, settingsButton('Security groups', 'users', () => openSecurityGroups(network)));
   if (hasPermission('networks.write')) {
-    const services = document.createElement('p'); services.className = 'network-settings-heading'; services.textContent = 'Services and policy';
-    menu.append(services,
+    menu.append(
       settingsButton('Network DNS', 'globe', () => openDNS(network)),
       settingsButton('Network relays', 'exchange', () => openRelays(network)),
       settingsButton('Firewall policy', 'shield', () => openPolicy(network)),
@@ -804,15 +914,15 @@ function renderNetworkWorkspace(grid, health) {
   identity.append(titleRow, meta);
   heading.append(identity, renderNetworkSettings(network, nodes));
 
-  const nodeManagement = document.createElement('details'); nodeManagement.className = 'workspace-node-management';
-  const managementSummary = document.createElement('summary'); managementSummary.append(meshIcon('server'), document.createTextNode(`Manage nodes (${nodes.length})`), meshIcon('angle-down'));
-  const nodeList = document.createElement('ul'); nodeList.className = 'node-list'; nodeList.setAttribute('aria-label', `${network.name} nodes`);
-  if (!nodes.length) {
-    const empty = document.createElement('li'); empty.className = 'node-row node-row-empty'; empty.textContent = 'No nodes yet'; nodeList.append(empty);
-  } else {
-    for (const node of nodes) nodeList.append(nodeRow(node, network));
-  }
-  nodeManagement.append(managementSummary, nodeList);
+  const nodeManagement = document.createElement('details'); nodeManagement.className = 'workspace-node-management'; nodeManagement.dataset.persistKey = 'node-management';
+  const managementSummary = document.createElement('summary');
+  const managementCount = document.createElement('span'); managementCount.textContent = `Manage nodes (${nodes.length})`;
+  managementSummary.append(meshIcon('server'), managementCount, meshIcon('angle-down'));
+  const nodeList = document.createElement('ul'); nodeList.id = `node-list-${network.id}`; nodeList.className = 'node-list'; nodeList.dataset.networkId = network.id; nodeList.setAttribute('aria-label', `${network.name} nodes`);
+  const nodeSearch = renderWorkspaceNodeSearch(nodes, network, nodeList, managementCount);
+  renderWorkspaceNodeRows(nodeList, nodes, network, managementCount);
+  if (state.nodeSearch.byNetwork.get(network.id)) nodeManagement.open = true;
+  nodeManagement.append(managementSummary, nodeSearch, nodeList);
 
   const primary = document.createElement('div'); primary.className = 'workspace-primary';
   const topology = document.createElement('section'); topology.className = 'topology-panel'; topology.setAttribute('aria-labelledby', 'topology-title');
@@ -866,7 +976,7 @@ function renderNetworkWorkspace(grid, health) {
 
   workspace.append(back, heading, primary, nodeManagement);
   if (health.alerts.length) {
-    const alerts = document.createElement('details'); alerts.className = 'workspace-health-alerts';
+    const alerts = document.createElement('details'); alerts.className = 'workspace-health-alerts'; alerts.dataset.persistKey = 'health-alerts';
     const summary = document.createElement('summary'); summary.append(meshIcon('exclamation-triangle'), document.createTextNode(`${health.alerts.length} authoritative health ${health.alerts.length === 1 ? 'alert' : 'alerts'}`), meshIcon('angle-down'));
     const list = document.createElement('ul');
     const nodeNames = new Map(nodes.map((node) => [node.id, node.name]));
@@ -876,17 +986,78 @@ function renderNetworkWorkspace(grid, health) {
   grid.append(workspace);
 }
 
-function renderNetworkDirectory(grid, fleet) {
-  renderFleetHealth(fleet);
+function directoryHeader(labels) {
   const directoryHeader = document.createElement('div');
   directoryHeader.className = 'network-directory-header';
   directoryHeader.setAttribute('aria-hidden', 'true');
-  for (const label of ['Network', 'Status', 'Node health', 'Next action', '']) {
+  for (const label of labels) {
     const column = document.createElement('span');
     column.textContent = label;
     directoryHeader.append(column);
   }
-  grid.append(directoryHeader);
+  return directoryHeader;
+}
+
+function openDirectoryNetwork(network, node = null) {
+  state.networkView = 'workspace';
+  state.selectedNetworkID = network.id;
+  if (node) state.nodeSearch.byNetwork.set(network.id, node.name);
+  renderNetworksSafely({ preserveInteraction: false });
+  window.scrollTo(0, 0);
+  requestAnimationFrame(() => {
+    if (node) {
+      const list = $$('.node-list[data-network-id]').find((candidate) => candidate.dataset.networkId === network.id);
+      if (list) focusManagedNode(list, node.id);
+    } else {
+      $('.workspace-back')?.focus({ preventScroll: true });
+    }
+  });
+}
+
+function renderNetworkDirectoryBody(body, fleet, count) {
+  body.replaceChildren();
+  const query = state.nodeSearch.global;
+  if (query) {
+    const matches = [];
+    for (const report of fleet.reports) {
+      for (const node of nodeSearchModel.filter(report.nodes, query)) matches.push({ network: report.network, node });
+    }
+    count.textContent = `${matches.length} matching ${matches.length === 1 ? 'node' : 'nodes'}`;
+    body.append(directoryHeader(['Node', 'Network', 'Status', 'Address', '']));
+    if (!matches.length) {
+      const empty = document.createElement('div'); empty.className = 'node-search-empty';
+      const title = document.createElement('strong'); title.textContent = `No nodes match “${query}”`;
+      const detail = document.createElement('span'); detail.textContent = 'Try a name, overlay address, role, site, failure domain, route, lifecycle state, or health term.';
+      empty.append(title, detail); body.append(empty);
+      return;
+    }
+    for (const { network, node } of matches) {
+      const article = document.createElement('article'); article.className = 'network-directory-row node-directory-result';
+      const open = document.createElement('button'); open.type = 'button'; open.className = 'network-directory-open node-directory-open';
+      const identity = document.createElement('span'); identity.className = 'network-directory-identity';
+      const name = document.createElement('strong'); name.textContent = node.name;
+      const role = document.createElement('span'); role.textContent = node.role === 'lighthouse' ? 'Lighthouse' : 'Member';
+      identity.append(name, role);
+      const networkIdentity = document.createElement('span'); networkIdentity.className = 'network-directory-stat';
+      networkIdentity.append(document.createTextNode(network.name), document.createElement('small'));
+      networkIdentity.lastElementChild.textContent = network.cidr;
+      const presentation = topologyNodePresentation(node);
+      const status = document.createElement('span'); status.className = `network-directory-status ${presentation.tone === 'online' ? 'healthy' : presentation.tone === 'pending' ? 'warning' : presentation.tone}`; status.textContent = presentation.label;
+      const address = document.createElement('span'); address.className = 'network-directory-next';
+      const addressLabel = document.createElement('small'); addressLabel.textContent = `${node.site} · ${node.failure_domain}`;
+      const addressValue = document.createElement('strong'); addressValue.textContent = node.ip;
+      address.append(addressValue, addressLabel);
+      const chevron = meshIcon('chevron-right'); chevron.classList.add('network-directory-chevron');
+      open.append(identity, networkIdentity, status, address, chevron);
+      open.addEventListener('click', () => openDirectoryNetwork(network, node));
+      article.append(open); body.append(article);
+    }
+    return;
+  }
+
+  const totalNodes = fleet.reports.reduce((total, report) => total + report.nodes.length, 0);
+  count.textContent = `${totalNodes} ${totalNodes === 1 ? 'node' : 'nodes'} across ${fleet.reports.length} ${fleet.reports.length === 1 ? 'network' : 'networks'}`;
+  body.append(directoryHeader(['Network', 'Status', 'Node health', 'Next action', '']));
   for (const health of fleet.reports) {
     const { network, nodes } = health;
     const setup = setupGuideModel.project(nodes, fleet.policy.required_healthy_lighthouses);
@@ -907,15 +1078,39 @@ function renderNetworkDirectory(grid, fleet) {
     next.append(nextLabel, nextValue);
     const chevron = meshIcon('chevron-right'); chevron.classList.add('network-directory-chevron');
     open.append(identity, networkStatus, nodeCount, next, chevron);
-    open.addEventListener('click', () => {
-      state.networkView = 'workspace';
-      state.selectedNetworkID = network.id;
-      renderNetworksSafely();
-      window.scrollTo(0, 0);
-      requestAnimationFrame(() => $('.workspace-back')?.focus({ preventScroll: true }));
-    });
-    article.append(open); grid.append(article);
+    open.addEventListener('click', () => openDirectoryNetwork(network));
+    article.append(open); body.append(article);
   }
+}
+
+function renderNetworkDirectory(grid, fleet) {
+  renderFleetHealth(fleet);
+  const search = document.createElement('section'); search.className = 'fleet-node-search'; search.setAttribute('aria-label', 'Search all nodes');
+  const field = document.createElement('label'); field.className = 'node-search-field';
+  field.append(meshIcon('search'));
+  const input = document.createElement('input'); input.type = 'search'; input.maxLength = nodeSearchModel.MAX_QUERY_LENGTH;
+  input.placeholder = 'Search every node'; input.autocomplete = 'off'; input.spellcheck = false; input.value = state.nodeSearch.global;
+  input.dataset.persistFocusKey = 'fleet-node-search';
+  input.setAttribute('aria-label', 'Search every node');
+  field.append(input);
+  const count = document.createElement('span'); count.className = 'node-search-count'; count.setAttribute('role', 'status');
+  const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'node-search-clear secondary'; clear.textContent = 'Clear';
+  clear.classList.toggle('hidden', input.value.length === 0);
+  const body = document.createElement('div'); body.className = 'network-directory-body';
+  const apply = () => {
+    state.nodeSearch.global = input.value;
+    clear.classList.toggle('hidden', input.value.length === 0);
+    renderNetworkDirectoryBody(body, fleet, count);
+  };
+  input.addEventListener('input', apply);
+  clear.addEventListener('click', () => {
+    input.value = '';
+    apply();
+    input.focus();
+  });
+  search.append(field, count, clear);
+  grid.append(search, body);
+  renderNetworkDirectoryBody(body, fleet, count);
 }
 
 function renderNetworks() {
@@ -923,6 +1118,8 @@ function renderNetworks() {
   grid.replaceChildren();
   if (!state.fleet) {
     setNetworkWorkspaceChrome(false);
+    grid.dataset.renderedView = 'unavailable';
+    grid.dataset.renderedNetworkId = '';
     grid.className = 'network-grid network-directory';
     $('#network-empty').classList.add('hidden');
     renderFleetUnavailable(state.healthUnavailable);
@@ -933,9 +1130,13 @@ function renderNetworks() {
   setNetworkWorkspaceChrome(Boolean(workspace));
   $('#network-empty').classList.toggle('hidden', fleet.networks.length !== 0 || Boolean(workspace));
   if (workspace) {
+    grid.dataset.renderedView = 'workspace';
+    grid.dataset.renderedNetworkId = workspace.network.id;
     grid.className = 'network-grid network-workspace-grid';
     renderNetworkWorkspace(grid, workspace);
   } else {
+    grid.dataset.renderedView = 'directory';
+    grid.dataset.renderedNetworkId = '';
     grid.className = 'network-grid network-directory';
     renderNetworkDirectory(grid, fleet);
   }
@@ -1277,6 +1478,8 @@ function nodeRow(node, network) {
   row.append(info, status);
 
   const actions = document.createElement('div'); actions.className = 'node-actions';
+  actions.setAttribute('role', 'group');
+  actions.setAttribute('aria-label', `Actions for ${node.name}`);
 	if (node.status !== 'revoked' && hasPermission('networks.write')) {
 		const placement = document.createElement('button'); placement.className = 'placement'; placement.textContent = 'Edit placement'; placement.title = `Update site and failure domain for ${node.name}`;
 		placement.addEventListener('click', () => {
@@ -1579,7 +1782,13 @@ async function openNodeSecurity(network, node) {
 	$('#node-security-ip').textContent = node.ip;
 	$('#node-security-config').textContent = `r${node.applied_config_revision}/r${network.config_revision}`;
 	$('#node-security-certificate').textContent = `g${node.applied_certificate_generation || 0}/g${node.certificate_generation || 0}`;
-	$('#node-security-runtime').textContent = node.operational ? 'Current' : node.nebula_running ? 'Converging' : 'Stopped';
+	$('#node-security-runtime').textContent = node.operational
+		? 'Current'
+		: node.runtime_state === 'running'
+			? 'Running; other evidence is not current'
+			: node.runtime_state === 'stopped'
+				? 'Stopped'
+				: `Unknown; last reported ${node.nebula_running ? 'running' : 'stopped'}`;
 	$('#node-security-confirmation-name').textContent = node.name;
 	$('#node-security-confirmation').value = '';
 	$('#node-security-groups-error').textContent = '';
@@ -1657,6 +1866,340 @@ $('#node-groups-form').addEventListener('submit', async (event) => {
 		state.nodeSecurity.busy = false;
 		$$('input, button', $('#node-groups-form')).forEach((control) => { control.disabled = false; });
 	}
+});
+
+function selectedSecurityGroup() {
+  return securityGroupsModel.group(state.securityGroups.document, state.securityGroups.selectedName);
+}
+
+function setSecurityGroupsBusy(busy) {
+  state.securityGroups.busy = busy;
+  const dialog = $('#security-groups-dialog');
+  dialog.setAttribute('aria-busy', String(busy));
+  $$('input, button', dialog).forEach((control) => { control.disabled = busy; });
+  if (!busy) renderSecurityGroups();
+}
+
+function renderSecurityGroupMemberList(group) {
+  const list = $('#security-group-member-list'); list.replaceChildren();
+  const nodes = (state.nodes.get(state.securityGroups.networkID) || []).filter((node) => node.status === 'active');
+  if (!nodes.length) {
+    const empty = document.createElement('p'); empty.className = 'security-group-member-empty'; empty.textContent = 'No active nodes are available for certificate membership changes.'; list.append(empty);
+    return;
+  }
+  for (const node of nodes) {
+    const label = document.createElement('label'); label.className = 'security-group-member';
+    const input = document.createElement('input'); input.type = 'checkbox'; input.dataset.securityGroupNodeId = node.id;
+    input.checked = group.memberNodeIDs.includes(node.id);
+    input.disabled = group.builtin || !hasPermission('networks.security') || state.securityGroups.busy;
+    input.addEventListener('change', updateSecurityGroupMembershipAction);
+    const copy = document.createElement('span');
+    const name = document.createElement('strong'); name.textContent = node.name;
+    const detail = document.createElement('small'); detail.textContent = `${node.ip} · ${node.role} · ${node.site} / ${node.failure_domain}`;
+    copy.append(name, detail); label.append(input, copy); list.append(label);
+  }
+}
+
+function updateSecurityGroupMembershipAction() {
+  const button = $('#save-security-group-members');
+  const group = selectedSecurityGroup();
+  const nodes = state.nodes.get(state.securityGroups.networkID) || [];
+  if (!group || group.builtin) {
+    button.disabled = true;
+    button.textContent = 'Built-in membership';
+    return;
+  }
+  if (!hasPermission('networks.security')) {
+    button.disabled = true;
+    button.textContent = 'Admin permission required';
+    return;
+  }
+  let changes = [];
+  try {
+    const selected = $$('input[data-security-group-node-id]:checked', $('#security-group-member-list')).map((input) => input.dataset.securityGroupNodeId);
+    changes = securityGroupsModel.membershipChanges(state.securityGroups.document, nodes, group.name, selected);
+  } catch (_) {
+    button.disabled = true;
+    button.textContent = 'Membership unavailable';
+    return;
+  }
+  button.disabled = state.securityGroups.busy || changes.length === 0;
+  button.textContent = changes.length === 0 ? 'Membership is current' : `Save ${changes.length} node ${changes.length === 1 ? 'change' : 'changes'}`;
+}
+
+function renderSecurityGroupDetail(group) {
+  const detail = $('#security-group-detail');
+  detail.classList.toggle('hidden', !group);
+  if (!group) return;
+  const canManage = hasPermission('networks.security');
+  $('#selected-security-group-name').textContent = group.name;
+  $('#selected-security-group-kind').textContent = group.builtin ? 'Built in' : 'Managed';
+  $('#selected-security-group-kind').className = `security-group-kind ${group.builtin ? 'builtin' : 'managed'}`;
+  $('#selected-security-group-summary').textContent = group.builtin
+    ? 'Every node certificate includes all. This group cannot be edited or deleted.'
+    : group.description || 'No description has been added.';
+  $('#selected-security-group-description').value = group.description;
+  $('#selected-security-group-description').disabled = group.builtin || !canManage || state.securityGroups.busy;
+  $('#save-security-group-description').disabled = group.builtin || !canManage || state.securityGroups.busy;
+  $('#security-group-active-count').textContent = group.activeMembers;
+  $('#security-group-pending-count').textContent = group.pendingMembers;
+  $('#security-group-peer-count').textContent = group.peerRuleReferences;
+  $('#security-group-target-count').textContent = group.targetRuleReferences;
+  $('#security-group-membership-fieldset').disabled = group.builtin || !canManage || state.securityGroups.busy;
+  renderSecurityGroupMemberList(group);
+  const blocked = group.memberNodeIDs.length > 0 || group.peerRuleReferences > 0 || group.targetRuleReferences > 0;
+  $('#delete-security-group').disabled = group.builtin || !canManage || blocked || state.securityGroups.busy;
+  $('#delete-security-group').title = group.builtin
+    ? 'The built-in all group cannot be deleted.'
+    : blocked ? 'Remove all node memberships and firewall references before deleting this group.' : '';
+  updateSecurityGroupMembershipAction();
+}
+
+function renderSecurityGroups() {
+  const groupDocument = state.securityGroups.document;
+  const list = $('#security-group-list'); list.replaceChildren();
+  const canManage = hasPermission('networks.security');
+  $$('input, button', $('#create-security-group-form')).forEach((control) => { control.disabled = !canManage || state.securityGroups.busy; });
+  if (!groupDocument) {
+    $('#security-group-count').textContent = 'Group inventory is unavailable.';
+    $('#security-group-detail').classList.add('hidden');
+    return;
+  }
+  $('#security-group-count').textContent = `${groupDocument.groups.length} ${groupDocument.groups.length === 1 ? 'group' : 'groups'} · names are immutable`;
+  if (!securityGroupsModel.group(groupDocument, state.securityGroups.selectedName)) state.securityGroups.selectedName = groupDocument.groups[0].name;
+  for (const group of groupDocument.groups) {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'security-group-list-item';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', String(group.name === state.securityGroups.selectedName));
+    const copy = document.createElement('span');
+    const name = document.createElement('strong'); name.textContent = group.name;
+    const description = document.createElement('small'); description.textContent = group.description || (group.builtin ? 'Every node' : 'No description');
+    copy.append(name, description);
+    const memberCount = group.activeMembers + group.pendingMembers;
+    const usage = document.createElement('span'); usage.className = 'security-group-list-usage'; usage.textContent = `${memberCount} ${memberCount === 1 ? 'node' : 'nodes'}`;
+    button.append(copy, usage);
+    button.addEventListener('click', () => {
+      state.securityGroups.selectedName = group.name;
+      $('#security-group-error').textContent = '';
+      $('#security-group-message').textContent = '';
+      renderSecurityGroups();
+    });
+    list.append(button);
+  }
+  $('#security-group-message').textContent = state.securityGroups.message;
+  renderSecurityGroupDetail(selectedSecurityGroup());
+}
+
+function renderPolicySecurityGroupOptions(groupDocument) {
+  const options = $('#policy-security-group-options'); options.replaceChildren();
+  for (const group of groupDocument?.groups || []) {
+    const option = document.createElement('option'); option.value = group.name; option.label = group.description || (group.builtin ? 'Every certificate' : `${group.activeMembers + group.pendingMembers} nodes`);
+    options.append(option);
+  }
+}
+
+async function refreshSecurityGroupsDocument(networkID) {
+  const raw = await api(`/api/v1/networks/${networkID}/groups`);
+  const groupDocument = securityGroupsModel.validate(raw, networkID);
+  state.securityGroups.document = groupDocument;
+  renderPolicySecurityGroupOptions(groupDocument);
+  return groupDocument;
+}
+
+async function openSecurityGroups(network, selectedName = '') {
+  const requestID = ++state.securityGroups.requestID;
+  state.securityGroups.networkID = network.id;
+  state.securityGroups.networkName = network.name;
+  state.securityGroups.document = null;
+  state.securityGroups.selectedName = selectedName;
+  state.securityGroups.message = '';
+  $('#security-groups-network-name').textContent = network.name;
+  $('#create-security-group-form').reset();
+  $('#create-security-group-error').textContent = '';
+  $('#security-group-error').textContent = '';
+  $('#security-group-message').textContent = '';
+  $('#security-groups-dialog').showModal();
+  renderSecurityGroups();
+  setSecurityGroupsBusy(true);
+  try {
+    await refreshSecurityGroupsDocument(network.id);
+    if (requestID !== state.securityGroups.requestID) return;
+    if (!state.securityGroups.selectedName) {
+      state.securityGroups.selectedName = state.securityGroups.document.groups.find((group) => !group.builtin)?.name || 'all';
+    }
+  } catch (error) {
+    if (requestID !== state.securityGroups.requestID) return;
+    $('#security-group-error').textContent = `Could not load security groups: ${error.message}`;
+  } finally {
+    if (requestID === state.securityGroups.requestID) setSecurityGroupsBusy(false);
+  }
+}
+
+$('#create-security-group-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (state.securityGroups.busy || !hasPermission('networks.security')) return;
+  const form = event.currentTarget;
+  const name = form.name.value.trim();
+  const description = form.description.value.trim();
+  const errorBox = $('#create-security-group-error'); errorBox.textContent = '';
+  if (!securityGroupsModel.GROUP_NAME.test(name) || name === 'all' || name === 'any' || name !== form.name.value) {
+    errorBox.textContent = 'Use 1–32 letters, numbers, underscores, or hyphens. Names cannot be all or any and cannot contain surrounding spaces.';
+    form.name.focus();
+    return;
+  }
+  setSecurityGroupsBusy(true);
+  try {
+    const raw = await api(`/api/v1/networks/${state.securityGroups.networkID}/groups`, {
+      method: 'POST', body: JSON.stringify({ name, description }),
+    });
+    state.securityGroups.document = securityGroupsModel.validate(raw, state.securityGroups.networkID);
+    state.securityGroups.selectedName = name;
+    state.securityGroups.message = `${name} created. You can assign active nodes now or reference it from the firewall while it is empty.`;
+    renderPolicySecurityGroupOptions(state.securityGroups.document);
+    form.reset();
+  } catch (error) {
+    errorBox.textContent = `Could not create group: ${error.message}`;
+  } finally {
+    setSecurityGroupsBusy(false);
+  }
+});
+
+$('#security-group-description-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const group = selectedSecurityGroup();
+  if (!group || group.builtin || state.securityGroups.busy || !hasPermission('networks.security')) return;
+  const description = $('#selected-security-group-description').value.trim();
+  $('#security-group-error').textContent = '';
+  setSecurityGroupsBusy(true);
+  try {
+    const raw = await api(`/api/v1/networks/${state.securityGroups.networkID}/groups/${encodeURIComponent(group.name)}`, {
+      method: 'PUT', body: JSON.stringify({ description }),
+    });
+    state.securityGroups.document = securityGroupsModel.validate(raw, state.securityGroups.networkID);
+    state.securityGroups.message = `${group.name} details saved.`;
+    renderPolicySecurityGroupOptions(state.securityGroups.document);
+  } catch (error) {
+    $('#security-group-error').textContent = `Could not save group details: ${error.message}`;
+  } finally {
+    setSecurityGroupsBusy(false);
+  }
+});
+
+$('#delete-security-group').addEventListener('click', async () => {
+  const group = selectedSecurityGroup();
+  if (!group || group.builtin || state.securityGroups.busy || !hasPermission('networks.security')) return;
+  if (!confirm(`Delete the empty security group ${group.name}? Its name can be created again later, but this group definition and description will be removed now.`)) return;
+  $('#security-group-error').textContent = '';
+  setSecurityGroupsBusy(true);
+  try {
+    const raw = await api(`/api/v1/networks/${state.securityGroups.networkID}/groups/${encodeURIComponent(group.name)}`, {
+      method: 'DELETE', body: JSON.stringify({ confirmation_name: group.name }),
+    });
+    state.securityGroups.document = securityGroupsModel.validate(raw, state.securityGroups.networkID);
+    state.securityGroups.selectedName = state.securityGroups.document.groups[0].name;
+    state.securityGroups.message = `${group.name} deleted.`;
+    renderPolicySecurityGroupOptions(state.securityGroups.document);
+  } catch (error) {
+    $('#security-group-error').textContent = `Could not delete group: ${error.message}`;
+  } finally {
+    setSecurityGroupsBusy(false);
+  }
+});
+
+$('#save-security-group-members').addEventListener('click', async () => {
+  const group = selectedSecurityGroup();
+  const network = state.networks.find((candidate) => candidate.id === state.securityGroups.networkID);
+  const nodes = state.nodes.get(state.securityGroups.networkID) || [];
+  if (!group || group.builtin || !network || state.securityGroups.busy || !hasPermission('networks.security')) return;
+  const selectedNodeIDs = $$('input[data-security-group-node-id]:checked', $('#security-group-member-list')).map((input) => input.dataset.securityGroupNodeId);
+  let changes;
+  try {
+    changes = securityGroupsModel.membershipChanges(state.securityGroups.document, nodes, group.name, selectedNodeIDs);
+  } catch (error) {
+    $('#security-group-error').textContent = error.message;
+    return;
+  }
+  if (!changes.length) {
+    state.securityGroups.message = 'No membership changes are needed.';
+    renderSecurityGroups();
+    return;
+  }
+  const additions = changes.filter((change) => change.add).length;
+  const removals = changes.length - additions;
+  if (!confirm(`Update ${changes.length} active node certificate${changes.length === 1 ? '' : 's'} for ${group.name}? This will add ${additions} and remove ${removals}. Each node is committed and verified separately; existing certificates are blocklisted through expiry.`)) return;
+  $('#security-group-error').textContent = '';
+  state.securityGroups.message = `Updating 0 of ${changes.length} nodes…`;
+  setSecurityGroupsBusy(true);
+  let expectedRevision = network.config_revision;
+  let completed = 0;
+  let failure = null;
+  for (const change of changes) {
+    const requestID = newNodeGroupsRequestID();
+    let receipt = null;
+    for (let attempt = 0; attempt < 2 && !receipt; attempt += 1) {
+      try {
+        receipt = await api(`/api/v1/nodes/${change.nodeID}/groups`, {
+          method: 'PUT', timeoutMS: 30000,
+          body: JSON.stringify({
+            expected_config_revision: expectedRevision,
+            confirmation_name: change.nodeName,
+            request_id: requestID,
+            groups: change.groups,
+          }),
+        });
+      } catch (error) {
+        failure = error;
+        if ([400, 403, 404, 409, 422].includes(error.status)) break;
+      }
+    }
+    if (!receipt) break;
+    if (receipt.node_id !== change.nodeID || receipt.network_id !== network.id || receipt.request_id !== requestID ||
+      receipt.config_revision !== expectedRevision + 1 || !Array.isArray(receipt.groups) ||
+      JSON.stringify(receipt.groups) !== JSON.stringify(change.groups) || receipt.previous_certificate_blocklisted !== true) {
+      failure = new Error('A node membership update returned an invalid transition receipt.');
+      break;
+    }
+    expectedRevision = receipt.config_revision;
+    completed += 1;
+    state.securityGroups.message = `Updated ${completed} of ${changes.length} nodes…`;
+    $('#security-group-message').textContent = state.securityGroups.message;
+  }
+  try {
+    await loadNetworks(true);
+    await refreshSecurityGroupsDocument(network.id);
+    const currentNetwork = state.networks.find((candidate) => candidate.id === network.id);
+    if (!currentNetwork || currentNetwork.config_revision < expectedRevision) throw new Error('Authoritative network revision readback did not confirm the completed certificate changes.');
+    state.securityGroups.message = failure
+      ? `${completed} of ${changes.length} nodes were confirmed. Review the refreshed membership and retry to apply only the remaining changes.`
+      : `${changes.length} node certificate${changes.length === 1 ? '' : 's'} updated and confirmed at revision ${expectedRevision}.`;
+    if (failure) $('#security-group-error').textContent = `The batch stopped after ${completed} confirmed updates: ${failure.message}`;
+  } catch (error) {
+    $('#security-group-error').textContent = `Membership changed on ${completed} nodes, but authoritative readback is incomplete: ${error.message}`;
+  } finally {
+    setSecurityGroupsBusy(false);
+  }
+});
+
+$('#security-groups-edit-firewall').addEventListener('click', () => {
+  const network = state.networks.find((candidate) => candidate.id === state.securityGroups.networkID);
+  if (!network) return;
+  $('#security-groups-dialog').close();
+  openPolicy(network);
+});
+
+$('#policy-manage-groups').addEventListener('click', () => {
+  const network = state.networks.find((candidate) => candidate.id === state.policy.networkID);
+  if (!network) return;
+  clearPolicyRefreshTimer();
+  $('#policy-dialog').close();
+  openSecurityGroups(network);
+});
+
+$('#manage-network-groups').addEventListener('click', () => {
+  const network = state.networks.find((candidate) => candidate.id === state.nodeSecurity.networkID);
+  if (!network) return;
+  $('#node-security-dialog').close();
+  openSecurityGroups(network);
 });
 
 class PolicyInputError extends Error {
@@ -1965,6 +2508,9 @@ function collectPolicyRule(row, directionLabel, ruleNumber) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(selectorValue) || selectorValue === 'any') {
       throw new PolicyInputError(`${directionLabel} rule ${ruleNumber}: group must be 1–32 letters, numbers, underscores, or hyphens and cannot be “any”.`, selectorField);
     }
+    if (!securityGroupsModel.group(state.policy.securityGroups, selectorValue)) {
+      throw new PolicyInputError(`${directionLabel} rule ${ruleNumber}: create the security group “${selectorValue}” before using it in firewall policy.`, selectorField);
+    }
     rule.group = selectorValue;
   } else if (selectorKind === 'host') {
     if (!validCanonicalIPv4Selector(selectorValue)) {
@@ -1985,6 +2531,9 @@ function collectPolicyRule(row, directionLabel, ruleNumber) {
     const targetGroup = policyField(row, 'target-group').value.trim();
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/u.test(targetGroup) || targetGroup === 'all') {
       throw new PolicyInputError(`${directionLabel} rule ${ruleNumber}: local target group must be 1–32 letters, numbers, underscores, or hyphens and cannot be “all”.`, policyField(row, 'target-group'));
+    }
+    if (!securityGroupsModel.group(state.policy.securityGroups, targetGroup)) {
+      throw new PolicyInputError(`${directionLabel} rule ${ruleNumber}: create the local target group “${targetGroup}” before using it in firewall policy.`, policyField(row, 'target-group'));
     }
     rule.target_group = targetGroup;
   } else if (targetKind === 'node') {
@@ -2176,6 +2725,7 @@ async function openPolicy(network, defaultTargetNodeID = '') {
   state.policy.previewWouldChange = false;
   state.policy.defaultTargetNodeID = defaultTargetNodeID;
   state.policy.loaded = false;
+  state.policy.securityGroups = null;
 	state.policy.rollout = null;
 	state.policy.action = '';
   const form = $('#policy-form');
@@ -2194,16 +2744,21 @@ async function openPolicy(network, defaultTargetNodeID = '') {
 	$('#policy-canary-selection').classList.remove('hidden'); $('#policy-rollout-node-list').classList.add('hidden'); $('#policy-rollout-actions').classList.add('hidden');
   const affected = (state.nodes.get(network.id) || []).filter((node) => node.status === 'active').length;
   $('#policy-node-count').textContent = affected;
+  renderPolicySecurityGroupOptions(null);
   $('#policy-dialog').showModal();
   setPolicyBusy(true);
   try {
-		const [document, rawRollout] = await Promise.all([
+		const [document, rawRollout, rawGroups] = await Promise.all([
 			api(`/api/v1/networks/${network.id}/firewall`),
 			api(`/api/v1/networks/${network.id}/firewall-rollout`),
+			api(`/api/v1/networks/${network.id}/groups`),
 		]);
     if (requestID !== state.policy.requestID) return;
 		const rollout = firewallRolloutModel.validate(rawRollout);
+		const securityGroups = securityGroupsModel.validate(rawGroups, network.id);
 		if (rollout.networkID !== network.id || document.network_id !== network.id || document.config_revision !== rollout.configRevision) throw new Error('Firewall policy and rollout state did not match the selected network revision.');
+		state.policy.securityGroups = securityGroups;
+		renderPolicySecurityGroupOptions(securityGroups);
 		renderPolicyDocument(policyDocumentFromRolloutTarget(rollout) || document);
 		renderPolicyRollout(rollout);
     state.policy.loaded = true;

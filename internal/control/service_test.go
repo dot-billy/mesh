@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"mesh/internal/runtimetelemetry"
 )
 
 func TestNetworkNodeEnrollmentLifecycle(t *testing.T) {
@@ -114,6 +116,79 @@ func TestNetworkNodeEnrollmentLifecycle(t *testing.T) {
 	_ = service.store.View(func(state State) error { afterRevoke = state; return nil })
 	if len(afterRevoke.Revocations) != 1 {
 		t.Fatalf("revocation did not blocklist all unexpired issuances: %#v", afterRevoke.Revocations)
+	}
+}
+
+func TestMobileRuntimeAuthorizationBindsCurrentSignedStateAndRevocation(
+	t *testing.T,
+) {
+	now := time.Date(2026, 7, 25, 3, 0, 0, 0, time.UTC)
+	issuer := &countingIssuer{now: func() time.Time { return now }}
+	service := testServiceWithIssuer(t, issuer)
+	service.now = func() time.Time { return now }
+	network, err := service.CreateNetwork(
+		context.Background(),
+		CreateNetworkInput{
+			Name:           "mobile-runtime",
+			CIDR:           "10.242.0.0/24",
+			CertificateTTL: 24,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateNode(
+		network.ID,
+		CreateNodeInput{Name: "iphone", Role: "member"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentToken := strings.Repeat("m", 42) + "A"
+	bundle, err := service.Enroll(
+		context.Background(),
+		created.EnrollmentToken,
+		testNebulaPublicKey('M'),
+		HashToken(agentToken),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, written := uint64(1), uint64(1)
+	input := runtimetelemetry.MobileRuntimeReportInput{
+		Version:                runtimetelemetry.MobileRuntimeVersionV1,
+		InstanceGeneration:     1,
+		Sequence:               1,
+		State:                  runtimetelemetry.MobileStateTunnelRunning,
+		ConfigRevision:         bundle.ConfigRevision,
+		ConfigSHA256:           bundle.ConfigSHA256,
+		CertificateFingerprint: bundle.CertificateFingerprint,
+		CertificateGeneration:  bundle.CertificateGeneration,
+		EngineIdentity:         strings.Repeat("e", 64),
+		RuntimeUptimeMS:        1_000,
+		PacketsRead:            &read,
+		PacketsWritten:         &written,
+	}
+	authorized, err := service.AuthorizeMobileRuntime(agentToken, input)
+	if err != nil || authorized.ID != created.Node.ID {
+		t.Fatalf("authorized=%#v err=%v", authorized, err)
+	}
+	mismatched := input
+	mismatched.ConfigRevision++
+	if _, err := service.AuthorizeMobileRuntime(
+		agentToken,
+		mismatched,
+	); !errors.Is(err, ErrConflict) {
+		t.Fatalf("mismatched desired state returned %v", err)
+	}
+	if _, err := service.RevokeNode(created.Node.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.AuthorizeMobileRuntime(
+		agentToken,
+		input,
+	); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("revoked mobile bearer returned %v", err)
 	}
 }
 

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"mesh/internal/runtimetelemetry"
 )
 
 var (
@@ -41,6 +43,7 @@ const (
 	ControlStateVersionRoutePolicies     = 11
 	ControlStateVersionNativeDNS         = 12
 	ControlStateVersionFirewallScopes    = 13
+	ControlStateVersionSecurityGroups    = 14
 	UnassignedTopologyLabel              = "unassigned"
 )
 
@@ -172,7 +175,7 @@ func (s *Service) CheckCurrentRecoveryCredentialBinding(masterVerifier, adminVer
 		return fmt.Errorf("%w: invalid recovery credential verifier", ErrInvalid)
 	}
 	return s.readCurrentState(func(state State) error {
-		if state.Version != ControlStateVersionFirewallScopes ||
+		if state.Version != ControlStateVersionSecurityGroups ||
 			!masterKeyVerifierEqual(state.MasterKeyVerifier, masterVerifier) ||
 			!adminCredentialVerifierEqual(state.AdminCredentialVerifier, adminVerifier) {
 			return fmt.Errorf("%w: recovery credential binding is not current", ErrConflict)
@@ -222,7 +225,7 @@ func (s *Service) EnsureRecoveryCredentialBinding(masterVerifier, adminVerifier 
 func (s *Service) EnsureTopologySchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionTopology, ControlStateVersionNetworkDNS, ControlStateVersionNetworkRelays, ControlStateVersionCARotation, ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionTopology, ControlStateVersionNetworkDNS, ControlStateVersionNetworkRelays, ControlStateVersionCARotation, ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionCredentialBinding:
 		default:
@@ -266,7 +269,7 @@ func (s *Service) EnsureTopologySchema() error {
 func (s *Service) EnsureNetworkDNSSchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionNetworkDNS, ControlStateVersionNetworkRelays, ControlStateVersionCARotation, ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionNetworkDNS, ControlStateVersionNetworkRelays, ControlStateVersionCARotation, ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionTopology:
 		default:
@@ -295,7 +298,7 @@ func (s *Service) EnsureNetworkDNSSchema() error {
 func (s *Service) EnsureNetworkRelaySchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionNetworkRelays, ControlStateVersionCARotation, ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionNetworkRelays, ControlStateVersionCARotation, ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionNetworkDNS:
 		default:
@@ -324,7 +327,7 @@ func (s *Service) EnsureNetworkRelaySchema() error {
 func (s *Service) EnsureCARotationSchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionCARotation, ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionCARotation, ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionNetworkRelays:
 		default:
@@ -376,7 +379,7 @@ func (s *Service) EnsureCARotationSchema() error {
 func (s *Service) EnsureFirewallRolloutSchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionFirewallRollout, ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionCARotation:
 		default:
@@ -406,7 +409,7 @@ func (s *Service) EnsureFirewallRolloutSchema() error {
 func (s *Service) EnsureFirewallPauseSchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionFirewallPause, ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionFirewallRollout:
 		default:
@@ -435,7 +438,7 @@ func (s *Service) EnsureFirewallPauseSchema() error {
 func (s *Service) EnsureRouteTransferSchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionRouteTransfer, ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionFirewallPause:
 		default:
@@ -465,7 +468,7 @@ func (s *Service) EnsureRouteTransferSchema() error {
 func (s *Service) EnsureRouteProfileEditSchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionRouteProfileEdit, ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionRouteTransfer:
 		default:
@@ -495,7 +498,7 @@ func (s *Service) EnsureRouteProfileEditSchema() error {
 func (s *Service) EnsureRoutePolicySchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionRoutePolicies, ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionRouteProfileEdit:
 		default:
@@ -524,7 +527,7 @@ func (s *Service) EnsureRoutePolicySchema() error {
 func (s *Service) EnsureNativeDNSSchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes:
+		case ControlStateVersionNativeDNS, ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionRoutePolicies:
 		default:
@@ -555,7 +558,7 @@ func (s *Service) EnsureNativeDNSSchema() error {
 func (s *Service) EnsureFirewallScopeSchema() error {
 	return s.updateState(func(state *State) error {
 		switch state.Version {
-		case ControlStateVersionFirewallScopes:
+		case ControlStateVersionFirewallScopes, ControlStateVersionSecurityGroups:
 			return nil
 		case ControlStateVersionNativeDNS:
 		default:
@@ -569,6 +572,40 @@ func (s *Service) EnsureFirewallScopeSchema() error {
 		state.Audit = append(state.Audit, newAudit(now, "control.firewall_scope_schema_migrated", "control_state", "control", map[string]any{
 			"from_version": ControlStateVersionNativeDNS,
 			"to_version":   ControlStateVersionFirewallScopes,
+			"networks":     len(state.Networks),
+		}))
+		return nil
+	})
+}
+
+// EnsureSecurityGroupSchema performs the ordered v13 to v14 migration. It
+// materializes the network-level group catalog from existing certificate
+// memberships and firewall references. The catalog is operator metadata, so
+// migration does not change certificates, signed configuration bytes, or
+// network revisions.
+func (s *Service) EnsureSecurityGroupSchema() error {
+	return s.updateState(func(state *State) error {
+		switch state.Version {
+		case ControlStateVersionSecurityGroups:
+			return nil
+		case ControlStateVersionFirewallScopes:
+		default:
+			return fmt.Errorf("%w: security-group migration requires firewall-scope control state v13", ErrConflict)
+		}
+		now := s.now().UTC()
+		if now.IsZero() {
+			return errors.New("security-group schema migration requires a valid timestamp")
+		}
+		for index := range state.Networks {
+			names := derivedManagedSecurityGroupNames(*state, state.Networks[index])
+			if err := ensureSecurityGroupDefinitions(&state.Networks[index], names, now); err != nil {
+				return err
+			}
+		}
+		state.Version = ControlStateVersionSecurityGroups
+		state.Audit = append(state.Audit, newAudit(now, "control.security_group_schema_migrated", "control_state", "control", map[string]any{
+			"from_version": ControlStateVersionFirewallScopes,
+			"to_version":   ControlStateVersionSecurityGroups,
 			"networks":     len(state.Networks),
 		}))
 		return nil
@@ -956,9 +993,14 @@ func (s *Service) createNode(actor *Actor, networkID string, in CreateNodeInput)
 		if state.Version < ControlStateVersionTopology && (in.Site != "" || in.FailureDomain != "") {
 			return fmt.Errorf("%w: topology schema is not current", ErrConflict)
 		}
-		network, ok := findNetwork(*state, networkID)
+		network, ok := findNetworkPointer(state, networkID)
 		if !ok {
 			return ErrNotFound
+		}
+		if state.Version >= ControlStateVersionSecurityGroups {
+			if err := ensureSecurityGroupDefinitions(network, groups, now.UTC()); err != nil {
+				return err
+			}
 		}
 		if err := validateNewRoutedSubnets(*state, routedSubnets); err != nil {
 			return err
@@ -970,11 +1012,11 @@ func (s *Service) createNode(actor *Actor, networkID string, in CreateNodeInput)
 		}
 		address := strings.TrimSpace(in.IP)
 		if address == "" {
-			address, err = nextAddress(network, state.Nodes)
+			address, err = nextAddress(*network, state.Nodes)
 			if err != nil {
 				return err
 			}
-		} else if err := validateNodeIP(network, state.Nodes, address); err != nil {
+		} else if err := validateNodeIP(*network, state.Nodes, address); err != nil {
 			return err
 		}
 		token, err = s.uniqueBearer(*state, now)
@@ -1106,6 +1148,46 @@ func (s *Service) ReissueEnrollmentAs(actor Actor, nodeID string) (ReissuedEnrol
 		return ReissuedEnrollment{}, err
 	}
 	return s.reissueEnrollment(&actor, nodeID)
+}
+
+// ReissueSelfEnrollmentAs resolves a same-principal retry for the fixed
+// self-service mobile policy. It deliberately derives ownership from the
+// attributed node.created audit event and ignores session ID so a person may
+// retry after signing in again. It cannot reissue another principal's node or
+// any node whose administrator-owned policy differs from self enrollment.
+func (s *Service) ReissueSelfEnrollmentAs(actor Actor, networkID, name string) (ReissuedEnrollment, error) {
+	if err := validateActor(actor); err != nil {
+		return ReissuedEnrollment{}, err
+	}
+	name = strings.TrimSpace(name)
+	if !validPersistedID(networkID) || !namePattern.MatchString(name) {
+		return ReissuedEnrollment{}, fmt.Errorf("%w: invalid self-enrollment identity", ErrInvalid)
+	}
+	nodeID := ""
+	err := s.store.View(func(state State) error {
+		for _, node := range state.Nodes {
+			if node.NetworkID != networkID || !strings.EqualFold(node.Name, name) || node.Status == "revoked" {
+				continue
+			}
+			if node.Role != "member" || node.Site != "mobile" || node.PublicEndpoint != "" ||
+				len(node.RoutedSubnets) != 0 || !slices.Equal(node.Groups, []string{"all", "members"}) {
+				return fmt.Errorf("%w: existing node is not a self enrollment", ErrConflict)
+			}
+			for _, event := range state.Audit {
+				if event.Action == "node.created" && event.Resource == "node" && event.ResourceID == node.ID &&
+					event.Details[auditActorIDKey] == actor.ID && event.Details[auditActorKindKey] == actor.Kind {
+					nodeID = node.ID
+					return nil
+				}
+			}
+			return fmt.Errorf("%w: existing self-enrollment owner differs", ErrConflict)
+		}
+		return ErrNotFound
+	})
+	if err != nil {
+		return ReissuedEnrollment{}, err
+	}
+	return s.ReissueEnrollmentAs(actor, nodeID)
 }
 
 func (s *Service) reissueEnrollment(actor *Actor, nodeID string) (ReissuedEnrollment, error) {
@@ -1848,6 +1930,58 @@ func (s *Service) AuthorizeRuntimeTelemetry(token string, heartbeatSequence int6
 		return Node{}, fmt.Errorf("%w: runtime telemetry does not match the current heartbeat", ErrConflict)
 	}
 	return node, nil
+}
+
+// AuthorizeMobileRuntime binds one independently versioned Packet Tunnel
+// observation to the current active node credential and exact desired signed
+// configuration. It is read-only: mobile evidence cannot revive a revoked
+// node, advance control state, or masquerade as a desktop heartbeat.
+func (s *Service) AuthorizeMobileRuntime(
+	token string,
+	input runtimetelemetry.MobileRuntimeReportInput,
+) (Node, error) {
+	token = strings.TrimSpace(token)
+	if !ValidBearerToken(token) {
+		return Node{}, ErrUnauthorized
+	}
+	if err := runtimetelemetry.ValidateMobileRuntimeInput(input); err != nil {
+		return Node{}, fmt.Errorf("%w: mobile runtime report is invalid", ErrInvalid)
+	}
+	tokenHash := HashToken(token)
+	now := s.now().UTC()
+	if now.IsZero() {
+		return Node{}, errors.New("mobile runtime authorization requires a valid timestamp")
+	}
+	var authorized Node
+	err := s.readCurrentState(func(state State) error {
+		node, ok := findAgent(state, tokenHash, now)
+		if !ok || node.Status != "active" {
+			return ErrUnauthorized
+		}
+		network, ok := findNetwork(state, node.NetworkID)
+		if !ok ||
+			network.ConfigRevision < 1 ||
+			node.CertificateGeneration < 1 ||
+			node.CertificateExpiresAt == nil {
+			return errors.New("authoritative mobile node state is invalid")
+		}
+		if !now.Before(*node.CertificateExpiresAt) {
+			return fmt.Errorf("%w: mobile node certificate is expired", ErrConflict)
+		}
+		desiredDigest := ConfigDigest(renderConfig(state, network, node))
+		if input.ConfigRevision != network.ConfigRevision ||
+			input.ConfigSHA256 != desiredDigest ||
+			input.CertificateFingerprint != node.CertificateFingerprint ||
+			input.CertificateGeneration != node.CertificateGeneration {
+			return fmt.Errorf(
+				"%w: mobile runtime does not match current desired state",
+				ErrConflict,
+			)
+		}
+		authorized = node
+		return nil
+	})
+	return authorized, err
 }
 
 func (s *Service) Heartbeat(token string, input HeartbeatInput) (Node, error) {
@@ -2639,6 +2773,11 @@ func (s *Service) updateFirewallPolicy(actor *Actor, networkID string, input Upd
 			if firewallPolicyUsesNodeScopes(desired) && state.Version < ControlStateVersionFirewallScopes {
 				return fmt.Errorf("%w: firewall scope schema is not current", ErrConflict)
 			}
+			if state.Version >= ControlStateVersionSecurityGroups {
+				if err := ensureSecurityGroupDefinitions(network, managedSecurityGroupNamesFromPolicy(desired), now.UTC()); err != nil {
+					return err
+				}
+			}
 			if network.DNSSettings.Enabled && !firewallAllowsNetworkDNS(desired, network.CIDR, network.DNSSettings.ListenPort) {
 				return fmt.Errorf("%w: firewall must keep UDP port %d available from all managed nodes while network DNS is enabled", ErrConflict, network.DNSSettings.ListenPort)
 			}
@@ -2694,6 +2833,24 @@ func (s *Service) Nodes(networkID string) ([]Node, error) {
 			}
 		}
 		sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
+		return nil
+	})
+	return result, err
+}
+
+// Node returns one secret-redacted node record for read-only projections.
+func (s *Service) Node(nodeID string) (Node, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return Node{}, ErrNotFound
+	}
+	var result Node
+	err := s.viewState(func(state State) error {
+		node, ok := findNode(state, nodeID)
+		if !ok {
+			return ErrNotFound
+		}
+		result = node
 		return nil
 	})
 	return result, err

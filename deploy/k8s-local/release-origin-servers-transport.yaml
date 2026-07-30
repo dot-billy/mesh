@@ -1,0 +1,7 @@
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: mesh-release-origin-backend
+  namespace: mesh-system
+spec:
+  serverName: releases-mesh.verify.rw0.io

@@ -7,10 +7,12 @@ class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({
     required this.model,
     required this.callbacks,
+    this.managedPolicy,
     super.key,
   });
 
   final ConnectionViewModel model;
+  final AppleManagedPolicyViewModel? managedPolicy;
   final MeshPresentationCallbacks callbacks;
 
   @override
@@ -81,6 +83,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   @override
   Widget build(BuildContext context) {
     final selected = widget.model.selectedProfile;
+    final policy = widget.managedPolicy;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -142,6 +145,21 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                         'Mesh uses the operating system trust store and never '
                         'offers a bypass for invalid TLS.',
                       ),
+                      if (policy != null) ...[
+                        const SizedBox(height: 12),
+                        Semantics(
+                          label: policy.valid
+                              ? 'Organization-managed application policy'
+                              : 'Invalid organization-managed application policy',
+                          child: Text(
+                            policy.valid
+                                ? policy.originLocked
+                                      ? 'Your organization locks this app to ${policy.controlPlaneOrigin}.'
+                                      : 'Your organization supplies managed application settings.'
+                                : 'Organization-managed settings are invalid. Connection setup is disabled.',
+                          ),
+                        ),
+                      ],
                       if (widget.model.message case final message?) ...[
                         const SizedBox(height: 16),
                         Semantics(
@@ -157,10 +175,20 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                           ),
                         ),
                       ],
+                      if (widget.model.canCancelAuthentication) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          key: const Key('cancel-desktop-sign-in'),
+                          onPressed: widget.callbacks.cancelAuthentication,
+                          icon: const Icon(Icons.close),
+                          label: const Text('Cancel sign-in'),
+                        ),
+                      ],
                       if (widget.model.profiles.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         DropdownButtonFormField<String>(
                           key: const Key('connection-profile-picker'),
+                          isExpanded: true,
                           initialValue: widget.model.selectedProfileId,
                           decoration: const InputDecoration(
                             labelText: 'Saved control plane',
@@ -181,7 +209,9 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                           },
                         ),
                       ],
-                      if (selected == null) ...[
+                      if (selected == null &&
+                          (policy == null ||
+                              policy.valid && policy.allowOriginChanges)) ...[
                         const SizedBox(height: 20),
                         Form(
                           key: _formKey,
@@ -226,7 +256,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                             ],
                           ),
                         ),
-                      ] else ...[
+                      ],
+                      if (selected != null) ...[
                         const SizedBox(height: 20),
                         ListTile(
                           contentPadding: EdgeInsets.zero,

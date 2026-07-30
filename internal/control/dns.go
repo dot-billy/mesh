@@ -237,7 +237,7 @@ func (s *Service) updateNetworkDNS(actor *Actor, networkID string, input UpdateN
 	var result NetworkDNSDocument
 	now := s.now().UTC()
 	err := s.updateState(func(state *State) error {
-		if state.Version < ControlStateVersionNetworkRelays || state.Version > ControlStateVersionFirewallScopes {
+		if state.Version < ControlStateVersionNetworkRelays || state.Version > ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: network DNS schema is not current", ErrConflict)
 		}
 		for index := range state.Networks {

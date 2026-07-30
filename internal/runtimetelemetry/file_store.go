@@ -210,6 +210,112 @@ func (s *FileStore) Delete(nodeID string) (bool, error) {
 	return true, nil
 }
 
+func (s *FileStore) PutMobile(
+	nodeID string,
+	receivedAt time.Time,
+	input MobileRuntimeReportInput,
+) (MobileRuntimeRecord, bool, error) {
+	candidate, err := newMobileRuntimeRecord(nodeID, receivedAt, input)
+	if err != nil {
+		return MobileRuntimeRecord{}, false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.readyLocked(); err != nil {
+		return MobileRuntimeRecord{}, false, err
+	}
+	next := cloneState(s.state)
+	index := sort.Search(len(next.MobileRecords), func(index int) bool {
+		return next.MobileRecords[index].NodeID >= nodeID
+	})
+	var previous *MobileRuntimeRecord
+	if index < len(next.MobileRecords) &&
+		next.MobileRecords[index].NodeID == nodeID {
+		existing := next.MobileRecords[index]
+		previous = &existing
+	}
+	accepted, changed, err := transitionMobileRuntimeRecord(
+		previous,
+		candidate,
+	)
+	if err != nil || !changed {
+		return accepted, changed, err
+	}
+	if previous == nil {
+		if len(next.MobileRecords) >= MaxRecords {
+			return MobileRuntimeRecord{}, false, ErrInvalid
+		}
+		next.MobileRecords = append(next.MobileRecords, MobileRuntimeRecord{})
+		copy(next.MobileRecords[index+1:], next.MobileRecords[index:])
+	}
+	next.MobileRecords[index] = cloneMobileRuntimeRecord(accepted)
+	if err := s.persistLocked(next); err != nil {
+		return MobileRuntimeRecord{}, false, err
+	}
+	return cloneMobileRuntimeRecord(accepted), true, nil
+}
+
+func (s *FileStore) GetMobile(
+	nodeID string,
+) (MobileRuntimeRecord, bool, error) {
+	if !nodeIDPattern.MatchString(nodeID) {
+		return MobileRuntimeRecord{}, false, ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.readyLocked(); err != nil {
+		return MobileRuntimeRecord{}, false, err
+	}
+	index := sort.Search(len(s.state.MobileRecords), func(index int) bool {
+		return s.state.MobileRecords[index].NodeID >= nodeID
+	})
+	if index == len(s.state.MobileRecords) ||
+		s.state.MobileRecords[index].NodeID != nodeID {
+		return MobileRuntimeRecord{}, false, nil
+	}
+	return cloneMobileRuntimeRecord(s.state.MobileRecords[index]), true, nil
+}
+
+func (s *FileStore) ListMobile() ([]MobileRuntimeRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.readyLocked(); err != nil {
+		return nil, err
+	}
+	records := make([]MobileRuntimeRecord, len(s.state.MobileRecords))
+	for index := range s.state.MobileRecords {
+		records[index] = cloneMobileRuntimeRecord(
+			s.state.MobileRecords[index],
+		)
+	}
+	return records, nil
+}
+
+func (s *FileStore) DeleteMobile(nodeID string) (bool, error) {
+	if !nodeIDPattern.MatchString(nodeID) {
+		return false, ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.readyLocked(); err != nil {
+		return false, err
+	}
+	next := cloneState(s.state)
+	index := sort.Search(len(next.MobileRecords), func(index int) bool {
+		return next.MobileRecords[index].NodeID >= nodeID
+	})
+	if index == len(next.MobileRecords) ||
+		next.MobileRecords[index].NodeID != nodeID {
+		return false, nil
+	}
+	copy(next.MobileRecords[index:], next.MobileRecords[index+1:])
+	next.MobileRecords = next.MobileRecords[:len(next.MobileRecords)-1]
+	if err := s.persistLocked(next); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *FileStore) CheckReadiness() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -341,9 +447,18 @@ func (s *FileStore) closeResources() error {
 }
 
 func cloneState(state State) State {
-	copy := State{Schema: state.Schema, Records: make([]Record, len(state.Records))}
+	copy := State{
+		Schema:        state.Schema,
+		Records:       make([]Record, len(state.Records)),
+		MobileRecords: make([]MobileRuntimeRecord, len(state.MobileRecords)),
+	}
 	for index := range state.Records {
 		copy.Records[index] = cloneRecord(state.Records[index])
+	}
+	for index := range state.MobileRecords {
+		copy.MobileRecords[index] = cloneMobileRuntimeRecord(
+			state.MobileRecords[index],
+		)
 	}
 	return copy
 }

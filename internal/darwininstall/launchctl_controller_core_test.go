@@ -68,6 +68,17 @@ func TestLaunchctlBootstrapUsesExactSystemDomainAndLivePlist(t *testing.T) {
 	}
 }
 
+func TestLaunchctlKickstartUsesExactSystemTargetWithoutRestartFlag(t *testing.T) {
+	runner := &recordingLaunchctlRunner{}
+	if err := (launchctlServiceOperations{runner: runner}).Kickstart(); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"kickstart system/io.mesh.node-agent"}
+	if !reflect.DeepEqual(runner.events, want) {
+		t.Fatalf("launchctl kickstart events = %q, want %q", runner.events, want)
+	}
+}
+
 func TestLaunchctlCommandContractRejectsTargetAndPlistDrift(t *testing.T) {
 	contract, err := newLaunchctlCommandContract(
 		launchctlServiceIdentity{domain: "system", target: "system/io.mesh.node-agent"},
@@ -82,6 +93,8 @@ func TestLaunchctlCommandContractRejectsTargetAndPlistDrift(t *testing.T) {
 		"other plist":  {"bootstrap", "system", "/Library/LaunchDaemons/io.mesh.other.plist"},
 		"other domain": {"bootstrap", "gui/501", "/exact/recovery.plist"},
 		"extra flag":   {"bootout", "system/io.mesh.node-agent", "unexpected"},
+		"restart flag": {"kickstart", "-k", "system/io.mesh.node-agent"},
+		"other start":  {"kickstart", "system/io.mesh.other"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := contract.validate(arguments); err == nil {
@@ -93,6 +106,7 @@ func TestLaunchctlCommandContractRejectsTargetAndPlistDrift(t *testing.T) {
 		{"bootout", "system/io.mesh.node-agent"},
 		{"bootstrap", "system", "/exact/recovery.plist"},
 		{"bootstrap", "system", "/Library/LaunchDaemons/io.mesh.node-agent.plist"},
+		{"kickstart", "system/io.mesh.node-agent"},
 	} {
 		if err := contract.validate(arguments); err != nil {
 			t.Fatalf("exact launchctl command %q returned %v", arguments, err)

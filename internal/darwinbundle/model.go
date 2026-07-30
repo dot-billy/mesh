@@ -1,6 +1,8 @@
-// Package darwinbundle builds the deterministic, uncompressed Darwin node
-// staging bundle. It deliberately performs no installation, service-manager
-// mutation, extended-ACL mutation, codesigning, or notarization decision.
+// Package darwinbundle builds deterministic uncompressed Darwin node bundles.
+// It can assemble externally signed executables only after proving their
+// relation to an authenticated staging bundle and native receipt. It performs
+// no installation, service-manager mutation, extended-ACL mutation,
+// codesigning, or notarization decision.
 package darwinbundle
 
 import (
@@ -13,7 +15,8 @@ import (
 )
 
 const (
-	Schema = "mesh-darwin-node-staging-bundle-v1"
+	Schema       = "mesh-darwin-node-staging-bundle-v1"
+	SignedSchema = "mesh-darwin-node-bundle-v2"
 
 	packageJSONPath        = "package.json"
 	packageJSONArchiveMode = 0o444
@@ -113,7 +116,7 @@ func payloadSpecs(_ string) []payloadSpec {
 }
 
 func validatePackage(metadata Package) (time.Time, error) {
-	if metadata.Schema != Schema {
+	if metadata.Schema != Schema && metadata.Schema != SignedSchema {
 		return time.Time{}, fmt.Errorf("unsupported package schema %q", metadata.Schema)
 	}
 	if err := validateVersion(metadata.Version); err != nil {

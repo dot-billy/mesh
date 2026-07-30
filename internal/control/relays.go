@@ -213,7 +213,7 @@ func (s *Service) updateNetworkRelays(actor *Actor, networkID string, input Upda
 	var result NetworkRelaysDocument
 	now := s.now().UTC()
 	err = s.updateState(func(state *State) error {
-		if state.Version < ControlStateVersionNetworkRelays || state.Version > ControlStateVersionFirewallScopes {
+		if state.Version < ControlStateVersionNetworkRelays || state.Version > ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: network relay schema is not current", ErrConflict)
 		}
 		for index := range state.Networks {

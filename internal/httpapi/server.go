@@ -70,6 +70,7 @@ type Server struct {
 	identityAudit            identity.IdentityAuditStore
 	breakGlass               identity.BreakGlassStore
 	runtimeTelemetry         runtimetelemetry.Store
+	mobileRuntime            runtimetelemetry.MobileStore
 	linuxInstallBundleURL    string
 	linuxBootstrapHandoffURL string
 	oidc                     OIDCAuthenticator
@@ -227,9 +228,15 @@ func New(service *control.Service, options Options) (*Server, error) {
 	if options.SecureCookies {
 		sessionCookie, csrfCookie, oidcCookie = "__Host-mesh_session", "__Host-mesh_csrf", "__Host-mesh_oidc"
 	}
+	var mobileRuntime runtimetelemetry.MobileStore
+	if candidate, ok := options.RuntimeTelemetryStore.(runtimetelemetry.MobileStore); ok &&
+		!nilInterface(candidate) {
+		mobileRuntime = candidate
+	}
 	return &Server{
 		service: service, identityConfig: normalized, policyFingerprint: sessionPolicyFingerprint, sessions: options.SessionStore,
 		identityAudit: identityAudit, breakGlass: breakGlass, runtimeTelemetry: options.RuntimeTelemetryStore, linuxInstallBundleURL: linuxInstallBundleURL,
+		mobileRuntime:            mobileRuntime,
 		linuxBootstrapHandoffURL: linuxBootstrapHandoffURL,
 		oidc:                     options.OIDCAuthenticator,
 		adminHash:                sha256.Sum256([]byte(options.AdminToken)), secure: options.SecureCookies, logger: options.Logger, now: now,
@@ -316,6 +323,10 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("POST /api/v1/agent/runtime-telemetry", s.agentLimited(http.HandlerFunc(s.agentRuntimeTelemetry)))
 		mux.Handle("GET /api/v1/fleet/runtime-telemetry", s.authorized(identity.PermissionNetworksRead, s.fleetHealthLimited(http.HandlerFunc(s.getRuntimeTelemetryCollection))))
 	}
+	if !nilInterface(s.mobileRuntime) {
+		mux.Handle("POST /api/v1/agent/mobile-runtime", s.agentLimited(http.HandlerFunc(s.agentMobileRuntime)))
+		mux.Handle("GET /api/v1/nodes/{nodeID}/mobile-runtime", s.authorized(identity.PermissionNetworksRead, s.fleetHealthLimited(http.HandlerFunc(s.getMobileRuntime))))
+	}
 	mux.Handle("POST /api/v1/agent/certificate/renew", s.agentLimited(http.HandlerFunc(s.agentRenew)))
 	mux.Handle("POST /api/v1/agent/credentials/rotate", s.agentLimited(http.HandlerFunc(s.agentRotateCredential)))
 	mux.Handle("GET /api/v1/session", s.admin(http.HandlerFunc(s.session)))
@@ -345,8 +356,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/networks/{networkID}/firewall", s.authorized(identity.PermissionNetworksRead, http.HandlerFunc(s.getFirewallPolicy)))
 	mux.Handle("PUT /api/v1/networks/{networkID}/firewall/preview", s.authorized(identity.PermissionNetworksWrite, http.HandlerFunc(s.previewFirewallPolicy)))
 	mux.Handle("PUT /api/v1/networks/{networkID}/firewall", s.authorized(identity.PermissionNetworksWrite, http.HandlerFunc(s.updateFirewallPolicy)))
+	mux.Handle("GET /api/v1/networks/{networkID}/groups", s.authorized(identity.PermissionNetworksRead, http.HandlerFunc(s.getNetworkSecurityGroups)))
+	mux.Handle("POST /api/v1/networks/{networkID}/groups", s.authorized(identity.PermissionNetworksSecurity, http.HandlerFunc(s.createNetworkSecurityGroup)))
+	mux.Handle("PUT /api/v1/networks/{networkID}/groups/{groupName}", s.authorized(identity.PermissionNetworksSecurity, http.HandlerFunc(s.updateNetworkSecurityGroup)))
+	mux.Handle("DELETE /api/v1/networks/{networkID}/groups/{groupName}", s.authorized(identity.PermissionNetworksSecurity, http.HandlerFunc(s.deleteNetworkSecurityGroup)))
 	mux.Handle("GET /api/v1/networks/{networkID}/nodes", s.authorized(identity.PermissionNetworksRead, http.HandlerFunc(s.listNodes)))
 	mux.Handle("POST /api/v1/networks/{networkID}/nodes", s.authorized(identity.PermissionNetworksWrite, http.HandlerFunc(s.createNode)))
+	mux.Handle("POST /api/v1/networks/{networkID}/self-enrollment", s.authorized(identity.PermissionNodesEnrollSelf, http.HandlerFunc(s.createSelfEnrollment)))
 	mux.Handle("GET /api/v1/nodes/{nodeID}/route-profile", s.authorized(identity.PermissionNetworksRead, http.HandlerFunc(s.getNodeRouteProfileEdit)))
 	mux.Handle("POST /api/v1/nodes/{nodeID}/route-profile", s.authorized(identity.PermissionNetworksWrite, http.HandlerFunc(s.startNodeRouteProfileEdit)))
 	mux.Handle("POST /api/v1/nodes/{nodeID}/route-profile/advance", s.authorized(identity.PermissionNetworksWrite, http.HandlerFunc(s.advanceNodeRouteProfileEdit)))
@@ -1322,6 +1338,7 @@ func (s *Server) createNetwork(w http.ResponseWriter, r *http.Request) {
 type retiredNetworkResponse struct {
 	control.RetiredNetwork
 	RuntimeTelemetryRecordsRemoved  int  `json:"runtime_telemetry_records_removed"`
+	MobileRuntimeRecordsRemoved     int  `json:"mobile_runtime_records_removed"`
 	RuntimeTelemetryCleanupComplete bool `json:"runtime_telemetry_cleanup_complete"`
 }
 
@@ -1352,6 +1369,19 @@ func (s *Server) retireNetwork(w http.ResponseWriter, r *http.Request) {
 			}
 			if removed {
 				response.RuntimeTelemetryRecordsRemoved++
+			}
+		}
+	}
+	if !nilInterface(s.mobileRuntime) {
+		for _, nodeID := range retired.NodeIDs {
+			removed, deleteErr := s.mobileRuntime.DeleteMobile(nodeID)
+			if deleteErr != nil {
+				response.RuntimeTelemetryCleanupComplete = false
+				s.logger.Error("retired network mobile runtime cleanup failed", "network_id", retired.NetworkID, "node_id", nodeID, "error", deleteErr)
+				continue
+			}
+			if removed {
+				response.MobileRuntimeRecordsRemoved++
 			}
 		}
 	}
@@ -1560,6 +1590,77 @@ func (s *Server) updateNetworkFirewallRollout(w http.ResponseWriter, r *http.Req
 		return
 	}
 	document, err := s.service.UpdateNetworkFirewallRolloutAs(mustRequestActor(r), r.PathValue("networkID"), input)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, document)
+}
+
+func (s *Server) getNetworkSecurityGroups(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.RawQuery != "" {
+		writeError(w, fmt.Errorf("%w: network security groups do not accept query parameters", control.ErrInvalid))
+		return
+	}
+	document, err := s.service.NetworkSecurityGroups(r.PathValue("networkID"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, document)
+}
+
+func (s *Server) createNetworkSecurityGroup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.RawQuery != "" {
+		writeError(w, fmt.Errorf("%w: network security groups do not accept query parameters", control.ErrInvalid))
+		return
+	}
+	var input control.CreateNetworkSecurityGroupInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, err)
+		return
+	}
+	document, err := s.service.CreateNetworkSecurityGroupAs(mustRequestActor(r), r.PathValue("networkID"), input)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, document)
+}
+
+func (s *Server) updateNetworkSecurityGroup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.RawQuery != "" {
+		writeError(w, fmt.Errorf("%w: network security groups do not accept query parameters", control.ErrInvalid))
+		return
+	}
+	var input control.UpdateNetworkSecurityGroupInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, err)
+		return
+	}
+	document, err := s.service.UpdateNetworkSecurityGroupAs(mustRequestActor(r), r.PathValue("networkID"), r.PathValue("groupName"), input)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, document)
+}
+
+func (s *Server) deleteNetworkSecurityGroup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.RawQuery != "" {
+		writeError(w, fmt.Errorf("%w: network security groups do not accept query parameters", control.ErrInvalid))
+		return
+	}
+	var input control.DeleteNetworkSecurityGroupInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, err)
+		return
+	}
+	document, err := s.service.DeleteNetworkSecurityGroupAs(mustRequestActor(r), r.PathValue("networkID"), r.PathValue("groupName"), input)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -2011,6 +2112,84 @@ func (s *Server) agentRuntimeTelemetry(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) agentMobileRuntime(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	token, ok := bearerToken(r)
+	if !ok {
+		writeError(w, control.ErrUnauthorized)
+		return
+	}
+	r.Body = http.MaxBytesReader(
+		w,
+		r.Body,
+		runtimetelemetry.MaxMobileRuntimeReportBytes,
+	)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, control.ErrInvalid)
+		return
+	}
+	input, err := runtimetelemetry.DecodeMobileRuntimeReportInput(raw)
+	if err != nil {
+		writeRuntimeTelemetryError(w, err)
+		return
+	}
+	node, err := s.service.AuthorizeMobileRuntime(token, input)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	receivedAt := s.now().UTC()
+	if receivedAt.IsZero() {
+		writeError(w, errors.New("mobile runtime requires a valid receive timestamp"))
+		return
+	}
+	if _, _, err := s.mobileRuntime.PutMobile(
+		node.ID,
+		receivedAt,
+		input,
+	); err != nil {
+		writeRuntimeTelemetryError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getMobileRuntime(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.RawQuery != "" {
+		writeError(w, fmt.Errorf(
+			"%w: mobile runtime does not accept query parameters",
+			control.ErrInvalid,
+		))
+		return
+	}
+	node, err := s.service.Node(r.PathValue("nodeID"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	record, found, err := s.mobileRuntime.GetMobile(node.ID)
+	if err != nil {
+		writeRuntimeTelemetryError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, control.ErrNotFound)
+		return
+	}
+	projected, err := runtimetelemetry.ProjectMobileRuntime(
+		record,
+		s.now().UTC(),
+		node.Status == "revoked",
+	)
+	if err != nil {
+		writeRuntimeTelemetryError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, projected)
+}
+
 func (s *Server) agentRenew(w http.ResponseWriter, r *http.Request) {
 	token, ok := bearerToken(r)
 	if !ok {
@@ -2034,6 +2213,7 @@ func (s *Server) agentRenew(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) agentRotateCredential(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	token, ok := bearerToken(r)
 	if !ok {
 		writeError(w, control.ErrUnauthorized)
@@ -2132,6 +2312,7 @@ func (s *Server) updateNodeGroups(w http.ResponseWriter, r *http.Request) {
 type archivedNodeResponse struct {
 	control.ArchivedNode
 	RuntimeTelemetryRecordRemoved   bool `json:"runtime_telemetry_record_removed"`
+	MobileRuntimeRecordRemoved      bool `json:"mobile_runtime_record_removed"`
 	RuntimeTelemetryCleanupComplete bool `json:"runtime_telemetry_cleanup_complete"`
 }
 
@@ -2159,6 +2340,15 @@ func (s *Server) archiveNode(w http.ResponseWriter, r *http.Request) {
 			s.logger.Error("archived node runtime telemetry cleanup failed", "network_id", archived.NetworkID, "node_id", archived.NodeID, "error", deleteErr)
 		} else {
 			response.RuntimeTelemetryRecordRemoved = removed
+		}
+	}
+	if !nilInterface(s.mobileRuntime) {
+		removed, deleteErr := s.mobileRuntime.DeleteMobile(archived.NodeID)
+		if deleteErr != nil {
+			response.RuntimeTelemetryCleanupComplete = false
+			s.logger.Error("archived node mobile runtime cleanup failed", "network_id", archived.NetworkID, "node_id", archived.NodeID, "error", deleteErr)
+		} else {
+			response.MobileRuntimeRecordRemoved = removed
 		}
 	}
 	writeJSON(w, http.StatusOK, response)

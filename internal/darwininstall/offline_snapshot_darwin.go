@@ -119,7 +119,7 @@ func openDarwinOfflineSnapshot(path string) (snapshot *darwinOfflineSnapshot, re
 	if err := validateDarwinOfflineSnapshotDirectoryStat(visibleBefore); err != nil {
 		return nil, err
 	}
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func (snapshot *darwinOfflineSnapshot) openFile(name string, maximum int64) (*os
 	if err := validateDarwinOfflineSnapshotFileStat(visibleBefore, maximum); err != nil {
 		return nil, darwinInstallStatSnapshot{}, fmt.Errorf("Darwin offline snapshot file %q: %w", name, err)
 	}
-	fd, err := unix.Openat(snapshot.directoryFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(snapshot.directoryFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, darwinInstallStatSnapshot{}, err
 	}

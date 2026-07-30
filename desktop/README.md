@@ -1,18 +1,30 @@
 # Mesh Desktop
 
-Mesh Desktop is a preview operator console for Linux and Windows. It connects
-to a remote Mesh control plane and does not run as a node, install Nebula, or
-manage a local tunnel.
+Mesh Desktop is a preview operator console for Linux and Windows. The same
+shared client now has an unsupported Mesh Admin for macOS runner. Every variant
+connects to a remote Mesh control plane and does not run as a node, install
+Nebula, or manage a local tunnel.
+
+The macOS runner is an engineering preview, not a supported or distributed
+artifact. A protected-release source boundary can sign an exact clean,
+receipt-bound Release application inside out, submit it for notarization,
+staple and assess it, and bind the final archive to a portable receipt. That
+boundary has not passed its clean-source or notarization gates. A separate
+dirty-source feasibility copy has passed strict local Developer ID signing,
+while Gatekeeper correctly rejects it as unnotarized. That copy does not prove
+signed-app Keychain behavior, clean-host execution, Intel execution, public
+re-download, update, or uninstall.
 
 The client shows fleet health, networks, nodes, signed policy, readiness,
 activity, and role-scoped access controls. The server remains the source of
 truth for authorization and lifecycle state. Use the web control plane or API
 for a workflow that the preview client does not expose.
 
-The preview can create networks and node enrollments, reissue a pending
-enrollment, rotate or permanently revoke a node identity, revoke a
-control-plane session, and create one-use recovery access. The control plane
-checks the signed-in role and permission again for every mutation.
+The preview can create networks and node enrollments, reissue or exact-name
+cancel a pending enrollment, rotate or permanently revoke a node identity,
+revoke a control-plane session, and create one-use recovery access. The
+control plane checks the signed-in role and permission again for every
+mutation.
 
 Creating a lighthouse requires a reachable public UDP endpoint such as
 `vpn.example.com:4242`. Enrollment tokens and recovery codes appear in a
@@ -70,6 +82,12 @@ and libsecret development files. Debian packaging also requires `fakeroot` and
 Windows builds require Visual Studio with Desktop development with C++ and a
 current Windows SDK. The MSIX packaging step uses `MakeAppx.exe`.
 
+macOS source builds require the exact Xcode, SDK, Swift, deployment target,
+simulator runtimes, and Go versions in [`tool/apple-build.json`](tool/apple-build.json).
+Run the Apple preflight with the exact verified macOS Flutter archive before
+building. See [`macos/README.md`](macos/README.md) for the unsigned source
+workflow and its deliberately closed release gates.
+
 ## Verify the source
 
 From the repository root:
@@ -79,7 +97,40 @@ make desktop-check
 ```
 
 That target enforces the lock file, checks formatting, runs static analysis,
-and runs the Flutter test suite.
+and runs the Flutter test suite. The integration suite starts a disposable
+file-backed Go Mesh control plane on an ephemeral loopback port and resolves
+the exact Nebula certificate tool pinned by `go.mod`; it does not use an
+engineer's installed control plane or persistent state.
+
+An opt-in read-only test can exercise the same bounded client against an
+operator-controlled HTTPS environment. Supply credentials only through the
+process environment:
+
+```bash
+cd desktop
+set -a
+. /absolute/private/access.env
+set +a
+MESH_APPLE_EXTERNAL_CONTROL_PLANE=1 \
+  flutter test test/integration/mesh_api_external_control_plane_test.dart
+```
+
+The file must define `MESH_URL`, `MESH_AUTH_MODE=hybrid-oidc`, and
+`MESH_ADMIN_TOKEN`. The test keeps the emergency administrator bearer only in
+memory, creates no cookie session, and performs no mutation. It is
+source-client read evidence, not an installed-app, physical-browser/OIDC,
+clean-host, or release result.
+
+Mesh Admin stores saved control-plane display names and exact normalized
+origins separately from session cookies. Sign-out deletes the session and CSRF
+cookie record while retaining at most eight saved profiles. On relaunch, every
+saved origin must pass system TLS validation and a fresh authentication-method
+read before sign-in is offered; a saved legacy administrator token is never
+created. On macOS and iOS, Preferences provides an exact-confirmation local
+erasure action that attempts both the session and saved-profile Keychain
+deletions even if one fails. It does not remove organization-managed profiles,
+operating-system permissions, server records, or a separately installed Mesh
+Node, and it does not claim the clean-host uninstall gate.
 
 To build and package on Linux:
 

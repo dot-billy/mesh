@@ -342,7 +342,7 @@ func (s *Service) startRouteProfileEdit(actor *Actor, nodeID string, input Start
 	}
 	var result NodeRouteProfileEditDocument
 	err = s.updateState(func(state *State) error {
-		if state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes {
+		if state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes && state.Version != ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: route-profile-edit schema is not current", ErrConflict)
 		}
 		node, ok := findNode(*state, nodeID)
@@ -446,7 +446,7 @@ func (s *Service) updateRouteProfileEdit(actor *Actor, nodeID string, input Upda
 	}
 	var result NodeRouteProfileEditDocument
 	err := s.updateState(func(state *State) error {
-		if state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes {
+		if state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes && state.Version != ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: route-profile-edit schema is not current", ErrConflict)
 		}
 		node, ok := findNode(*state, nodeID)

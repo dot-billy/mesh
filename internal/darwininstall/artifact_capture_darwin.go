@@ -55,7 +55,7 @@ func (store *InstallerJournalStore) FetchProductionDarwinArtifact(ctx context.Co
 	return store.fetchDarwinArtifactUsing(ctx, intake, onlinerelease.NewClient())
 }
 
-func (store *InstallerJournalStore) fetchDarwinArtifactUsing(ctx context.Context, intake VerifiedDarwinIntake, fetcher darwinArtifactFetcher) (capture *DarwinArtifactCapture, returnErr error) {
+func (store *InstallerJournalStore) fetchDarwinArtifactUsing(ctx context.Context, intake VerifiedDarwinIntake, fetcher darwinArtifactFetcher) (_ *DarwinArtifactCapture, returnErr error) {
 	if ctx == nil || fetcher == nil {
 		return nil, errors.New("Darwin artifact fetch requires a context and bounded fetcher")
 	}
@@ -344,7 +344,7 @@ func (capture *DarwinArtifactCapture) reconcile() error {
 }
 
 func (capture *DarwinArtifactCapture) createPending() error {
-	fd, err := unix.Openat(capture.lock.directory.fd, capture.pendingName, unix.O_RDWR|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, uint32(darwinArtifactCapturePendingMode))
+	fd, err := unix.Openat(capture.lock.directory.fd, capture.pendingName, unix.O_RDWR|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY, uint32(darwinArtifactCapturePendingMode))
 	if err != nil {
 		return err
 	}
@@ -431,7 +431,7 @@ func (capture *DarwinArtifactCapture) read(name string, mode uint16, requireExac
 	if err := nodeagent.InspectDarwinSensitivePath(path); err != nil {
 		return result, err
 	}
-	fd, err := unix.Openat(capture.lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(capture.lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return result, err
 	}

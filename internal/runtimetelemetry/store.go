@@ -24,16 +24,30 @@ type Store interface {
 	Close() error
 }
 
+// MobileStore is the additive persistence seam for iOS Packet Tunnel
+// lifecycle evidence. Keeping it separate preserves mixed-version compatibility
+// for runtime telemetry adapters that have not implemented mobile records yet.
+type MobileStore interface {
+	PutMobile(nodeID string, receivedAt time.Time, input MobileRuntimeReportInput) (MobileRuntimeRecord, bool, error)
+	GetMobile(nodeID string) (MobileRuntimeRecord, bool, error)
+	ListMobile() ([]MobileRuntimeRecord, error)
+	DeleteMobile(nodeID string) (bool, error)
+}
+
 // MemoryStore exercises the exact transition contract and is useful for
 // service tests. Durable file and PostgreSQL adapters implement the same seam.
 type MemoryStore struct {
-	mu      sync.RWMutex
-	records map[string]Record
-	closed  bool
+	mu            sync.RWMutex
+	records       map[string]Record
+	mobileRecords map[string]MobileRuntimeRecord
+	closed        bool
 }
 
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{records: make(map[string]Record)}
+	return &MemoryStore{
+		records:       make(map[string]Record),
+		mobileRecords: make(map[string]MobileRuntimeRecord),
+	}
 }
 
 func (s *MemoryStore) Put(nodeID string, heartbeatSequence int64, receivedAt time.Time, observation Observation, activeProbe ActiveProbeResult) (Record, bool, error) {
@@ -202,6 +216,83 @@ func (s *MemoryStore) Delete(nodeID string) (bool, error) {
 		return false, nil
 	}
 	delete(s.records, nodeID)
+	return true, nil
+}
+
+func (s *MemoryStore) PutMobile(
+	nodeID string,
+	receivedAt time.Time,
+	input MobileRuntimeReportInput,
+) (MobileRuntimeRecord, bool, error) {
+	candidate, err := newMobileRuntimeRecord(nodeID, receivedAt, input)
+	if err != nil {
+		return MobileRuntimeRecord{}, false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return MobileRuntimeRecord{}, false, ErrClosed
+	}
+	existing, found := s.mobileRecords[nodeID]
+	var previous *MobileRuntimeRecord
+	if found {
+		previous = &existing
+	}
+	accepted, changed, err := transitionMobileRuntimeRecord(previous, candidate)
+	if err != nil || !changed {
+		return accepted, changed, err
+	}
+	if !found && len(s.mobileRecords) >= MaxRecords {
+		return MobileRuntimeRecord{}, false, ErrInvalid
+	}
+	s.mobileRecords[nodeID] = cloneMobileRuntimeRecord(accepted)
+	return cloneMobileRuntimeRecord(accepted), true, nil
+}
+
+func (s *MemoryStore) GetMobile(
+	nodeID string,
+) (MobileRuntimeRecord, bool, error) {
+	if !nodeIDPattern.MatchString(nodeID) {
+		return MobileRuntimeRecord{}, false, ErrInvalid
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return MobileRuntimeRecord{}, false, ErrClosed
+	}
+	record, found := s.mobileRecords[nodeID]
+	return cloneMobileRuntimeRecord(record), found, nil
+}
+
+func (s *MemoryStore) ListMobile() ([]MobileRuntimeRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, ErrClosed
+	}
+	records := make([]MobileRuntimeRecord, 0, len(s.mobileRecords))
+	for _, record := range s.mobileRecords {
+		records = append(records, cloneMobileRuntimeRecord(record))
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].NodeID < records[j].NodeID
+	})
+	return records, nil
+}
+
+func (s *MemoryStore) DeleteMobile(nodeID string) (bool, error) {
+	if !nodeIDPattern.MatchString(nodeID) {
+		return false, ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false, ErrClosed
+	}
+	if _, found := s.mobileRecords[nodeID]; !found {
+		return false, nil
+	}
+	delete(s.mobileRecords, nodeID)
 	return true, nil
 }
 

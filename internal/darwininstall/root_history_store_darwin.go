@@ -291,7 +291,7 @@ func (lock *InstallerJournalLock) publishDarwinRootUpdate(version uint64, raw []
 	} else if pending.found {
 		return errors.New("pending Darwin trusted-root publication was not reconciled before commit")
 	}
-	fd, err := unix.Openat(lock.directory.fd, pendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, uint32(darwinRootHistoryFileMode))
+	fd, err := unix.Openat(lock.directory.fd, pendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY, uint32(darwinRootHistoryFileMode))
 	if err != nil {
 		return err
 	}
@@ -355,7 +355,7 @@ func (lock *InstallerJournalLock) listDarwinRootHistory() (live, pending []strin
 	if err := unix.Fstat(lock.directory.fd, &anchoredBefore); err != nil {
 		return nil, nil, err
 	}
-	fd, err := unix.Openat(lock.directory.fd, ".", unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Openat(lock.directory.fd, ".", unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -440,7 +440,7 @@ func (lock *InstallerJournalLock) readDarwinRootUpdateRaw(name string) (result d
 	if err := nodeagent.InspectDarwinSensitivePath(path); err != nil {
 		return result, err
 	}
-	fd, err := unix.Openat(lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return result, err
 	}

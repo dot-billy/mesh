@@ -12,6 +12,7 @@ func TestRoleForPrincipalResolvesBindingsAndLegacyAuthority(t *testing.T) {
 	config := IdentityConfig{OIDC: &OIDCConfig{
 		Admins: []AdminSelector{{Kind: "group", Value: "mesh-admins"}},
 		RoleBindings: []RoleBinding{
+			{Role: RoleMember, Selector: AdminSelector{Kind: "group", Value: "mesh-members"}},
 			{Role: RoleViewer, Selector: AdminSelector{Kind: "group", Value: "mesh-viewers"}},
 			{Role: RoleOperator, Selector: AdminSelector{Kind: "group", Value: "mesh-operators"}},
 		},
@@ -22,9 +23,10 @@ func TestRoleForPrincipalResolvesBindingsAndLegacyAuthority(t *testing.T) {
 		groups []string
 		want   Role
 	}{
+		{name: "member", groups: []string{"mesh-members"}, want: RoleMember},
 		{name: "viewer", groups: []string{"mesh-viewers"}, want: RoleViewer},
 		{name: "operator", groups: []string{"mesh-operators"}, want: RoleOperator},
-		{name: "highest matching role", groups: []string{"mesh-operators", "mesh-viewers"}, want: RoleOperator},
+		{name: "highest matching role", groups: []string{"mesh-members", "mesh-operators", "mesh-viewers"}, want: RoleOperator},
 		{name: "legacy admin selector", groups: []string{"mesh-admins"}, want: RoleAdmin},
 	}
 	for _, test := range tests {
@@ -58,9 +60,10 @@ func TestRoleForPrincipalResolvesBindingsAndLegacyAuthority(t *testing.T) {
 
 func TestRolePermissionMatrixIsExplicitAndDefensivelyCopied(t *testing.T) {
 	want := map[Role][]Permission{
+		RoleMember:   {PermissionNetworksRead, PermissionNodesEnrollSelf},
 		RoleViewer:   {PermissionNetworksRead, PermissionAuditRead},
-		RoleOperator: {PermissionNetworksRead, PermissionNetworksWrite, PermissionAuditRead},
-		RoleAdmin:    {PermissionNetworksRead, PermissionNetworksWrite, PermissionNetworksSecurity, PermissionIdentityManage, PermissionAuditRead},
+		RoleOperator: {PermissionNetworksRead, PermissionNetworksWrite, PermissionNodesEnrollSelf, PermissionAuditRead},
+		RoleAdmin:    {PermissionNetworksRead, PermissionNetworksWrite, PermissionNetworksSecurity, PermissionNodesEnrollSelf, PermissionIdentityManage, PermissionAuditRead},
 	}
 	for role, expected := range want {
 		permissions, err := PermissionsForRole(role)
@@ -73,7 +76,9 @@ func TestRolePermissionMatrixIsExplicitAndDefensivelyCopied(t *testing.T) {
 			t.Fatalf("permissions for %q shared mutable state", role)
 		}
 	}
-	if RoleAllows(RoleViewer, PermissionNetworksWrite) || RoleAllows(RoleOperator, PermissionNetworksSecurity) || !RoleAllows(RoleAdmin, PermissionIdentityManage) {
+	if RoleAllows(RoleMember, PermissionNetworksWrite) || !RoleAllows(RoleMember, PermissionNodesEnrollSelf) ||
+		RoleAllows(RoleViewer, PermissionNodesEnrollSelf) || RoleAllows(RoleOperator, PermissionNetworksSecurity) ||
+		!RoleAllows(RoleAdmin, PermissionIdentityManage) {
 		t.Fatal("role permission boundaries are incorrect")
 	}
 }

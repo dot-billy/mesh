@@ -297,7 +297,7 @@ func (s *Service) startRouteTransfer(actor *Actor, networkID string, input Start
 	now := s.now().UTC()
 	var result NetworkRouteTransferDocument
 	err = s.updateState(func(state *State) error {
-		if state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes {
+		if state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes && state.Version != ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: route-transfer schema is not current", ErrConflict)
 		}
 		for index := range state.Networks {
@@ -390,7 +390,7 @@ func (s *Service) updateRouteTransfer(actor *Actor, networkID string, input Upda
 	now := s.now().UTC()
 	var result NetworkRouteTransferDocument
 	err := s.updateState(func(state *State) error {
-		if state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes {
+		if state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes && state.Version != ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: route-transfer schema is not current", ErrConflict)
 		}
 		for index := range state.Networks {

@@ -356,6 +356,7 @@ const Set<String> _closedResponseSchemas = <String>{
   'Node',
   'CreatedNode',
   'ReissuedEnrollment',
+  'CancelledPendingNode',
   'RotatedNodeCertificate',
   'RevokedNodeReceipt',
   'BreakGlassCodeSummary',
@@ -519,6 +520,13 @@ const List<_OperationContract> _operations = <_OperationContract>[
   ),
   _OperationContract(
     method: 'POST',
+    path: '/api/v1/nodes/{nodeID}/enrollment/cancel',
+    status: '200',
+    response: _ObjectResponse('CancelledPendingNode'),
+    requestSchema: 'CancelPendingNodeInput',
+  ),
+  _OperationContract(
+    method: 'POST',
     path: '/api/v1/nodes/{nodeID}/certificate/rotate',
     status: '200',
     response: _ObjectResponse('RotatedNodeCertificate'),
@@ -649,6 +657,7 @@ const List<_SchemaContract> _schemas = <_SchemaContract>[
     'name': _string,
     'desired_config_revision': _integer,
     'severity': _string,
+    'runtime_state': _string,
   }),
   _SchemaContract('FleetHealthAlert', <String, _PropertyContract>{
     'code': _string,
@@ -807,6 +816,21 @@ const List<_SchemaContract> _schemas = <_SchemaContract>[
     'node': _PropertyContract.ref('Node'),
     'enrollment_token': _string,
     'expires_at': _string,
+  }),
+  _SchemaContract('CancelPendingNodeInput', <String, _PropertyContract>{
+    'confirmation_name': _string,
+  }),
+  _SchemaContract('CancelledPendingNode', <String, _PropertyContract>{
+    'node_id': _string,
+    'network_id': _string,
+    'name': _string,
+    'ip': _string,
+    'role': _string,
+    'cancelled_at': _string,
+    'enrollment_records_invalidated': _integer,
+    'relay_assignment_removed': _boolean,
+    'routed_subnet_reservations_released': _integer,
+    'config_revision': _integer,
   }),
   _SchemaContract('RotateNodeCertificateInput', <String, _PropertyContract>{
     'expected_config_revision': _integer,

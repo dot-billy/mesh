@@ -63,7 +63,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
               child: TextField(
                 key: const Key('activity-search'),
                 decoration: const InputDecoration(
-                  labelText: 'Filter by action, resource, or actor',
+                  labelText: 'Filter activity',
+                  hintText: 'Action, resource, or actor',
                   prefixIcon: Icon(Icons.search),
                 ),
                 onChanged: (value) => setState(() => _query = value),
@@ -100,28 +101,68 @@ class _ActivityRow extends StatelessWidget {
     return Semantics(
       label: '${event.action}, ${event.resource}, by ${event.actor}, at $time',
       container: true,
-      child: Card(
-        child: ListTile(
-          leading: Icon(event.tone.icon),
-          title: Text(event.action),
-          subtitle: Text(
-            '${event.resource} · ${event.actor}'
-            '${event.detail == null ? '' : '\n${event.detail}'}',
-          ),
-          isThreeLine: event.detail != null,
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              EvidenceBadge(tone: event.tone, compact: true),
-              const SizedBox(height: 4),
-              Text(
-                '${time.hour.toString().padLeft(2, '0')}:'
-                '${time.minute.toString().padLeft(2, '0')}',
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final detail =
+              '${event.resource} · ${event.actor}'
+              '${event.detail == null ? '' : '\n${event.detail}'}';
+          final timestamp =
+              '${time.hour.toString().padLeft(2, '0')}:'
+              '${time.minute.toString().padLeft(2, '0')}';
+          if (constraints.maxWidth < 480) {
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(event.tone.icon),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            event.action,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(detail),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        EvidenceBadge(tone: event.tone, compact: true),
+                        Text(timestamp),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
+            );
+          }
+          return Card(
+            child: ListTile(
+              leading: Icon(event.tone.icon),
+              title: Text(event.action),
+              subtitle: Text(detail),
+              isThreeLine: event.detail != null,
+              trailing: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  EvidenceBadge(tone: event.tone, compact: true),
+                  const SizedBox(height: 4),
+                  Text(timestamp),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

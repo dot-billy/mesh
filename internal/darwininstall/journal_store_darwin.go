@@ -114,11 +114,11 @@ func openDarwinInstallerJournalLock(directory *filesystemRuntimeGateOperations) 
 	if directory == nil || directory.directory == nil || directory.fd < 0 {
 		return nil, darwinInstallStatSnapshot{}, false, errors.New("Darwin installer journal directory is closed")
 	}
-	flags := unix.O_RDWR | unix.O_CREAT | unix.O_EXCL | unix.O_CLOEXEC | unix.O_NOFOLLOW | unix.O_NOFOLLOW_ANY | unix.O_NONBLOCK
+	flags := unix.O_RDWR | unix.O_CREAT | unix.O_EXCL | unix.O_CLOEXEC | unix.O_NOFOLLOW_ANY | unix.O_NONBLOCK
 	fd, err := unix.Openat(directory.fd, installerJournalLockName, flags, uint32(installerJournalLockMode))
 	created := err == nil
 	if errors.Is(err, unix.EEXIST) {
-		fd, err = unix.Openat(directory.fd, installerJournalLockName, unix.O_RDWR|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+		fd, err = unix.Openat(directory.fd, installerJournalLockName, unix.O_RDWR|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	}
 	if err != nil {
 		return nil, darwinInstallStatSnapshot{}, false, err
@@ -352,7 +352,7 @@ func (lock *InstallerJournalLock) Commit(next InstallerJournal) error {
 }
 
 func (lock *InstallerJournalLock) writePending(raw []byte) (returnErr error) {
-	fd, err := unix.Openat(lock.directory.fd, installerJournalPendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, uint32(installerJournalFileMode))
+	fd, err := unix.Openat(lock.directory.fd, installerJournalPendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY, uint32(installerJournalFileMode))
 	if err != nil {
 		return err
 	}
@@ -463,7 +463,7 @@ func (lock *InstallerJournalLock) readJournalRaw(name string) (result darwinInst
 	if err := nodeagent.InspectDarwinSensitivePath(path); err != nil {
 		return result, err
 	}
-	fd, err := unix.Openat(lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return result, err
 	}

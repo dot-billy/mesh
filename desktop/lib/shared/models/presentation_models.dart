@@ -1,23 +1,29 @@
 import 'package:flutter/material.dart';
 
-enum MeshRole { viewer, operator, admin }
+enum MeshRole { member, viewer, operator, admin }
 
 enum MeshPermission {
   networksRead,
   networksWrite,
   networksSecurity,
+  nodesEnrollSelf,
   identityManage,
   auditRead,
 }
 
 extension MeshRolePresentation on MeshRole {
   String get label => switch (this) {
+    MeshRole.member => 'Member',
     MeshRole.viewer => 'Viewer',
     MeshRole.operator => 'Operator',
     MeshRole.admin => 'Admin',
   };
 
   Set<MeshPermission> get permissions => switch (this) {
+    MeshRole.member => const {
+      MeshPermission.networksRead,
+      MeshPermission.nodesEnrollSelf,
+    },
     MeshRole.viewer => const {
       MeshPermission.networksRead,
       MeshPermission.auditRead,
@@ -25,6 +31,7 @@ extension MeshRolePresentation on MeshRole {
     MeshRole.operator => const {
       MeshPermission.networksRead,
       MeshPermission.networksWrite,
+      MeshPermission.nodesEnrollSelf,
       MeshPermission.auditRead,
     },
     MeshRole.admin => MeshPermission.values.toSet(),
@@ -126,6 +133,7 @@ class ConnectionViewModel {
     this.methods = const [],
     this.phase = LoadPhase.initial,
     this.message,
+    this.canCancelAuthentication = false,
   });
 
   final List<ConnectionProfileViewModel> profiles;
@@ -133,6 +141,7 @@ class ConnectionViewModel {
   final List<AuthenticationMethod> methods;
   final LoadPhase phase;
   final String? message;
+  final bool canCancelAuthentication;
 
   ConnectionProfileViewModel? get selectedProfile {
     for (final profile in profiles) {
@@ -144,17 +153,21 @@ class ConnectionViewModel {
 
 @immutable
 class AccessContextViewModel {
-  const AccessContextViewModel({
+  AccessContextViewModel({
     required this.displayName,
     required this.role,
+    required Set<MeshPermission> permissions,
     required this.controlPlaneName,
     required this.origin,
-  });
+  }) : permissions = Set<MeshPermission>.unmodifiable(permissions);
 
   final String displayName;
   final MeshRole role;
+  final Set<MeshPermission> permissions;
   final String controlPlaneName;
   final Uri origin;
+
+  bool allows(MeshPermission permission) => permissions.contains(permission);
 }
 
 @immutable
@@ -445,6 +458,38 @@ class PreferencesViewModel {
 }
 
 @immutable
+class AppleManagedPolicyViewModel {
+  const AppleManagedPolicyViewModel({
+    required this.valid,
+    this.controlPlaneOrigin,
+    this.allowOriginChanges = true,
+    this.releaseChannel,
+    this.updateRing,
+    this.showLocalStatus,
+    this.notificationsEnabled,
+  });
+
+  const AppleManagedPolicyViewModel.invalid()
+    : valid = false,
+      controlPlaneOrigin = null,
+      allowOriginChanges = false,
+      releaseChannel = null,
+      updateRing = null,
+      showLocalStatus = null,
+      notificationsEnabled = null;
+
+  final bool valid;
+  final Uri? controlPlaneOrigin;
+  final bool allowOriginChanges;
+  final String? releaseChannel;
+  final String? updateRing;
+  final bool? showLocalStatus;
+  final bool? notificationsEnabled;
+
+  bool get originLocked => valid && !allowOriginChanges;
+}
+
+@immutable
 class OneTimeSecretItemViewModel {
   const OneTimeSecretItemViewModel({
     required this.label,
@@ -505,6 +550,7 @@ class MeshDesktopViewModel {
     this.activity = const LoadableViewModel.initial(),
     this.accessManagement = const LoadableViewModel.initial(),
     this.preferences = const PreferencesViewModel(),
+    this.managedPolicy,
     this.oneTimeSecret,
     this.receipt,
   });
@@ -516,6 +562,7 @@ class MeshDesktopViewModel {
   final LoadableViewModel<List<ActivityEventViewModel>> activity;
   final LoadableViewModel<AccessManagementViewModel> accessManagement;
   final PreferencesViewModel preferences;
+  final AppleManagedPolicyViewModel? managedPolicy;
   final OneTimeSecretViewModel? oneTimeSecret;
   final OperationReceiptViewModel? receipt;
 

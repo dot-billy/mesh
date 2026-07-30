@@ -215,13 +215,38 @@ build-nebula-windows-runtime`, build the deterministic staging artifact with
 `mesh-package build-windows`, externally sign and natively verify the selected
 PEs, assemble with `mesh-package build-windows-signed`, and run the [final
 signed Windows bundle security gate](windows-package-security.md) against the
-exact result. For Darwin, build
-the locked runtime with `mesh-deps build-nebula-darwin-runtime`, build the
-deterministic staging artifact with `mesh-package build-darwin`, and run the
-[Darwin staging-bundle security gate](darwin-package-security.md) against the
-exact result. Create root-derived
+exact result. For Darwin, build the locked runtime with `mesh-deps
+build-nebula-darwin-runtime` and the deterministic unsigned staging artifact
+with `mesh-package build-darwin`. Protected macOS tooling signs only the three
+executable signature regions and emits a fresh native code-signing receipt.
+Linux `mesh-package build-darwin-signed` proves each signed replacement is
+derived from its exact staging member, matches that receipt and the
+independently authenticated compiled policy digest, and emits final signed
+bundle v2. Run the [Darwin final signed-bundle security
+gate](darwin-package-security.md) against that exact result. Create root-derived
 v2 metadata; channel, epoch, thresholds, and minimum floors cannot be
 contradicted by command-line input:
+
+The separate macOS node package policy is also release authority rather than
+package input. `mesh-release darwin-codesign-policy` now requires distinct
+identifiers for `mesh-install`, `meshctl`, `nebula`, and `nebula-cert`.
+`mesh-release darwin-node-package-policy` binds the approved flat-package
+identifier, fixed Mesh application-support install location, one direct
+Mesh-owned package root, and fixed installed bootstrap/snapshot paths. Its
+exact six-entry payload plan cannot name a system ancestor. Development builds
+contain unparseable sentinels for both policies. The protected package producer
+validates those compiled frames, a fresh native four-file code-signing receipt,
+the final signed-bundle security receipt, exact snapshot and bootstrap,
+release Keychain, Installer identity, and fixed Apple tools before it builds,
+signs, notarizes, staples, assesses, re-expands, and hashes the flat package.
+It emits portable package receipt v1; the platform-neutral
+`verify-darwin-node-package-release` command binds that receipt to the final
+package bytes and upstream authorities. A separate native post-download
+verifier authenticates its Apple tools and digest-pinned portable verifier,
+then independently checks the Installer signature, staple, Gatekeeper, exact
+expanded package, and signed bootstrap before emitting a native receipt. This
+source has not yet produced or verified a real package, and the development
+sentinels authorize no release.
 
 ```sh
 mesh-release create-release-manifest \
@@ -262,22 +287,151 @@ Signing never re-encodes the manifest. A whitespace or newline change produces
 different signed bytes. All authoring and assembly outputs are create-only and
 read back before success is reported.
 
-Every Linux and Darwin artifact requires exactly one canonical package-security
-receipt whose platform architecture, version, security floor, size, and
-SHA-256 match that artifact. Every Windows artifact requires both that package
-receipt and a fresh native Authenticode receipt for all four exact PEs under
-the compiled signer policy. Multi-architecture manifests repeat the applicable
-receipt flags once per candidate. Each receipt must be no more than 24 hours
-old with at most five minutes of future clock skew, and each package receipt's
-bound Grype database must have been no more than 72 hours old at verification.
+Every Linux artifact requires exactly one canonical package-security receipt
+whose platform architecture, version, security floor, size, and SHA-256 match
+that artifact. Every Darwin artifact requires that package receipt plus a
+fresh native code-signing receipt whose runtime subset covers the three exact
+final Mach-O executables and whose fourth entry covers the package
+`mesh-install` bootstrap under the same compiled Team ID and identifier
+policy. Every Windows artifact
+requires both its package receipt and a fresh native Authenticode receipt for
+all four exact PEs under the compiled signer policy. Multi-architecture
+manifests repeat the applicable receipt flags once per candidate. Each receipt
+must be no more than 24 hours old with at most five minutes of future clock
+skew, and each package receipt's bound Grype database must have been no more
+than 72 hours old at verification.
 A missing, duplicate, noncanonical, stale, future, policy-drifted, or mismatched
 receipt fails before the output is created.
+
+Mesh Admin publication uses a deliberately separate pair rather than a
+`darwin/arm64` or `darwin/amd64` node target.
+`macos-admin/universal` binds the final stapled application zip and
+`macos-admin-evidence/portable` binds the exact protected receipt. Both must
+appear in the same root-derived release manifest. Authoring additionally
+requires `--apple-app-release-receipt` and
+`--apple-app-source-receipt-sha256`; it verifies that the receipt artifact is
+byte-identical, the application size/digest/version match, the Team ID matches
+the compiled Darwin policy, and protected verification is no more than 24
+hours old. There is no test-only bypass for this pair.
+
+After retrieving the manifest, its detached signatures, the zip, and the
+receipt, `mesh-release verify-published-apple-app` accepts an independently
+authenticated current root and its expected SHA-256, applies its release
+threshold/epoch/channel/floor rules, verifies both downloaded artifact hashes,
+and reapplies the expected source-receipt digest and Team ID. This is portable
+Mesh publication evidence, not native Apple signature, staple, Gatekeeper,
+quarantine, or offline acceptance evidence. The separate native verifier also
+pins the portable verifier by SHA-256 and emits local post-download evidence;
+its optional pre/post route/interface isolation samples require an externally
+controlled network-off fixture before they count toward an offline release
+gate.
+
 `--test-only-allow-unscanned-linux-artifact` and
 `--test-only-allow-unscanned-windows-artifact` and
 `--test-only-allow-unscanned-darwin-artifact` exist only for synthetic
 fixtures and must never appear in a production signing workflow. Receipts are
 release-authoring evidence; the threshold-signed manifest remains artifact
 authority.
+
+## Rotate or revoke Apple signing identities
+
+Apple Developer ID Application, Developer ID Installer, and Apple Distribution
+certificates and provisioning profiles are a separate trust domain from the
+Mesh root and release threshold roles. They are also separate from notarization
+and App Store Connect credentials. Rotating any Apple identity does not
+authorize a Mesh release: promotion still requires a new immutable artifact,
+fresh protected receipts, and the normal threshold-signed Mesh metadata.
+
+Before every protected production job, inventory the exact certificate type,
+Team ID, SHA-1 and SHA-256 fingerprints, serial number, and validity interval.
+Inventory each provisioning profile's name, UUID, SHA-256, expiration, bundle
+identifier, Team ID, and entitlement set. Select an identity by certificate
+type, Team ID, and exact fingerprint, never by display name or common name
+alone. Keep this inventory outside downloadable artifacts and do not record a
+private key, keychain password, API key, token, or one-time credential.
+
+The protected producers enforce the following rotation boundaries:
+
+- The Mesh Admin producer's mode-`0600` release keychain must contain exactly
+  one Developer ID Application identity for the compiled Team ID. Its
+  unexpired Developer ID provisioning profile must contain that identity and
+  match the exact application identifier and entitlement contract.
+- The macOS Mesh Node package producer receives the selected Developer ID
+  Installer SHA-1 fingerprint explicitly. Its mode-`0600` release keychain
+  must contain exactly that one Installer identity for the compiled Team ID,
+  and the protected receipt binds both the certificate SHA-1 and SHA-256.
+- iOS distribution uses distinct, unexpired Apple Distribution profiles for
+  Mesh Admin, the Mesh Tunnel host, and the Packet Tunnel extension. Each
+  profile and exported archive must match its exact Team ID, bundle identifier,
+  profile UUID, App Group, Keychain group, and Network Extension entitlement.
+
+Renew before the earliest certificate or profile expiration. An expired
+identity or provisioning profile is prohibited for a new build, signature,
+export, or publication. A previously notarized, securely timestamped artifact
+may continue to pass Apple's policy after its signing certificate expires, but
+expiry is not proof of acceptance: re-download the immutable bytes and rerun
+strict signature, embedded-profile, staple, Gatekeeper, native, and Mesh
+publication verification before retaining that artifact in a supported
+channel.
+
+For a planned rotation:
+
+1. Issue the replacement certificate and all profiles that reference it.
+   Record their exact public fingerprints, serials, validity intervals, profile
+   UUIDs, expirations, and entitlement identities. Import only the selected
+   identity into each protected producer keychain; do not temporarily defeat
+   the producer's exactly-one-identity rule.
+2. Produce a new application or package version at new create-only output
+   paths. Generate fresh source, security, signing, distribution, notarization,
+   and verification receipts. Never overwrite, re-sign in place, or attach a
+   new receipt to an existing release object.
+3. Verify the final archive from the inside out. For macOS, require the exact
+   embedded profile, hardened runtime, strict deep signatures, accepted
+   notarization, a validated staple, and Gatekeeper acceptance. For iOS,
+   require the exact distribution profiles and strict archive and exported-IPA
+   signatures.
+4. Publish through new threshold-signed Mesh release and channel metadata.
+   Re-download through the public path, verify the Mesh manifest and artifact
+   hashes, rerun native verification, and complete the required clean-host
+   proof before promotion.
+5. Retire the old local identity only after the replacement artifact and
+   metadata have passed every gate. Preserve the old immutable artifact and
+   receipts for audit unless the incident procedure below requires withdrawal.
+
+Notarization credential rotation is independent of certificate rotation.
+Store the replacement credential under a new keychain-profile name in the
+protected keychain, authenticate it with Apple's notarization service, switch a
+fresh protected production job to that exact profile name, and retain its
+submission receipt. After successful cutover, remove the old local profile and
+revoke its App Store Connect API key when it is retired or potentially
+compromised. Apply the same separation to credentials used for iOS App Store
+Connect submission.
+
+If a signing private key, protected keychain, certificate, profile, or related
+credential may be compromised:
+
+1. Stop signing, notarization, export, and channel promotion. Quarantine the
+   affected producer and preserve bounded forensic evidence without exporting
+   private material.
+2. Revoke the affected certificate or App Store Connect credential in the
+   Apple account, remove its private key and profiles from every protected
+   producer, and rotate notarization or submission credentials too if their
+   custody may have been exposed.
+3. Withdraw the affected version from supported channels through successor
+   threshold-signed Mesh metadata; do not edit or silently replace an
+   immutable published object. Treat existing artifacts as unsupported until
+   online and offline Apple revocation behavior has been independently tested.
+4. Issue new identities and profiles, create a new artifact version, notarize
+   it as a new submission, and repeat public re-download and clean-host
+   verification before restoring a supported channel.
+
+Retain only sanitized rotation evidence: old and new certificate type, Team ID,
+SHA-1 and SHA-256 fingerprints, serial number, validity interval, profile UUID
+and expiration, artifact and receipt hashes, notarization submission IDs,
+verification times, and the threshold-signed metadata transition. Never retain
+private keys, keychain passwords, API keys, access tokens, or one-time
+credentials in receipts, logs, downloadable artifacts, or release
+documentation.
 
 ## Rotate or revoke keys
 
@@ -333,6 +487,11 @@ download can still revoke its signer.
 The v2 snapshot carries an ordered root chain followed by the exact signed
 release data and artifact. The assembler sorts root updates by decoded version
 and rejects duplicates, gaps, unstable inputs, and unknown output entries.
+Every bounded metadata input is independently read twice and compared by exact
+bytes; streamed artifacts are independently rehashed after the copy. This is
+in addition to descriptor/path identity checks, so a same-size in-place change
+is rejected even when the source filesystem does not expose a distinct
+timestamp for the change.
 
 ```sh
 mesh-release assemble-snapshot \
@@ -358,7 +517,8 @@ contains an empty `root_updates` array.
 
 The online bundle v2 carries the same exact root chain, channel/release bytes,
 and detached signatures. It carries no artifact and no alternative trust
-input. The bounded HTTPS response is a courier only.
+input. The bounded HTTPS response is a courier only. Its assembler applies the
+same independent exact-byte reread before publishing the create-only bundle.
 
 ```sh
 mesh-release assemble-online-bundle \

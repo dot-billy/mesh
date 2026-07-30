@@ -126,6 +126,7 @@ final class DartIoJsonTransport implements JsonTransport {
       ..maxRedirects = 0;
     request.headers
       ..set(HttpHeaders.acceptHeader, 'application/json')
+      ..set(HttpHeaders.acceptEncodingHeader, 'identity')
       ..set(HttpHeaders.cacheControlHeader, 'no-store');
     if (sameOriginJson) {
       request.headers.set('Origin', profile.originString);

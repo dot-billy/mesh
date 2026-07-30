@@ -24,7 +24,7 @@
           <p class="eyebrow">Secure access portal</p>
           <h1>Private networking,<br>under control.</h1>
           <p class="lede">Sign in to manage trusted identities, policy, routing, and fleet health from one operational workspace.</p>
-          <p id="desktop-authorization-login-hint" class="notice hidden">Sign in to review a request from Mesh Desktop. Approve it only if you started sign-in from the native app.</p>
+          <p id="desktop-authorization-login-hint" class="notice hidden">Sign in to review a request from a native Mesh app. Approve only if you started sign-in from the native app.</p>
         </div>
         <div class="login-access">
           <div id="oidc-login-panel" class="login-method hidden">
@@ -152,15 +152,15 @@
       <div class="dialog-heading">
         <div>
           <p class="eyebrow">Native app sign-in</p>
-          <h3 id="desktop-authorization-title">Allow Mesh Desktop?</h3>
+          <h3 id="desktop-authorization-title">Allow this Mesh app?</h3>
         </div>
       </div>
-      <p id="desktop-authorization-copy" class="dialog-copy">Mesh Desktop is asking to use your current <strong id="desktop-authorization-role">authenticated</strong> account on this control plane. Approve only if you started sign-in from the native app.</p>
+      <p id="desktop-authorization-copy" class="dialog-copy">A native Mesh app is asking to use your current <strong id="desktop-authorization-role">authenticated</strong> account on this control plane. Approve only if you started that sign-in.</p>
       <div class="notice warning-notice">Approval gives the desktop app the same role and permissions as this browser session. No password or browser session cookie is shared with the app.</div>
       <p id="desktop-authorization-error" class="form-error" role="alert" aria-live="assertive"></p>
       <div class="dialog-actions">
         <button id="desktop-authorization-deny" type="button" class="secondary">Deny</button>
-        <button id="desktop-authorization-approve" type="button">Allow Mesh Desktop</button>
+        <button id="desktop-authorization-approve" type="button">Allow Mesh app</button>
       </div>
     </div>
   </dialog>
@@ -504,6 +504,73 @@
     </div>
   </dialog>
 
+  <dialog id="security-groups-dialog" class="wide-dialog" aria-labelledby="security-groups-title" aria-describedby="security-groups-copy">
+    <div class="dialog-card wide security-groups-card">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Reusable network access</p>
+          <h3 id="security-groups-title">Security groups for <span id="security-groups-network-name"></span></h3>
+        </div>
+        <button type="button" class="icon-button close-dialog" aria-label="Close security groups"><i class="fa fa-times" aria-hidden="true"></i></button>
+      </div>
+      <p id="security-groups-copy" class="dialog-copy">Create groups independently, assign several active nodes at once, then reference those groups from the network firewall.</p>
+      <div class="security-groups-layout">
+        <section class="security-group-catalog" aria-labelledby="security-group-catalog-title">
+          <div class="security-group-panel-heading">
+            <div><h4 id="security-group-catalog-title">Group catalog</h4><p id="security-group-count">Loading groups…</p></div>
+          </div>
+          <form id="create-security-group-form" class="security-group-create" novalidate>
+            <label for="new-security-group-name">New group name</label>
+            <div class="security-group-create-row">
+              <input id="new-security-group-name" name="name" maxlength="32" autocomplete="off" spellcheck="false" placeholder="database-servers">
+              <button type="submit">Create</button>
+            </div>
+            <label for="new-security-group-description">Description <span class="optional">(optional)</span></label>
+            <input id="new-security-group-description" name="description" maxlength="256" autocomplete="off" placeholder="Production database servers">
+            <p id="create-security-group-error" class="form-error" role="alert"></p>
+          </form>
+          <div id="security-group-list" class="security-group-list" role="listbox" aria-label="Network security groups"></div>
+        </section>
+        <section id="security-group-detail" class="security-group-detail hidden" aria-labelledby="selected-security-group-name">
+          <div class="security-group-panel-heading">
+            <div>
+              <div class="security-group-name-row"><h4 id="selected-security-group-name">Select a group</h4><span id="selected-security-group-kind" class="security-group-kind"></span></div>
+              <p id="selected-security-group-summary"></p>
+            </div>
+          </div>
+          <form id="security-group-description-form" novalidate>
+            <label for="selected-security-group-description">Description</label>
+            <div class="security-group-description-row">
+              <input id="selected-security-group-description" maxlength="256" autocomplete="off">
+              <button id="save-security-group-description" type="submit" class="secondary">Save details</button>
+            </div>
+          </form>
+          <div class="security-group-reference-counts" aria-label="Group usage">
+            <span><strong id="security-group-active-count">0</strong> active</span>
+            <span><strong id="security-group-pending-count">0</strong> pending</span>
+            <span><strong id="security-group-peer-count">0</strong> peer rules</span>
+            <span><strong id="security-group-target-count">0</strong> target rules</span>
+          </div>
+          <fieldset id="security-group-membership-fieldset" class="security-group-membership">
+            <legend>Active node membership</legend>
+            <p>Choose all active nodes that should carry this group. Saving rotates each changed node certificate one at a time and advances the signed network revision after every confirmed node.</p>
+            <div id="security-group-member-list" class="security-group-member-list"></div>
+          </fieldset>
+          <p id="security-group-message" class="security-group-message" role="status" aria-live="polite"></p>
+          <p id="security-group-error" class="form-error" role="alert" aria-live="assertive"></p>
+          <div class="security-group-detail-actions">
+            <button id="delete-security-group" type="button" class="danger-button">Delete unused group</button>
+            <button id="save-security-group-members" type="button">Save node membership</button>
+          </div>
+        </section>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="secondary close-dialog">Close</button>
+        <button id="security-groups-edit-firewall" type="button" class="secondary"><i class="fa fa-shield" aria-hidden="true"></i> Edit firewall policy</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="policy-dialog" aria-labelledby="policy-dialog-title" aria-describedby="policy-dialog-copy">
     <form id="policy-form" class="dialog-card policy-dialog-card" novalidate>
       <input type="hidden" name="network_id">
@@ -512,7 +579,10 @@
           <p class="eyebrow">Least-privilege access</p>
           <h3 id="policy-dialog-title">Firewall policy for <span id="policy-network-name"></span></h3>
         </div>
-        <button type="button" class="icon-button close-dialog" aria-label="Close firewall policy editor"><i class="fa fa-times" aria-hidden="true"></i></button>
+        <div class="dialog-heading-actions">
+          <button id="policy-manage-groups" type="button" class="secondary"><i class="fa fa-users" aria-hidden="true"></i> Manage groups</button>
+          <button type="button" class="icon-button close-dialog" aria-label="Close firewall policy editor"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
       </div>
       <p id="policy-dialog-copy" class="dialog-copy">Rules are default-deny. Preview a change, apply it to selected canaries, and promote only after those agents prove the exact signed configuration is running.</p>
       <div class="policy-context" aria-label="Policy deployment context">
@@ -636,7 +706,7 @@
       </div>
       <div class="policy-field policy-selector-value-field hidden">
         <label>Selector value</label>
-        <input data-policy-field="selector-value" autocomplete="off">
+        <input data-policy-field="selector-value" list="policy-security-group-options" autocomplete="off">
         <span class="field-hint policy-selector-hint"></span>
       </div>
       <div class="policy-field policy-selector-node-field hidden">
@@ -654,7 +724,7 @@
       </div>
       <div class="policy-field policy-target-group-field hidden">
         <label>Local node group</label>
-        <input data-policy-field="target-group" autocomplete="off" placeholder="servers">
+        <input data-policy-field="target-group" list="policy-security-group-options" autocomplete="off" placeholder="servers">
         <span class="field-hint">Rule is installed only on nodes carrying this group.</span>
       </div>
       <div class="policy-field policy-target-node-field hidden">
@@ -665,6 +735,7 @@
       <button type="button" class="icon-button policy-remove-rule" aria-label="Remove firewall rule"><i class="fa fa-times" aria-hidden="true"></i></button>
     </fieldset>
   </template>
+  <datalist id="policy-security-group-options"></datalist>
 
   <dialog id="node-security-dialog" class="wide-dialog" aria-labelledby="node-security-title">
     <div class="dialog-card wide node-security-card">
@@ -681,7 +752,10 @@
       </div>
 
       <section class="node-security-section" aria-labelledby="node-groups-title">
-        <div class="node-security-section-heading"><div><h4 id="node-groups-title">Certificate groups</h4><p>Groups authorize peer rules and can target rules installed on this node.</p></div></div>
+        <div class="node-security-section-heading">
+          <div><h4 id="node-groups-title">Certificate groups</h4><p>Groups authorize peer rules and can target rules installed on this node.</p></div>
+          <button id="manage-network-groups" type="button" class="secondary">Manage network groups</button>
+        </div>
         <div id="node-security-current-groups" class="security-group-chips"></div>
         <form id="node-groups-form" novalidate>
           <label for="node-security-groups">Group memberships</label>
@@ -769,6 +843,8 @@
   <script src="/firewall-rollout.js" defer></script>
   <script src="/certificate-rotation.js" defer></script>
   <script src="/node-revocation.js" defer></script>
+  <script src="/node-search.js" defer></script>
+  <script src="/security-groups.js" defer></script>
   <script src="/desktop-authorization.js" defer></script>
   <script src="/app.js" defer></script>
 </body>

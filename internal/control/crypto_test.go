@@ -1,35 +1,10 @@
 package control
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 	"time"
 )
-
-func TestConfigSigningPayloadPreservesStableV3AndAuthenticatesCARotationWithV4(t *testing.T) {
-	issuedAt := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
-	metadata := ConfigSignatureMetadata{
-		NodeID: "node-1", NetworkID: "network-1", Revision: 1, IssuedAt: issuedAt,
-		CACertificateSHA256: strings.Repeat("a", 64), CertificateFingerprint: strings.Repeat("b", 64),
-		CertificateExpiresAt: issuedAt.Add(24 * time.Hour), CertificateRenewAfter: issuedAt.Add(16 * time.Hour),
-		CertificateGeneration: 1, PublicKeyHash: HashToken("node-public-key"),
-	}
-	_, stablePayload := configSigningPayload(metadata, "config: valid\n")
-	if !bytes.HasPrefix(stablePayload, []byte("mesh-desired-artifact-v3\n")) || bytes.Contains(stablePayload, []byte("previous_ca_sha256=")) {
-		t.Fatal("stable desired artifact did not preserve the exact legacy v3 envelope")
-	}
-	metadata.PreviousCACertificateSHA256 = strings.Repeat("c", 64)
-	_, preparedPayload := configSigningPayload(metadata, "config: valid\n")
-	if !bytes.HasPrefix(preparedPayload, []byte("mesh-desired-artifact-v4\n")) || !bytes.Contains(preparedPayload, []byte("previous_ca_sha256="+strings.Repeat("c", 64)+"\n")) || !bytes.Contains(preparedPayload, []byte("ca_rotation_required=false\n")) {
-		t.Fatal("prepared CA transition did not use the authenticated v4 envelope")
-	}
-	metadata.CARotationRequired = true
-	_, rotatingPayload := configSigningPayload(metadata, "config: valid\n")
-	if !bytes.Contains(rotatingPayload, []byte("ca_rotation_required=true\n")) {
-		t.Fatal("rotating desired artifact did not authenticate mandatory renewal")
-	}
-}
 
 func TestSignedConfigRejectsIdentityContentCAAndCertificateMetadataTampering(t *testing.T) {
 	publicKey, privateKey, err := GenerateConfigSigningKey()

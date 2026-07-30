@@ -40,8 +40,6 @@ class EvidenceBadge extends StatelessWidget {
               Flexible(
                 child: Text(
                   text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: colors.$3,
                     fontWeight: FontWeight.w700,

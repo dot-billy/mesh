@@ -1,17 +1,33 @@
-# Darwin staging-bundle security baseline
+# Darwin final signed-bundle security baseline
 
 This gate produces create-only local security evidence for one exact current
-`mesh-darwin-node-staging-bundle-v1` candidate. It covers the final
+`mesh-darwin-node-bundle-v2` candidate. It covers the final signed,
 uncompressed USTAR, production-identity `meshctl`, source-authenticated and
-security-patched `nebula` and `nebula-cert`, the reviewed launchd assets,
-Nebula license, and `package.json` together.
+security-patched `nebula` and `nebula-cert`, their exact signed bytes, the
+reviewed launchd assets, Nebula license, and `package.json` together.
 
 This is a Linux-verifiable release-staging boundary. It is not a native macOS
-installer, launchd activation, extended-ACL policy, codesigning/notarization
-decision, installed-host verification, or lifecycle-support claim.
+installer, launchd activation, extended-ACL policy, notarization decision,
+installed-host verification, or lifecycle-support claim. Native signature
+trust is supplied separately by the fresh Darwin code-signing receipt used to
+assemble and release the same final bytes.
 
-Run it separately for each architecture after building the exact candidate and
-before creating threshold-signed release metadata:
+The protected flow is:
+
+1. build the reproducible unsigned `mesh-darwin-node-staging-bundle-v1`;
+2. sign only its three preallocated Mach-O signature regions plus the exact
+   package `mesh-install` bootstrap on an approved Mac and create one native
+   `mesh-darwin-codesign-receipt-v2`;
+3. run Linux `mesh-package build-darwin-signed`, which proves that every
+   replacement differs only in the existing signature region and its exact
+   `__LINKEDIT`/`LC_CODE_SIGNATURE` size fields, matches the native receipt and
+   compiled policy digest, and emits deterministic bundle v2;
+4. run this package-security gate over that exact bundle v2; and
+5. give both fresh receipts to release authoring; the same native receipt's
+   bootstrap entry is separately consumed by protected package authoring.
+
+Run this gate separately for each architecture after final signed-bundle
+assembly and before creating threshold-signed release metadata:
 
 ```sh
 make darwin-package-security-baseline BUNDLE=/absolute/path/mesh-darwin-amd64.tar
@@ -30,19 +46,22 @@ The gate builds the current `mesh-package` verifier and invokes its read-only
 candidate and requires:
 
 - exact canonical USTAR order, headers, padding, terminator, size, and SHA-256;
-- canonical bundle-v1 metadata, Go 1.26.5, Mesh build identity, target,
+- canonical signed bundle-v2 metadata, Go 1.26.5, Mesh build identity, target,
   agent-state contract, and security floor;
 - the exact Slack Nebula v1.10.3 source, ordered security patch set, dependency
   floor, Go toolchain, common source-policy lock, and layered Darwin output lock;
 - exact thin 64-bit PIE Mach-O executables for the selected architecture, with
-  no executable-stack flag and the expected Go main/build settings;
+  a bounded entitlement-free CMS-backed hardened-runtime signature, no
+  executable-stack flag, and the expected Go main/build settings;
 - the reviewed embedded launchd plist/README and Nebula license; and
 - an exact sealed 7-file/9-directory staged tree with no links, extra paths,
   writable payloads, or replacement.
 
-Both Nebula executables are built twice from clean caches and must be
-byte-identical to the selected output lock. The patched observer endpoint is a
-reviewed no-I/O Darwin stub, so this bundle makes no native telemetry claim.
+The unsigned source forms of both Nebula executables are built twice from clean
+caches and must be byte-identical to the selected output lock. Signed-bundle
+assembly independently proves the final forms differ only at the permitted
+Mach-O signature boundary. The patched observer endpoint is a reviewed no-I/O
+Darwin stub, so this bundle makes no native telemetry claim.
 Candidate inspection derives analysis fields only; release selection and
 authority still come from threshold-authenticated metadata.
 
@@ -80,12 +99,13 @@ bin/darwin-package-security/<artifact-sha256>-<verification-UTC>/
 
 It retains the production inspection, Syft/SPDX inventories, Grype database
 status/report, both Gitleaks reports, and canonical
-`mesh-darwin-package-security-receipt-v1`. The receipt binds the artifact,
+`mesh-darwin-package-security-receipt-v2`. The receipt binds the artifact,
 architecture, version/floor/build identity, source/output locks, every shipped
 file, verifier/scanner versions, isolation boundary, policies, exact admitted
 result, and UTC completion time.
 
-Pass one matching receipt per Darwin artifact into release creation:
+Pass one matching package receipt and the matching native code-signing receipt
+per Darwin artifact into release creation:
 
 ```sh
 mesh-release create-release-manifest \
@@ -101,19 +121,25 @@ mesh-release create-release-manifest \
   --artifact-url https://releases.example/mesh/1.2.3/darwin-amd64.tar \
   --artifact /absolute/path/mesh-darwin-amd64.tar \
   --darwin-package-security-receipt \
-    /absolute/evidence/<artifact-sha256>-<UTC>/receipt.json
+    /absolute/evidence/<artifact-sha256>-<UTC>/receipt.json \
+  --darwin-codesign-receipt \
+    /absolute/native-evidence/darwin-codesign-amd64.json
 ```
 
-Release preflight strictly reparses the full canonical receipt and requires
-architecture, version, security floor, artifact size, and SHA-256 to match the
-selected artifact. The receipt may be at most 24 hours old and five minutes in
-the future; its bound Grype database must have been at most 72 hours old when
+Release preflight strictly reparses both canonical receipts, reopens and hashes
+the final artifact after manifest hashing, performs a complete in-memory
+production-policy expansion, requires signed bundle v2, derives the three
+executable identities from those exact bytes, and matches them to the compiled
+Team ID, identifiers, policy digest, architecture, and native receipt. Both
+receipts may be at most 24 hours old and five minutes in the future; the
+package receipt's bound Grype database must have been at most 72 hours old when
 verification completed. Missing, duplicate, noncanonical, stale, future, or
-mismatched receipts fail before output. The explicit
+mismatched evidence fails before output. The explicit
 `--test-only-allow-unscanned-darwin-artifact` bypass exists solely for synthetic
 fixtures and must never enter a production signing workflow.
 
 The signed manifest authenticates the artifact; the local scanner is not a new
-installer trust root. Preserve the evidence with release records, but do not
-describe it as native installation, launchd ownership, ACL enforcement,
-codesigning, notarization, runtime telemetry, or installed-host evidence.
+installer trust root, and the native receipt is local evidence rather than
+remote attestation. Preserve both receipts with release records, but do not
+describe them as native installation, launchd ownership, ACL enforcement,
+notarization, runtime telemetry, or installed-host evidence.

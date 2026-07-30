@@ -100,6 +100,43 @@ func TestPostgresStoreInitializeTransitionsAndClose(t *testing.T) {
 	}
 }
 
+func TestPostgresStorePersistsMobileRuntimeTransition(t *testing.T) {
+	repository := &memoryPostgresRepository{}
+	store, err := newPostgresStore(repository, PostgresStoreOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureInitialized(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 25, 3, 0, 0, 0, time.UTC)
+	input := validMobileRuntimeInput()
+	if _, changed, err := store.PutMobile(
+		"node_mobile",
+		now,
+		input,
+	); err != nil || !changed {
+		t.Fatalf("mobile put changed=%t err=%v", changed, err)
+	}
+	input.Sequence++
+	input.RuntimeUptimeMS++
+	(*input.PacketsRead)++
+	if _, changed, err := store.PutMobile(
+		"node_mobile",
+		now.Add(time.Minute),
+		input,
+	); err != nil || !changed {
+		t.Fatalf("mobile transition changed=%t err=%v", changed, err)
+	}
+	record, found, err := store.GetMobile("node_mobile")
+	if err != nil || !found || record.Sequence != input.Sequence {
+		t.Fatalf("record=%#v found=%t err=%v", record, found, err)
+	}
+	if deleted, err := store.DeleteMobile("node_mobile"); err != nil || !deleted {
+		t.Fatalf("mobile delete=%t err=%v", deleted, err)
+	}
+}
+
 func TestPostgresStorePersistsConfigBoundProbeDegradation(t *testing.T) {
 	repository := &memoryPostgresRepository{}
 	store, err := newPostgresStore(repository, PostgresStoreOptions{})
@@ -191,7 +228,7 @@ func TestPostgresStoreEnsureInitializedMigratesV1Document(t *testing.T) {
 	if err := store.EnsureInitialized(context.Background()); err != nil {
 		t.Fatalf("EnsureInitialized legacy v1: %v", err)
 	}
-	if repository.document.Revision != 5 || string(repository.document.Bytes) != `{"schema":"mesh-runtime-telemetry-state-v7","records":[]}` {
+	if repository.document.Revision != 5 || string(repository.document.Bytes) != `{"schema":"mesh-runtime-telemetry-state-v8","records":[],"mobile_records":[]}` {
 		t.Fatalf("legacy PostgreSQL document was not migrated: revision=%d body=%s", repository.document.Revision, repository.document.Bytes)
 	}
 	if err := store.EnsureInitialized(context.Background()); err != nil {
@@ -215,7 +252,7 @@ func TestPostgresStoreEnsureInitializedMigratesV2Document(t *testing.T) {
 	if err := store.EnsureInitialized(context.Background()); err != nil {
 		t.Fatalf("EnsureInitialized legacy v2: %v", err)
 	}
-	if repository.document.Revision != 5 || string(repository.document.Bytes) != `{"schema":"mesh-runtime-telemetry-state-v7","records":[]}` {
+	if repository.document.Revision != 5 || string(repository.document.Bytes) != `{"schema":"mesh-runtime-telemetry-state-v8","records":[],"mobile_records":[]}` {
 		t.Fatalf("legacy v2 PostgreSQL document was not migrated: revision=%d body=%s", repository.document.Revision, repository.document.Bytes)
 	}
 }
@@ -233,7 +270,7 @@ func TestPostgresStoreEnsureInitializedMigratesV4Document(t *testing.T) {
 	if err := store.EnsureInitialized(context.Background()); err != nil {
 		t.Fatalf("EnsureInitialized legacy v4: %v", err)
 	}
-	if repository.document.Revision != 5 || string(repository.document.Bytes) != `{"schema":"mesh-runtime-telemetry-state-v7","records":[]}` {
+	if repository.document.Revision != 5 || string(repository.document.Bytes) != `{"schema":"mesh-runtime-telemetry-state-v8","records":[],"mobile_records":[]}` {
 		t.Fatalf("legacy v4 PostgreSQL document was not migrated: revision=%d body=%s", repository.document.Revision, repository.document.Bytes)
 	}
 }
@@ -251,7 +288,7 @@ func TestPostgresStoreEnsureInitializedMigratesV6Document(t *testing.T) {
 	if err := store.EnsureInitialized(context.Background()); err != nil {
 		t.Fatalf("EnsureInitialized legacy v6: %v", err)
 	}
-	if repository.document.Revision != 5 || string(repository.document.Bytes) != `{"schema":"mesh-runtime-telemetry-state-v7","records":[]}` {
+	if repository.document.Revision != 5 || string(repository.document.Bytes) != `{"schema":"mesh-runtime-telemetry-state-v8","records":[],"mobile_records":[]}` {
 		t.Fatalf("legacy v6 PostgreSQL document was not migrated: revision=%d body=%s", repository.document.Revision, repository.document.Bytes)
 	}
 }

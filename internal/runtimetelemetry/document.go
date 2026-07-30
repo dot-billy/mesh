@@ -14,6 +14,9 @@ const MaxStateDocumentBytes = 32 << 20
 
 // EncodeState emits the one canonical current document representation.
 func EncodeState(state State) ([]byte, error) {
+	if state.MobileRecords == nil {
+		state.MobileRecords = []MobileRuntimeRecord{}
+	}
 	if err := ValidateState(state); err != nil {
 		return nil, err
 	}
@@ -40,6 +43,9 @@ func DecodeState(raw []byte) (State, error) {
 	if state, err := decodeCurrentState(raw); err == nil {
 		return state, nil
 	}
+	if state, err := decodeStateV7(raw); err == nil {
+		return state, nil
+	}
 	if state, err := decodeStateV6(raw); err == nil {
 		return state, nil
 	}
@@ -59,6 +65,43 @@ func DecodeState(raw []byte) (State, error) {
 		return state, nil
 	}
 	return State{}, fmt.Errorf("%w: unsupported or noncanonical state document", ErrInvalid)
+}
+
+type stateV7 struct {
+	Schema  string   `json:"schema"`
+	Records []Record `json:"records"`
+}
+
+func decodeStateV7(raw []byte) (State, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var legacy stateV7
+	if err := decoder.Decode(&legacy); err != nil {
+		return State{}, err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return State{}, ErrInvalid
+	}
+	canonical, err := json.Marshal(legacy)
+	if err != nil ||
+		!bytes.Equal(raw, canonical) ||
+		legacy.Schema != StateSchemaV7 ||
+		legacy.Records == nil ||
+		len(legacy.Records) > MaxRecords {
+		return State{}, ErrInvalid
+	}
+	state := State{
+		Schema:        StateSchema,
+		Records:       make([]Record, len(legacy.Records)),
+		MobileRecords: []MobileRuntimeRecord{},
+	}
+	for index := range legacy.Records {
+		state.Records[index] = cloneRecord(legacy.Records[index])
+	}
+	if err := ValidateState(state); err != nil {
+		return State{}, err
+	}
+	return state, nil
 }
 
 type stateV6 struct {
@@ -91,7 +134,11 @@ func decodeStateV6(raw []byte) (State, error) {
 	if err != nil || !bytes.Equal(raw, canonical) || legacy.Schema != StateSchemaV6 || legacy.Records == nil || len(legacy.Records) > MaxRecords {
 		return State{}, ErrInvalid
 	}
-	state := State{Schema: StateSchema, Records: make([]Record, len(legacy.Records))}
+	state := State{
+		Schema:        StateSchema,
+		Records:       make([]Record, len(legacy.Records)),
+		MobileRecords: []MobileRuntimeRecord{},
+	}
 	for index, legacyRecord := range legacy.Records {
 		normalized, err := NormalizeObservation(legacyRecord.Observation)
 		if err != nil {
@@ -140,7 +187,11 @@ func decodeStateV5(raw []byte) (State, error) {
 	if err != nil || !bytes.Equal(raw, canonical) || legacy.Schema != StateSchemaV5 || legacy.Records == nil || len(legacy.Records) > MaxRecords {
 		return State{}, ErrInvalid
 	}
-	state := State{Schema: StateSchema, Records: make([]Record, len(legacy.Records))}
+	state := State{
+		Schema:        StateSchema,
+		Records:       make([]Record, len(legacy.Records)),
+		MobileRecords: []MobileRuntimeRecord{},
+	}
 	for index, legacyRecord := range legacy.Records {
 		normalized, err := NormalizeObservation(legacyRecord.Observation)
 		if err != nil {
@@ -188,7 +239,11 @@ func decodeStateV4(raw []byte) (State, error) {
 	if err != nil || !bytes.Equal(raw, canonical) || legacy.Schema != StateSchemaV4 || legacy.Records == nil || len(legacy.Records) > MaxRecords {
 		return State{}, ErrInvalid
 	}
-	state := State{Schema: StateSchema, Records: make([]Record, len(legacy.Records))}
+	state := State{
+		Schema:        StateSchema,
+		Records:       make([]Record, len(legacy.Records)),
+		MobileRecords: []MobileRuntimeRecord{},
+	}
 	for index, legacyRecord := range legacy.Records {
 		normalized, err := NormalizeObservation(legacyRecord.Observation)
 		if err != nil {
@@ -235,7 +290,11 @@ func decodeStateV3(raw []byte) (State, error) {
 	if err != nil || !bytes.Equal(raw, canonical) || legacy.Schema != StateSchemaV3 || legacy.Records == nil || len(legacy.Records) > MaxRecords {
 		return State{}, ErrInvalid
 	}
-	state := State{Schema: StateSchema, Records: make([]Record, len(legacy.Records))}
+	state := State{
+		Schema:        StateSchema,
+		Records:       make([]Record, len(legacy.Records)),
+		MobileRecords: []MobileRuntimeRecord{},
+	}
 	for index, legacyRecord := range legacy.Records {
 		normalized, err := NormalizeObservation(legacyRecord.Observation)
 		if err != nil {
@@ -279,7 +338,11 @@ func decodeStateV2(raw []byte) (State, error) {
 	if err != nil || !bytes.Equal(raw, canonical) || legacy.Schema != StateSchemaV2 || legacy.Records == nil || len(legacy.Records) > MaxRecords {
 		return State{}, ErrInvalid
 	}
-	state := State{Schema: StateSchema, Records: make([]Record, len(legacy.Records))}
+	state := State{
+		Schema:        StateSchema,
+		Records:       make([]Record, len(legacy.Records)),
+		MobileRecords: []MobileRuntimeRecord{},
+	}
 	for index, legacyRecord := range legacy.Records {
 		normalized, err := NormalizeObservation(legacyRecord.Observation)
 		if err != nil {
@@ -366,7 +429,11 @@ func decodeStateV1(raw []byte) (State, error) {
 	if err != nil || !bytes.Equal(raw, canonical) || legacy.Schema != StateSchemaV1 || legacy.Records == nil || len(legacy.Records) > MaxRecords {
 		return State{}, ErrInvalid
 	}
-	state := State{Schema: StateSchema, Records: make([]Record, len(legacy.Records))}
+	state := State{
+		Schema:        StateSchema,
+		Records:       make([]Record, len(legacy.Records)),
+		MobileRecords: []MobileRuntimeRecord{},
+	}
 	for index, legacyRecord := range legacy.Records {
 		observation := Observation{Version: legacyRecord.Observation.Version, State: legacyRecord.Observation.State}
 		if legacyRecord.Observation.Snapshot != nil {

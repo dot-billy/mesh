@@ -337,6 +337,14 @@ func main() {
 		}
 		os.Exit(1)
 	}
+	if err := service.EnsureSecurityGroupSchema(); err != nil {
+		if config.storageBackend == storageBackendPostgres {
+			logger.Error("PostgreSQL startup failed", "stage", "security group schema migration")
+		} else {
+			logger.Error("migrate security group schema", "error", err)
+		}
+		os.Exit(1)
+	}
 	if config.storageBackend == storageBackendPostgres {
 		// A rotation is authorized only for the transition above. Before serving,
 		// reread the authoritative bytes and require the configured credential

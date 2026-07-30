@@ -24,10 +24,10 @@ const (
 func validatePlatformPathSecurity(path string) error {
 	return validateDarwinPathWith(path, darwinPathWalkOperations{
 		openRoot: func() (int, error) {
-			return unix.Open("/", unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+			return unix.Open("/", unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 		},
 		openAt: func(parent int, name string, requireDirectory bool) (int, error) {
-			flags := unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW | unix.O_NOFOLLOW_ANY | unix.O_NONBLOCK
+			flags := unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW_ANY | unix.O_NONBLOCK
 			if requireDirectory {
 				flags |= unix.O_DIRECTORY
 			}
@@ -178,7 +178,7 @@ func syncDarwinDirectory(path string) error {
 	if err := validatePlatformPathSecurity(path); err != nil {
 		return err
 	}
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return fmt.Errorf("open Darwin directory for sync: %w", err)
 	}
@@ -213,7 +213,7 @@ func InspectDarwinPersistentRuntimeGate(path string) (open bool, returnErr error
 	} else if err != nil {
 		return false, fmt.Errorf("inspect Darwin persistent runtime gate: %w", err)
 	}
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return false, fmt.Errorf("open Darwin persistent runtime gate: %w", err)
 	}
@@ -281,7 +281,7 @@ func InspectDarwinPackagedExecutable(path string) (returnErr error) {
 	if err := unix.Lstat(path, &visibleBefore); err != nil {
 		return fmt.Errorf("inspect Darwin packaged executable: %w", err)
 	}
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return fmt.Errorf("open Darwin packaged executable: %w", err)
 	}

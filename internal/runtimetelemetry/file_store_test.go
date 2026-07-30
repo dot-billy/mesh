@@ -33,7 +33,7 @@ func TestFileStoreDurablyMigratesCanonicalV1State(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(current, legacy) || string(current) != `{"schema":"mesh-runtime-telemetry-state-v7","records":[]}` {
+	if bytes.Equal(current, legacy) || string(current) != `{"schema":"mesh-runtime-telemetry-state-v8","records":[],"mobile_records":[]}` {
 		t.Fatalf("legacy state was not durably migrated: %s", current)
 	}
 }
@@ -80,6 +80,47 @@ func TestFileStorePersistsExactObservationAndDeletion(t *testing.T) {
 	defer store.Close()
 	if records, err := store.List(); err != nil || len(records) != 0 {
 		t.Fatalf("records=%+v err=%v", records, err)
+	}
+}
+
+func TestFileStorePersistsMobileRuntimeAndMigratesV7(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "runtime-telemetry.json")
+	legacy := []byte(`{"schema":"mesh-runtime-telemetry-state-v7","records":[]}`)
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 25, 3, 0, 0, 0, time.UTC)
+	if _, changed, err := store.PutMobile(
+		"node_mobile",
+		now,
+		validMobileRuntimeInput(),
+	); err != nil || !changed {
+		t.Fatalf("mobile put changed=%t err=%v", changed, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = OpenFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, found, err := store.GetMobile("node_mobile")
+	if err != nil || !found || record.InstanceGeneration != 3 {
+		t.Fatalf("record=%#v found=%t err=%v", record, found, err)
+	}
+	if deleted, err := store.DeleteMobile("node_mobile"); err != nil || !deleted {
+		t.Fatalf("mobile delete=%t err=%v", deleted, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -188,7 +229,7 @@ func TestFileStoreDurablyMigratesCanonicalV2State(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(current, legacy) || string(current) != `{"schema":"mesh-runtime-telemetry-state-v7","records":[]}` {
+	if bytes.Equal(current, legacy) || string(current) != `{"schema":"mesh-runtime-telemetry-state-v8","records":[],"mobile_records":[]}` {
 		t.Fatalf("legacy v2 state was not durably migrated: %s", current)
 	}
 }
@@ -214,7 +255,7 @@ func TestFileStoreDurablyMigratesCanonicalV4State(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(current, legacy) || string(current) != `{"schema":"mesh-runtime-telemetry-state-v7","records":[]}` {
+	if bytes.Equal(current, legacy) || string(current) != `{"schema":"mesh-runtime-telemetry-state-v8","records":[],"mobile_records":[]}` {
 		t.Fatalf("legacy v4 state was not durably migrated: %s", current)
 	}
 }
@@ -240,7 +281,7 @@ func TestFileStoreDurablyMigratesCanonicalV6State(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(current, legacy) || string(current) != `{"schema":"mesh-runtime-telemetry-state-v7","records":[]}` {
+	if bytes.Equal(current, legacy) || string(current) != `{"schema":"mesh-runtime-telemetry-state-v8","records":[],"mobile_records":[]}` {
 		t.Fatalf("legacy v6 state was not durably migrated: %s", current)
 	}
 }

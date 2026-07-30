@@ -286,7 +286,7 @@ func (s *Service) updateNetworkCARotation(ctx context.Context, actor *Actor, net
 			if !ok {
 				return ErrNotFound
 			}
-			if state.Version < ControlStateVersionCARotation || state.Version > ControlStateVersionFirewallScopes || network.CARotation.Phase != "" || network.FirewallRollout.Phase != "" || !routeTransferTerminal(network.RouteTransfer) || !routeProfileEditTerminal(network.RouteProfileEdit) || network.ConfigRevision != input.ExpectedConfigRevision {
+			if state.Version < ControlStateVersionCARotation || state.Version > ControlStateVersionSecurityGroups || network.CARotation.Phase != "" || network.FirewallRollout.Phase != "" || !routeTransferTerminal(network.RouteTransfer) || !routeProfileEditTerminal(network.RouteProfileEdit) || network.ConfigRevision != input.ExpectedConfigRevision {
 				return fmt.Errorf("%w: network is not at the requested stable revision", ErrConflict)
 			}
 			return nil
@@ -319,7 +319,7 @@ func (s *Service) updateNetworkCARotation(ctx context.Context, actor *Actor, net
 	}
 	var result NetworkCARotationDocument
 	err := s.updateState(func(state *State) error {
-		if state.Version < ControlStateVersionCARotation || state.Version > ControlStateVersionFirewallScopes {
+		if state.Version < ControlStateVersionCARotation || state.Version > ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: CA rotation schema is not current", ErrConflict)
 		}
 		for index := range state.Networks {

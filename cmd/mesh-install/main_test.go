@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -70,6 +72,14 @@ func TestVersion(t *testing.T) {
 		got.AgentStateReadMax != current.AgentStateReadMax || got.AgentStateWriteVersion != current.AgentStateWriteVersion {
 		t.Fatalf("unexpected build identity: %+v", got)
 	}
+	var identity map[string]any
+	if err := json.Unmarshal(output.Bytes(), &identity); err != nil {
+		t.Fatal(err)
+	}
+	if identity["darwin_code_signing_policy_sha256"] != "" ||
+		identity["darwin_node_package_policy_sha256"] != "" {
+		t.Fatalf("Linux build exposed Darwin policy digests: %+v", identity)
+	}
 }
 
 func TestUsage(t *testing.T) {
@@ -83,6 +93,7 @@ func TestUsage(t *testing.T) {
 		{"install", "/tmp/snapshot", "extra"},
 		{"recover", "extra"},
 		{"activate", "extra"},
+		{"uninstall-runtime"},
 		{"rollback"},
 		{"rollback", "target", "extra"},
 		{"version", "extra"},

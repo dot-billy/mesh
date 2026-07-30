@@ -172,5 +172,5 @@ for evidence in candidate-inspection.json sbom.syft.json sbom.spdx.json grype-db
 done
 publish_complete=true
 
-say "PASS: exact Darwin staging bundle, production policy, SBOM, current vulnerability policy, and redacted secret scans verified"
+say "PASS: exact final signed Darwin bundle, production policy, SBOM, current vulnerability policy, and redacted secret scans verified"
 say "Evidence: ${published_dir}"

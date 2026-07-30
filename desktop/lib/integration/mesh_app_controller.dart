@@ -1,12 +1,18 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mesh_desktop/app/app.dart';
+import 'package:mesh_desktop/core/auth/rbac.dart' as auth;
 import 'package:mesh_desktop/core/auth/secure_session_store.dart';
 import 'package:mesh_desktop/core/auth/session_models.dart' as core;
 import 'package:mesh_desktop/core/connection/connection_profile.dart';
+import 'package:mesh_desktop/core/platform/apple_admin_notifications.dart';
+import 'package:mesh_desktop/core/platform/apple_managed_configuration.dart';
 import 'package:mesh_desktop/core/platform/system_browser.dart';
+import 'package:mesh_desktop/core/platform/mobile_security.dart';
 import 'package:mesh_desktop/core/polling/lifecycle_poller.dart';
+import 'package:mesh_desktop/core/support/apple_admin_diagnostic_bundle.dart';
 import 'package:mesh_desktop/core/transport/json_transport.dart';
 import 'package:mesh_desktop/core/transport/mesh_cookie_jar.dart';
 import 'package:mesh_desktop/integration/mesh_api.dart';
@@ -18,12 +24,48 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
     SecureSessionStore? sessionStore,
     SystemBrowserLauncher? browser,
     LifecycleSource? lifecycle,
+    ProtectedDataEvents? protectedDataEvents,
+    AppleManagedConfigurationSource? managedConfigurationSource,
+    AppleAdminNotificationSink? notificationSink,
+    Future<void> Function(Duration)? delay,
+    DateTime Function()? now,
+    SecretClipboard? diagnosticClipboard,
+    String? diagnosticApplicationVersion,
+    String? diagnosticApplicationBuild,
+    String? diagnosticReleaseIdentity,
     this._mapper = const MeshPresentationMapper(),
   }) : _sessionStore =
            sessionStore ?? SecureSessionStore(FlutterSecretStorage()),
        _browser = browser ?? UrlLauncherSystemBrowser(),
        _ownsLifecycle = lifecycle == null,
        _lifecycle = lifecycle ?? WidgetsBindingLifecycleSource(),
+       _ownsProtectedDataEvents = protectedDataEvents == null,
+       _protectedDataEvents =
+           protectedDataEvents ?? MethodChannelProtectedDataEvents(),
+       _managedConfigurationSource =
+           managedConfigurationSource ??
+           const MethodChannelAppleManagedConfigurationSource(),
+       _notificationSink =
+           notificationSink ?? const MethodChannelAppleAdminNotificationSink(),
+       _delay = delay ?? Future<void>.delayed,
+       _now = now ?? DateTime.now,
+       _diagnosticClipboard =
+           diagnosticClipboard ?? const ExpiringSecretClipboard(),
+       _diagnosticApplicationVersion =
+           diagnosticApplicationVersion ??
+           const String.fromEnvironment(
+             'MESH_APP_VERSION',
+             defaultValue: '0.1.0',
+           ),
+       _diagnosticApplicationBuild =
+           diagnosticApplicationBuild ??
+           const String.fromEnvironment('MESH_APP_BUILD', defaultValue: '1'),
+       _diagnosticReleaseIdentity =
+           diagnosticReleaseIdentity ??
+           const String.fromEnvironment(
+             'MESH_SOURCE_COMMIT',
+             defaultValue: 'unavailable',
+           ),
        super(
          const MeshDesktopViewModel(
            connection: ConnectionViewModel(
@@ -36,6 +78,16 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
   final SystemBrowserLauncher _browser;
   final bool _ownsLifecycle;
   final LifecycleSource _lifecycle;
+  final bool _ownsProtectedDataEvents;
+  final ProtectedDataEvents _protectedDataEvents;
+  final AppleManagedConfigurationSource _managedConfigurationSource;
+  final AppleAdminNotificationSink _notificationSink;
+  final Future<void> Function(Duration) _delay;
+  final DateTime Function() _now;
+  final SecretClipboard _diagnosticClipboard;
+  final String _diagnosticApplicationVersion;
+  final String _diagnosticApplicationBuild;
+  final String _diagnosticReleaseIdentity;
   final MeshPresentationMapper _mapper;
 
   final List<_SavedProfile> _profiles = <_SavedProfile>[];
@@ -50,8 +102,26 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
   int _authenticationGeneration = 0;
   int _profileSequence = 0;
   int _mutationSequence = 0;
+  StreamSubscription<AppLifecycleState>? _custodySubscription;
+  AppleManagedConfiguration? _managedConfiguration;
+  bool _managedConfigurationRejected = false;
+  bool _managedConfigurationRefreshing = false;
+  bool _localNotificationsEnabled = false;
+  bool _notificationPermissionGranted = false;
+  final AppleAdminNotificationTransition _notificationTransition =
+      AppleAdminNotificationTransition();
+  final StreamController<int> _authenticationChanges =
+      StreamController<int>.broadcast(sync: true);
 
   Future<void> initialize() async {
+    _startCustodyObservers();
+    try {
+      _applyManagedConfiguration(await _managedConfigurationSource.load());
+    } on AppleManagedConfigurationException {
+      await _rejectManagedConfiguration();
+      return;
+    }
+    final profileStorageMessage = await _loadConnectionProfiles();
     late final PersistedDesktopSession? stored;
     try {
       stored = await _sessionStore.load();
@@ -68,7 +138,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
           phase: LoadPhase.ready,
           message: removed
               ? 'The saved session was invalid and has been removed. Sign in again.'
-              : 'Secure session storage is unavailable. Unlock the operating system keyring, then restart Mesh Desktop. You can still sign in, but the session will not be saved.',
+              : 'Secure session storage is unavailable. Unlock the device or operating-system credential store, then restart Mesh Admin. You can still sign in, but the session will not be saved.',
         ),
       );
       return;
@@ -78,22 +148,73 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
           profiles: _profileViewModels(),
           phase: LoadPhase.ready,
           message:
-              'Secure session storage is unavailable. Unlock the operating system keyring, then restart Mesh Desktop. You can still sign in, but the session will not be saved.',
+              'Secure session storage is unavailable. Unlock the device or operating-system credential store, then restart Mesh Admin. You can still sign in, but the session will not be saved.',
         ),
       );
       return;
     }
-    if (stored == null) return;
+    if (stored == null) {
+      if (_managedConfiguration?.controlPlaneOrigin != null) {
+        await _connectManagedOriginIfPresent();
+      } else if (_profiles.isNotEmpty) {
+        final saved = _profiles.first;
+        await _addConnection(
+          ConnectionRequest(
+            displayName: saved.displayName,
+            origin: saved.profile.origin,
+          ),
+        );
+      } else if (profileStorageMessage != null) {
+        _update(
+          connection: ConnectionViewModel(
+            profiles: _profileViewModels(),
+            phase: LoadPhase.ready,
+            message: profileStorageMessage,
+          ),
+        );
+      }
+      return;
+    }
+    final restoredSession = stored;
+
+    if (_managedOriginLocked &&
+        restoredSession.profile.origin !=
+            _managedConfiguration!.controlPlaneOrigin!.origin) {
+      await _sessionStore.clear().catchError((_) {});
+      await _connectManagedOriginIfPresent();
+      return;
+    }
 
     try {
+      final existing = _profiles
+          .where((profile) => profile.profile == restoredSession.profile)
+          .firstOrNull;
       final saved = _addProfile(
-        stored.profile,
-        displayName: stored.profile.origin.host,
+        restoredSession.profile,
+        displayName:
+            existing?.displayName ?? restoredSession.profile.origin.host,
         tlsTrusted: true,
       );
+      _update(
+        connection: ConnectionViewModel(
+          profiles: _profileViewModels(),
+          selectedProfileId: saved.id,
+          methods: saved.methods,
+          phase: LoadPhase.loading,
+          message: 'Restoring the saved Mesh session…',
+        ),
+      );
       _select(saved);
-      stored.restoreInto(_transport!.cookieJar);
+      restoredSession.restoreInto(_transport!.cookieJar);
       final session = await _api!.currentSession();
+      try {
+        saved.methods = _presentationMethods(
+          await _api!.authenticationMethods(),
+        );
+      } catch (_) {
+        // A valid restored session remains usable when the public discovery
+        // endpoint is temporarily unavailable. A later launch can retry it.
+      }
       await _authenticated(session, persist: false);
     } catch (error) {
       await _sessionStore.clear().catchError((_) {});
@@ -129,6 +250,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
         request.origin.toString(),
         allowInsecureLoopback: insecureLoopback,
       );
+      _enforceManagedOrigin(profile);
       final saved = _addProfile(
         profile,
         displayName: request.displayName,
@@ -138,6 +260,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       final methods = await _api!.authenticationMethods();
       saved.tlsTrusted = true;
       saved.methods = _presentationMethods(methods);
+      final profilesPersisted = await _persistConnectionProfiles();
       _update(
         connection: ConnectionViewModel(
           profiles: _profileViewModels(),
@@ -146,7 +269,9 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
           phase: LoadPhase.ready,
           message: saved.methods.isEmpty
               ? 'This control plane did not advertise a supported desktop sign-in method.'
-              : 'System TLS trust verified. Choose a sign-in method.',
+              : profilesPersisted
+              ? 'System TLS trust verified. Choose a sign-in method.'
+              : 'System TLS trust verified, but the saved control-plane list could not be updated. Unlock the device or operating-system credential store before relaunching Mesh Admin.',
         ),
       );
     } catch (error) {
@@ -169,6 +294,12 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
         .where((profile) => profile.id == profileId)
         .firstOrNull;
     if (saved == null) return;
+    try {
+      _enforceManagedOrigin(saved.profile);
+    } on FormatException catch (error) {
+      _connectionError(error.message);
+      return;
+    }
     _select(saved);
     _update(
       connection: ConnectionViewModel(
@@ -198,13 +329,14 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       _connectionError('Select a control plane before signing in.');
       return;
     }
-    final generation = ++_authenticationGeneration;
+    final generation = _invalidateAuthentication();
     _update(
       connection: ConnectionViewModel(
         profiles: _profileViewModels(),
         selectedProfileId: selected.id,
         methods: selected.methods,
         phase: LoadPhase.loading,
+        canCancelAuthentication: method == AuthenticationMethod.oidc,
         message: method == AuthenticationMethod.oidc
             ? 'Starting secure browser approval…'
             : 'Signing in…',
@@ -235,17 +367,14 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
     final attempt = await api.startDesktopAuthorization();
     await _browser.open(attempt.verificationUrl);
     _connectionMessage(
-      'Approve this sign-in in the browser. Mesh Desktop will continue automatically.',
+      'Approve this sign-in in the browser. Mesh Admin will continue automatically.',
       phase: LoadPhase.loading,
+      canCancelAuthentication: true,
     );
     while (generation == _authenticationGeneration &&
-        !attempt.isExpiredAt(DateTime.now().toUtc())) {
-      await Future<void>.delayed(attempt.pollInterval);
-      if (generation != _authenticationGeneration) {
-        throw const MeshApiProtocolException(
-          'Desktop authorization was cancelled.',
-        );
-      }
+        !attempt.isExpiredAt(_now().toUtc())) {
+      await _waitForAuthorizationPoll(attempt.pollInterval, generation);
+      await _waitForForegroundAuthorization(attempt, generation);
       try {
         final result = await api.completeDesktopAuthorization(attempt);
         switch (result.state) {
@@ -265,7 +394,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
             return result.session!;
         }
       } on MeshApiException catch (error) {
-        if (error.statusCode == 429) {
+        if (error.statusCode == 429 || error.statusCode == 503) {
           continue;
         }
         rethrow;
@@ -274,6 +403,15 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
     throw const MeshApiException(
       statusCode: 410,
       message: 'Desktop sign-in expired. Start again.',
+    );
+  }
+
+  @override
+  void cancelAuthentication() {
+    _invalidateAuthentication();
+    _connectionMessage(
+      'Desktop sign-in cancelled. No browser credential was stored.',
+      phase: LoadPhase.ready,
     );
   }
 
@@ -292,6 +430,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
     }
     _session = session;
     final role = _presentationRole(session.role.wireValue);
+    final permissions = _presentationPermissions(session.permissions);
     _update(
       connection: ConnectionViewModel(
         profiles: _profileViewModels(),
@@ -302,6 +441,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       accessContext: AccessContextViewModel(
         displayName: session.principal.label,
         role: role,
+        permissions: permissions,
         controlPlaneName: selected.displayName,
         origin: selected.profile.origin,
       ),
@@ -314,45 +454,54 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
           )
           ? const LoadableViewModel.loading(message: 'Loading audit events…')
           : const LoadableViewModel.empty(
-              message: 'This role cannot read audit events.',
+              message: 'This session cannot read audit events.',
             ),
-      accessManagement: role == MeshRole.admin
+      accessManagement: permissions.contains(MeshPermission.identityManage)
           ? const LoadableViewModel.loading(
               message: 'Loading access inventory…',
             )
           : const LoadableViewModel.initial(),
     );
     if (persist) {
+      final now = _now().toUtc();
+      final expires =
+          session.absoluteExpiresAt ??
+          session.idleExpiresAt ??
+          now.add(const Duration(hours: 1));
+      final persisted = PersistedDesktopSession(
+        profile: selected.profile,
+        cookies: transport.cookieJar.snapshot(),
+        issuedAt: session.createdAt ?? now,
+        expiresAt: expires,
+      );
       try {
-        final now = DateTime.now().toUtc();
-        final expires =
-            session.absoluteExpiresAt ??
-            session.idleExpiresAt ??
-            now.add(const Duration(hours: 1));
-        await _sessionStore.save(
-          PersistedDesktopSession(
-            profile: selected.profile,
-            cookies: transport.cookieJar.snapshot(),
-            issuedAt: session.createdAt ?? now,
-            expiresAt: expires,
-          ),
-        );
+        await _sessionStore.save(persisted);
       } catch (_) {
         _update(
           receipt: const OperationReceiptViewModel(
             title: 'Session is not saved',
             summary:
-                'Secure OS credential storage was unavailable. This session will end when Mesh Desktop closes.',
+                'Secure OS credential storage was unavailable. This session will end when Mesh Admin closes.',
             tone: EvidenceTone.warning,
           ),
         );
       }
     }
-    await Future.wait<void>(<Future<void>>[
-      _refreshFleet(showLoading: false),
-      _refreshActivity(),
-      if (role == MeshRole.admin) _refreshAccess(),
-    ]);
+    await _refreshFleet(showLoading: false);
+    final authoritativeSession = _session;
+    if (authoritativeSession != null) {
+      await Future.wait<void>(<Future<void>>[
+        if (authoritativeSession.permissions.contains(
+          auth.MeshPermission.auditRead,
+        ))
+          _refreshActivity(),
+        if (authoritativeSession.permissions.contains(
+          auth.MeshPermission.identityManage,
+        ))
+          _refreshAccess(),
+      ]);
+    }
+    if (_session == null) return;
     _startFleetPolling();
   }
 
@@ -362,7 +511,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
   }
 
   Future<void> _signOut({bool callServer = true}) async {
-    ++_authenticationGeneration;
+    _invalidateAuthentication();
     await _fleetPoller?.dispose();
     _fleetPoller = null;
     if (callServer) {
@@ -409,6 +558,19 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       );
     }
     try {
+      final authority = await _refreshSessionAuthority(api);
+      if (authority == null || _session == null) return;
+      if (!_session!.permissions.contains(auth.MeshPermission.networksRead)) {
+        _rawNetworks = const <Map<String, Object?>>[];
+        _rawFleet = null;
+        _update(
+          fleet: const LoadableViewModel.empty(
+            message: 'This session cannot read network inventory.',
+          ),
+          selectedNetwork: const LoadableViewModel.initial(),
+        );
+        return;
+      }
       final result = await Future.wait<Object>(<Future<Object>>[
         api.networks(),
         api.fleetHealth(),
@@ -416,6 +578,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       _rawNetworks = result[0] as List<Map<String, Object?>>;
       _rawFleet = result[1] as Map<String, Object?>;
       final model = _mapper.fleet(_rawNetworks, _rawFleet!);
+      _considerFleetNotification(model);
       _update(
         fleet: model.networks.isEmpty
             ? const LoadableViewModel.empty(
@@ -426,6 +589,12 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       final selected = value.selectedNetwork.data;
       if (selected != null) {
         await _loadNetwork(selected.network.id, showLoading: false);
+      }
+      if (authority.auditReadGained) {
+        await _refreshActivity();
+      }
+      if (authority.identityManageGained) {
+        await _refreshAccess();
       }
     } catch (error) {
       if (await _handleSessionError(error)) return;
@@ -446,8 +615,93 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
     }
   }
 
+  Future<_AuthorityRefresh?> _refreshSessionAuthority(MeshApi api) async {
+    late final core.SessionContext refreshed;
+    try {
+      refreshed = await api.currentSession();
+    } on MeshApiException catch (error) {
+      if (await _handleSessionError(error)) return null;
+      rethrow;
+    } on Object {
+      await _signOut(callServer: false);
+      _connectionError(
+        'The Mesh session authority could not be verified. Sign in again.',
+      );
+      return null;
+    }
+
+    final previous = _session;
+    if (previous == null) return null;
+    if (!_sameSessionIdentity(previous, refreshed)) {
+      await _signOut(callServer: false);
+      _connectionError(
+        'The Mesh session identity changed unexpectedly. Sign in again.',
+      );
+      return null;
+    }
+
+    final hadAudit = previous.permissions.contains(
+      auth.MeshPermission.auditRead,
+    );
+    final hasAudit = refreshed.permissions.contains(
+      auth.MeshPermission.auditRead,
+    );
+    final hadIdentity = previous.permissions.contains(
+      auth.MeshPermission.identityManage,
+    );
+    final hasIdentity = refreshed.permissions.contains(
+      auth.MeshPermission.identityManage,
+    );
+    final authorityChanged =
+        previous.role != refreshed.role ||
+        !_samePermissions(previous.permissions, refreshed.permissions);
+    _session = refreshed;
+
+    final selected = _selectedProfile;
+    if (selected == null) {
+      await _signOut(callServer: false);
+      _connectionError(
+        'The Mesh session origin could not be verified. Sign in again.',
+      );
+      return null;
+    }
+    if (authorityChanged) {
+      _eraseOneTimeMaterial();
+    }
+    _update(
+      accessContext: AccessContextViewModel(
+        displayName: refreshed.principal.label,
+        role: _presentationRole(refreshed.role.wireValue),
+        permissions: _presentationPermissions(refreshed.permissions),
+        controlPlaneName: selected.displayName,
+        origin: selected.profile.origin,
+      ),
+      activity: hasAudit
+          ? (!hadAudit
+                ? const LoadableViewModel.loading(
+                    message: 'Loading audit events…',
+                  )
+                : null)
+          : const LoadableViewModel.empty(
+              message: 'This session cannot read audit events.',
+            ),
+      accessManagement: hasIdentity
+          ? (!hadIdentity
+                ? const LoadableViewModel.loading(
+                    message: 'Loading access inventory…',
+                  )
+                : null)
+          : const LoadableViewModel.initial(),
+    );
+    return _AuthorityRefresh(
+      auditReadGained: !hadAudit && hasAudit,
+      identityManageGained: !hadIdentity && hasIdentity,
+    );
+  }
+
   @override
   void selectNetwork(String networkId) {
+    _eraseOneTimeMaterial();
     unawaited(_loadNetwork(networkId));
   }
 
@@ -524,6 +778,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
 
   @override
   void clearSelectedNetwork() {
+    _eraseOneTimeMaterial();
     _update(selectedNetwork: const LoadableViewModel.initial());
   }
 
@@ -533,7 +788,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       receipt: const OperationReceiptViewModel(
         title: 'Review required',
         summary:
-            'This setup step has not been submitted. Mesh Desktop will add its guided review form before enabling the mutation.',
+            'This setup step has not been submitted. Mesh Admin will add its guided review form before enabling the mutation.',
         tone: EvidenceTone.information,
       ),
     );
@@ -648,6 +903,52 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
           tone: EvidenceTone.healthy,
           verification:
               'Replacement pending enrollment confirmed by the control plane.',
+        ),
+      );
+      return const MutationSubmissionResult.succeeded();
+    } catch (error) {
+      if (await _handleSessionError(error)) {
+        return const MutationSubmissionResult.failed(
+          'The Mesh session expired. Sign in again.',
+        );
+      }
+      return MutationSubmissionResult.failed(_safeError(error));
+    }
+  }
+
+  @override
+  Future<MutationSubmissionResult> cancelPendingEnrollment(
+    CancelPendingEnrollmentRequest request,
+  ) async {
+    final api = _api;
+    if (api == null || _session == null) {
+      return const MutationSubmissionResult.failed(
+        'Sign in before cancelling a pending enrollment.',
+      );
+    }
+    if (request.confirmedName != request.nodeName) {
+      return const MutationSubmissionResult.failed(
+        'The confirmation name did not match the selected node.',
+      );
+    }
+    try {
+      final network = await _freshNetwork(api, request.networkId);
+      final receipt = await api.cancelPendingEnrollment(
+        networkId: request.networkId,
+        nodeId: request.nodeId,
+        expectedConfigRevision: network.configRevision,
+        confirmationName: request.confirmedName,
+      );
+      await _refreshFleet(showLoading: false);
+      _update(
+        receipt: OperationReceiptViewModel(
+          title: 'Pending enrollment cancelled',
+          summary:
+              '${receipt.name} was removed and ${receipt.enrollmentRecordsInvalidated} one-time credential record${receipt.enrollmentRecordsInvalidated == 1 ? '' : 's'} invalidated.',
+          tone: EvidenceTone.healthy,
+          revision: receipt.configRevision,
+          verification:
+              'The control plane released ${receipt.routedSubnetReservationsReleased} routed-subnet reservation${receipt.routedSubnetReservationsReleased == 1 ? '' : 's'} and confirmed the pending identity no longer exists.',
         ),
       );
       return const MutationSubmissionResult.succeeded();
@@ -793,6 +1094,13 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
     }
     try {
       final events = _mapper.activity(await api.auditEvents());
+      final current = _session;
+      if (current == null ||
+          current.sessionId != session.sessionId ||
+          current.principal.id != session.principal.id ||
+          !current.permissions.contains(auth.MeshPermission.auditRead)) {
+        return;
+      }
       _update(
         activity: events.isEmpty
             ? const LoadableViewModel.empty(
@@ -809,12 +1117,23 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
   Future<void> _refreshAccess() async {
     final api = _api;
     final session = _session;
-    if (api == null || session == null) return;
+    if (api == null ||
+        session == null ||
+        !session.permissions.contains(auth.MeshPermission.identityManage)) {
+      return;
+    }
     try {
       final results = await Future.wait<Object?>(<Future<Object?>>[
         api.sessions(),
         _optionalBreakGlassInventory(api),
       ]);
+      final current = _session;
+      if (current == null ||
+          current.sessionId != session.sessionId ||
+          current.principal.id != session.principal.id ||
+          !current.permissions.contains(auth.MeshPermission.identityManage)) {
+        return;
+      }
       final model = _mapper.access(
         sessions: results[0]! as List<Map<String, Object?>>,
         recovery: results[1] as Map<String, Object?>?,
@@ -890,7 +1209,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
         receipt: OperationReceiptViewModel(
           title: 'Session revoked',
           summary:
-              'The web or desktop session for ${request.principal} can no longer authenticate.',
+              'The web or Mesh Admin session for ${request.principal} can no longer authenticate.',
           tone: EvidenceTone.healthy,
           verification: 'The control plane removed the selected session.',
         ),
@@ -974,21 +1293,67 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
 
   @override
   void updateNotifications(bool enabled) {
+    if (_managedConfiguration?.notificationsEnabled != null) {
+      _update(
+        receipt: const OperationReceiptViewModel(
+          title: 'Notifications managed by your organization',
+          summary:
+              'This setting cannot be changed locally while MDM policy supplies it.',
+          tone: EvidenceTone.information,
+        ),
+      );
+      return;
+    }
+    unawaited(_updateNotifications(enabled));
+  }
+
+  Future<void> _updateNotifications(bool enabled) async {
+    final granted = enabled
+        ? await _notificationSink.requestAuthorization()
+        : false;
+    _localNotificationsEnabled = enabled && granted;
+    _notificationPermissionGranted = granted;
+    _notificationTransition.reset();
     _update(
       preferences: PreferencesViewModel(
         themeMode: value.preferences.themeMode,
-        notificationsEnabled: enabled,
+        notificationsEnabled: _localNotificationsEnabled,
         backgroundMonitoringEnabled:
             value.preferences.backgroundMonitoringEnabled,
       ),
       receipt: OperationReceiptViewModel(
-        title: enabled ? 'Notifications requested' : 'Notifications disabled',
-        summary: enabled
-            ? 'Mesh Desktop will request OS notification permission when alert delivery is implemented.'
-            : 'Mesh Desktop will not deliver OS notifications.',
+        title: !enabled
+            ? 'Notifications disabled'
+            : granted
+            ? 'Notifications enabled'
+            : 'Notification permission unavailable',
+        summary: !enabled
+            ? 'Mesh Admin will not deliver OS notifications.'
+            : granted
+            ? 'Mesh Admin will notify only when fresh fleet evidence changes to a warning or critical state. Notifications contain no names, identifiers, or server text.'
+            : 'The operating system did not grant notification permission. Mesh Admin will not deliver notifications.',
         tone: EvidenceTone.information,
       ),
     );
+  }
+
+  void _considerFleetNotification(FleetViewModel fleet) {
+    if (!value.preferences.notificationsEnabled ||
+        !_notificationPermissionGranted) {
+      _notificationTransition.reset();
+      return;
+    }
+    final event = _notificationTransition.observe(
+      hasCritical: fleet.alerts.any(
+        (alert) => alert.tone == EvidenceTone.critical,
+      ),
+      hasWarning: fleet.alerts.any(
+        (alert) => alert.tone == EvidenceTone.warning,
+      ),
+    );
+    if (event != null) {
+      unawaited(_notificationSink.deliver(event).catchError((_) {}));
+    }
   }
 
   @override
@@ -1004,8 +1369,8 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
             ? 'Background monitoring not enabled'
             : 'Background monitoring disabled',
         summary: enabled
-            ? 'Mesh Desktop quits when its window closes. No background process was started.'
-            : 'Mesh Desktop stops polling when it is not active.',
+            ? 'Mesh Admin quits when its window closes. No background process was started.'
+            : 'Mesh Admin stops polling when it is not active.',
         tone: EvidenceTone.information,
       ),
     );
@@ -1039,10 +1404,193 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       receipt: const OperationReceiptViewModel(
         title: 'Use system settings',
         summary:
-            'Open your desktop environment settings to manage notifications and accessibility preferences.',
+            'Open system settings to manage notifications and accessibility preferences.',
         tone: EvidenceTone.information,
       ),
     );
+  }
+
+  @override
+  void copyDiagnosticBundle() {
+    unawaited(_copyDiagnosticBundle());
+  }
+
+  @override
+  void eraseLocalData() {
+    unawaited(_eraseLocalData());
+  }
+
+  Future<void> _eraseLocalData() async {
+    _invalidateAuthentication();
+    await _fleetPoller?.dispose();
+    _fleetPoller = null;
+    final serverLogoutConfirmed = await _api
+        ?.logout()
+        .then((_) => true)
+        .catchError((_) => false);
+    _transport?.cookieJar.clear();
+    _session = null;
+    _eraseOneTimeMaterial();
+
+    try {
+      await _sessionStore.clearAll();
+    } on SessionPersistenceException {
+      _disconnect();
+      _update(
+        connection: ConnectionViewModel(
+          profiles: _profileViewModels(),
+          phase: LoadPhase.error,
+          message:
+              'Secure local data could not be fully erased. Unlock the device or operating-system credential store and retry before uninstalling.',
+        ),
+        accessContext: null,
+        fleet: const LoadableViewModel.initial(),
+        selectedNetwork: const LoadableViewModel.initial(),
+        activity: const LoadableViewModel.initial(),
+        accessManagement: const LoadableViewModel.initial(),
+        preferences: PreferencesViewModel(
+          notificationsEnabled:
+              _managedConfiguration?.notificationsEnabled ?? false,
+        ),
+        oneTimeSecret: null,
+        receipt: const OperationReceiptViewModel(
+          title: 'Local data not fully erased',
+          summary:
+              'At least one exact Keychain item could not be deleted. Retry before removing the application.',
+          tone: EvidenceTone.warning,
+        ),
+      );
+      return;
+    }
+
+    _profiles.clear();
+    _disconnect();
+    _localNotificationsEnabled = false;
+    _notificationPermissionGranted = false;
+    _notificationTransition.reset();
+    _update(
+      connection: const ConnectionViewModel(
+        phase: LoadPhase.ready,
+        message:
+            'Local Mesh Admin data erased. Organization-managed settings and operating-system permissions remain outside the app.',
+      ),
+      accessContext: null,
+      fleet: const LoadableViewModel.initial(),
+      selectedNetwork: const LoadableViewModel.initial(),
+      activity: const LoadableViewModel.initial(),
+      accessManagement: const LoadableViewModel.initial(),
+      preferences: PreferencesViewModel(
+        notificationsEnabled:
+            _managedConfiguration?.notificationsEnabled ?? false,
+      ),
+      oneTimeSecret: null,
+      receipt: OperationReceiptViewModel(
+        title: 'Local Mesh Admin data erased',
+        summary: serverLogoutConfirmed != true
+            ? 'The Keychain session and saved control-plane profiles were deleted. Server-side session revocation could not be confirmed while offline.'
+            : 'The Keychain session and saved control-plane profiles were deleted.',
+        tone: serverLogoutConfirmed != true
+            ? EvidenceTone.warning
+            : EvidenceTone.healthy,
+        verification:
+            'Organization-managed profiles, operating-system permissions, server records, and any separately installed Mesh Node were not changed.',
+      ),
+    );
+  }
+
+  Future<void> _copyDiagnosticBundle() async {
+    final platform = switch (defaultTargetPlatform) {
+      TargetPlatform.macOS => AppleAdminDiagnosticPlatform.macos,
+      TargetPlatform.iOS => AppleAdminDiagnosticPlatform.ios,
+      _ => null,
+    };
+    if (platform == null) {
+      _update(
+        receipt: const OperationReceiptViewModel(
+          title: 'Diagnostic bundle unavailable',
+          summary:
+              'The bounded Apple diagnostic bundle is available only in the macOS and iOS applications.',
+          tone: EvidenceTone.unavailable,
+        ),
+      );
+      return;
+    }
+    final now = _now().toUtc();
+    final fleet = value.fleet.data;
+    final age = fleet == null
+        ? null
+        : now
+              .difference(fleet.generatedAt.toUtc())
+              .inSeconds
+              .clamp(0, 31_536_000);
+    final role = switch (value.accessContext?.role) {
+      MeshRole.member => AppleAdminDiagnosticRole.member,
+      MeshRole.viewer => AppleAdminDiagnosticRole.viewer,
+      MeshRole.operator => AppleAdminDiagnosticRole.operator,
+      MeshRole.admin => AppleAdminDiagnosticRole.admin,
+      null => null,
+    };
+    final sessionState = value.authenticated
+        ? AppleAdminDiagnosticSessionState.signedIn
+        : value.connection.canCancelAuthentication
+        ? AppleAdminDiagnosticSessionState.authorizing
+        : AppleAdminDiagnosticSessionState.signedOut;
+    try {
+      final bundle = AppleAdminDiagnosticBundle(
+        createdAt: now,
+        platform: platform,
+        applicationVersion: _diagnosticApplicationVersion,
+        applicationBuild: _diagnosticApplicationBuild,
+        releaseIdentity: _diagnosticReleaseIdentity,
+        sessionState: sessionState,
+        role: role,
+        connectionState: _diagnosticLoadState(value.connection.phase),
+        fleetState: _diagnosticLoadState(value.fleet.phase),
+        networkState: _diagnosticLoadState(value.selectedNetwork.phase),
+        activityState: _diagnosticLoadState(value.activity.phase),
+        accessState: _diagnosticLoadState(value.accessManagement.phase),
+        profileCount: value.connection.profiles.length,
+        networkCount: fleet?.networks.length ?? 0,
+        alertCount: fleet?.alerts.length ?? 0,
+        fleetEvidenceAgeSeconds: age,
+        oneTimeSecretVisible: value.oneTimeSecret != null,
+        operationReceiptVisible: value.receipt != null,
+        notificationsRequested: value.preferences.notificationsEnabled,
+        backgroundMonitoringRequested:
+            value.preferences.backgroundMonitoringEnabled,
+      ).encode();
+      await _diagnosticClipboard.copy(bundle);
+      _update(
+        receipt: OperationReceiptViewModel(
+          title: 'Bounded diagnostic bundle copied',
+          summary: platform == AppleAdminDiagnosticPlatform.ios
+              ? 'The local-only iOS pasteboard item expires after two minutes. Mesh did not upload or persist it. Delete recipient copies when the approved support case closes.'
+              : 'Mesh did not upload or persist the bundle, and the macOS clipboard does not expire automatically. Clear or replace it after transfer, and delete recipient copies when the approved support case closes.',
+          tone: EvidenceTone.information,
+          verification:
+              'The schema excludes origins, names, IDs, credentials, raw errors, logs, and configuration bodies.',
+        ),
+      );
+    } catch (_) {
+      _update(
+        receipt: const OperationReceiptViewModel(
+          title: 'Diagnostic bundle not copied',
+          summary:
+              'The bounded diagnostic or expiring-copy boundary was unavailable. Mesh did not fall back to an unbounded export.',
+          tone: EvidenceTone.unavailable,
+        ),
+      );
+    }
+  }
+
+  AppleAdminDiagnosticLoadState _diagnosticLoadState(LoadPhase phase) {
+    return switch (phase) {
+      LoadPhase.initial => AppleAdminDiagnosticLoadState.initial,
+      LoadPhase.loading => AppleAdminDiagnosticLoadState.loading,
+      LoadPhase.ready => AppleAdminDiagnosticLoadState.ready,
+      LoadPhase.empty => AppleAdminDiagnosticLoadState.empty,
+      LoadPhase.error => AppleAdminDiagnosticLoadState.error,
+    };
   }
 
   @override
@@ -1067,7 +1615,77 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       interval: const Duration(seconds: 15),
       poll: () => _refreshFleet(showLoading: false),
       onError: (_, _) {},
-    )..start();
+    )..start(pollImmediately: false);
+  }
+
+  void _startCustodyObservers() {
+    if (_custodySubscription != null) {
+      return;
+    }
+    _custodySubscription = _lifecycle.changes.listen((state) {
+      if (state != AppLifecycleState.resumed) {
+        _eraseOneTimeMaterial();
+      } else {
+        unawaited(_refreshManagedConfiguration());
+      }
+    });
+    _protectedDataEvents.setUnavailableHandler(_eraseOneTimeMaterial);
+  }
+
+  void _eraseOneTimeMaterial() {
+    if (!_disposed && value.oneTimeSecret != null) {
+      _update(oneTimeSecret: null);
+    }
+  }
+
+  int _invalidateAuthentication() {
+    final generation = ++_authenticationGeneration;
+    if (!_authenticationChanges.isClosed) {
+      _authenticationChanges.add(generation);
+    }
+    return generation;
+  }
+
+  Future<void> _waitForForegroundAuthorization(
+    DesktopAuthorizationAttempt attempt,
+    int generation,
+  ) async {
+    while (_lifecycle.currentState != AppLifecycleState.resumed &&
+        generation == _authenticationGeneration &&
+        !attempt.isExpiredAt(_now().toUtc())) {
+      final remaining = attempt.expiresAt.difference(_now().toUtc());
+      await Future.any<void>(<Future<void>>[
+        _lifecycle.changes
+            .firstWhere((state) => state == AppLifecycleState.resumed)
+            .then((_) {}),
+        _authenticationChanges.stream
+            .firstWhere((changed) => changed != generation)
+            .then((_) {}),
+        Future<void>.delayed(remaining),
+      ]);
+    }
+    if (generation != _authenticationGeneration) {
+      throw const MeshApiProtocolException(
+        'Desktop authorization was cancelled.',
+      );
+    }
+  }
+
+  Future<void> _waitForAuthorizationPoll(
+    Duration interval,
+    int generation,
+  ) async {
+    await Future.any<void>(<Future<void>>[
+      _delay(interval),
+      _authenticationChanges.stream
+          .firstWhere((changed) => changed != generation)
+          .then((_) {}),
+    ]);
+    if (generation != _authenticationGeneration) {
+      throw const MeshApiProtocolException(
+        'Desktop authorization was cancelled.',
+      );
+    }
   }
 
   Future<MeshNetwork> _freshNetwork(MeshApi api, String networkId) async {
@@ -1133,6 +1751,25 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
   }
 
   void _select(_SavedProfile saved) {
+    final abandonsAuthorization =
+        _session != null || value.connection.canCancelAuthentication;
+    _invalidateAuthentication();
+    _eraseOneTimeMaterial();
+    if (abandonsAuthorization) {
+      unawaited(_fleetPoller?.dispose());
+      _fleetPoller = null;
+      _transport?.cookieJar.clear();
+      _session = null;
+      unawaited(_sessionStore.clear().catchError((_) {}));
+      _update(
+        accessContext: null,
+        fleet: const LoadableViewModel.initial(),
+        selectedNetwork: const LoadableViewModel.initial(),
+        activity: const LoadableViewModel.initial(),
+        accessManagement: const LoadableViewModel.initial(),
+        receipt: null,
+      );
+    }
     _disconnect();
     final cookieJar = MeshCookieJar(saved.profile);
     final transport = DartIoJsonTransport(
@@ -1140,7 +1777,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       cookieJar: cookieJar,
     );
     _transport = transport;
-    _api = MeshApi(profile: saved.profile, transport: transport);
+    _api = MeshApi(profile: saved.profile, transport: transport, now: _now);
   }
 
   _SavedProfile _addProfile(
@@ -1148,23 +1785,241 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
     required String displayName,
     required bool tlsTrusted,
   }) {
+    final canonicalDisplayName = displayName.trim();
+    if (canonicalDisplayName.isEmpty || canonicalDisplayName.length > 80) {
+      throw const FormatException(
+        'Control-plane display name must contain 1 to 80 characters.',
+      );
+    }
     final existing = _profiles
         .where((candidate) => candidate.profile == profile)
         .firstOrNull;
     if (existing != null) {
       existing
-        ..displayName = displayName
+        ..displayName = canonicalDisplayName
         ..tlsTrusted = tlsTrusted;
       return existing;
     }
+    if (_profiles.length >= SecureSessionStore.maximumConnectionProfiles) {
+      throw const FormatException(
+        'At most 8 control-plane profiles can be saved.',
+      );
+    }
     final saved = _SavedProfile(
       id: 'profile_${++_profileSequence}',
-      displayName: displayName,
+      displayName: canonicalDisplayName,
       profile: profile,
       tlsTrusted: tlsTrusted,
     );
     _profiles.add(saved);
     return saved;
+  }
+
+  bool get _managedOriginLocked =>
+      _managedConfiguration != null &&
+      !_managedConfiguration!.allowOriginChanges;
+
+  void _enforceManagedOrigin(ConnectionProfile profile) {
+    if (_managedConfigurationRejected) {
+      throw const FormatException(
+        'Organization-managed settings are invalid. Connection setup is disabled.',
+      );
+    }
+    _managedConfiguration?.enforceControlPlaneOrigin(profile);
+  }
+
+  void _applyManagedConfiguration(AppleManagedConfiguration? configuration) {
+    _managedConfiguration = configuration;
+    _managedConfigurationRejected = false;
+    _update(
+      managedPolicy: configuration == null
+          ? null
+          : AppleManagedPolicyViewModel(
+              valid: true,
+              controlPlaneOrigin: configuration.controlPlaneOrigin?.origin,
+              allowOriginChanges: configuration.allowOriginChanges,
+              releaseChannel: configuration.releaseChannel,
+              updateRing: configuration.updateRing,
+              showLocalStatus: configuration.showLocalStatus,
+              notificationsEnabled: configuration.notificationsEnabled,
+            ),
+      preferences: PreferencesViewModel(
+        themeMode: value.preferences.themeMode,
+        notificationsEnabled:
+            configuration?.notificationsEnabled ?? _localNotificationsEnabled,
+        backgroundMonitoringEnabled:
+            value.preferences.backgroundMonitoringEnabled,
+      ),
+    );
+    final managedNotifications = configuration?.notificationsEnabled;
+    if (managedNotifications == false) {
+      _notificationPermissionGranted = false;
+      _notificationTransition.reset();
+    } else if (managedNotifications == true &&
+        !_notificationPermissionGranted) {
+      unawaited(_enableManagedNotifications());
+    }
+  }
+
+  Future<void> _enableManagedNotifications() async {
+    final granted = await _notificationSink.requestAuthorization();
+    if (_disposed || _managedConfiguration?.notificationsEnabled != true) {
+      return;
+    }
+    _notificationPermissionGranted = granted;
+    _notificationTransition.reset();
+    if (!granted) {
+      _update(
+        receipt: const OperationReceiptViewModel(
+          title: 'Managed notifications unavailable',
+          summary:
+              'Your organization enables notifications, but the operating system did not grant permission. No notification was delivered.',
+          tone: EvidenceTone.warning,
+        ),
+      );
+    }
+  }
+
+  Future<void> _refreshManagedConfiguration() async {
+    if (_disposed || _managedConfigurationRefreshing) return;
+    _managedConfigurationRefreshing = true;
+    try {
+      final configuration = await _managedConfigurationSource.load();
+      if (_disposed) return;
+      _applyManagedConfiguration(configuration);
+      if (configuration != null &&
+          !configuration.allowOriginChanges &&
+          _selectedProfile?.profile.origin !=
+              configuration.controlPlaneOrigin!.origin) {
+        await _sessionStore.clear().catchError((_) {});
+        if (_disposed) return;
+        _profiles.removeWhere(
+          (profile) =>
+              profile.profile.origin !=
+              configuration.controlPlaneOrigin!.origin,
+        );
+        await _persistConnectionProfiles();
+        if (_disposed) return;
+        _selectManagedOriginAfterPolicyChange();
+        await _connectManagedOriginIfPresent();
+      }
+    } on AppleManagedConfigurationException {
+      await _rejectManagedConfiguration();
+    } finally {
+      _managedConfigurationRefreshing = false;
+    }
+  }
+
+  void _selectManagedOriginAfterPolicyChange() {
+    _invalidateAuthentication();
+    _eraseOneTimeMaterial();
+    unawaited(_fleetPoller?.dispose());
+    _fleetPoller = null;
+    _transport?.cookieJar.clear();
+    _session = null;
+    _disconnect();
+    _update(
+      accessContext: null,
+      fleet: const LoadableViewModel.initial(),
+      selectedNetwork: const LoadableViewModel.initial(),
+      activity: const LoadableViewModel.initial(),
+      accessManagement: const LoadableViewModel.initial(),
+      receipt: null,
+    );
+  }
+
+  Future<void> _rejectManagedConfiguration() async {
+    if (_disposed) return;
+    _managedConfiguration = null;
+    _managedConfigurationRejected = true;
+    _selectManagedOriginAfterPolicyChange();
+    await _sessionStore.clear().catchError((_) {});
+    if (_disposed) return;
+    _update(
+      connection: ConnectionViewModel(
+        profiles: _profileViewModels(),
+        phase: LoadPhase.error,
+        message:
+            'Organization-managed settings are invalid. Ask your administrator to correct the application configuration.',
+      ),
+      managedPolicy: const AppleManagedPolicyViewModel.invalid(),
+      preferences: PreferencesViewModel(
+        themeMode: value.preferences.themeMode,
+        notificationsEnabled: _localNotificationsEnabled,
+        backgroundMonitoringEnabled:
+            value.preferences.backgroundMonitoringEnabled,
+      ),
+    );
+  }
+
+  Future<void> _connectManagedOriginIfPresent() async {
+    final profile = _managedConfiguration?.controlPlaneOrigin;
+    if (profile == null) return;
+    await _addConnection(
+      ConnectionRequest(
+        displayName: 'Organization-managed control plane',
+        origin: profile.origin,
+      ),
+    );
+  }
+
+  Future<String?> _loadConnectionProfiles() async {
+    late final List<PersistedConnectionProfile> persisted;
+    try {
+      persisted = await _sessionStore.loadConnectionProfiles();
+    } on SessionPersistenceException {
+      var removed = true;
+      try {
+        await _sessionStore.clearConnectionProfiles();
+      } catch (_) {
+        removed = false;
+      }
+      return removed
+          ? 'The saved control-plane list was invalid and has been removed.'
+          : 'Secure profile storage is unavailable. Unlock the device or operating-system credential store, then restart Mesh Admin.';
+    } catch (_) {
+      return 'Secure profile storage is unavailable. Unlock the device or operating-system credential store, then restart Mesh Admin.';
+    }
+
+    final managedOrigin = _managedOriginLocked
+        ? _managedConfiguration!.controlPlaneOrigin!.origin
+        : null;
+    for (final persistedProfile in persisted) {
+      if (managedOrigin != null &&
+          persistedProfile.profile.origin != managedOrigin) {
+        continue;
+      }
+      _addProfile(
+        persistedProfile.profile,
+        displayName: persistedProfile.displayName,
+        tlsTrusted: false,
+      );
+    }
+    if (_profiles.length != persisted.length) {
+      final persistedFilteredProfiles = await _persistConnectionProfiles();
+      if (!persistedFilteredProfiles) {
+        return 'Organization-managed settings filtered the saved control-plane list, but secure profile storage could not be updated.';
+      }
+    }
+    return null;
+  }
+
+  Future<bool> _persistConnectionProfiles() async {
+    try {
+      await _sessionStore.saveConnectionProfiles(
+        _profiles
+            .map(
+              (profile) => PersistedConnectionProfile(
+                displayName: profile.displayName,
+                profile: profile.profile,
+              ),
+            )
+            .toList(growable: false),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   _SavedProfile? get _selectedProfile {
@@ -1204,7 +2059,11 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
     _api = null;
   }
 
-  void _connectionMessage(String message, {required LoadPhase phase}) {
+  void _connectionMessage(
+    String message, {
+    required LoadPhase phase,
+    bool canCancelAuthentication = false,
+  }) {
     final selected = _selectedProfile;
     _update(
       connection: ConnectionViewModel(
@@ -1213,6 +2072,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
         methods: selected?.methods ?? const <AuthenticationMethod>[],
         phase: phase,
         message: message,
+        canCancelAuthentication: canCancelAuthentication,
       ),
     );
   }
@@ -1257,6 +2117,7 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
     LoadableViewModel<List<ActivityEventViewModel>>? activity,
     LoadableViewModel<AccessManagementViewModel>? accessManagement,
     PreferencesViewModel? preferences,
+    Object? managedPolicy = _unchanged,
     Object? oneTimeSecret = _unchanged,
     Object? receipt = _unchanged,
   }) {
@@ -1271,6 +2132,9 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
       activity: activity ?? value.activity,
       accessManagement: accessManagement ?? value.accessManagement,
       preferences: preferences ?? value.preferences,
+      managedPolicy: identical(managedPolicy, _unchanged)
+          ? value.managedPolicy
+          : managedPolicy as AppleManagedPolicyViewModel?,
       oneTimeSecret: identical(oneTimeSecret, _unchanged)
           ? value.oneTimeSecret
           : oneTimeSecret as OneTimeSecretViewModel?,
@@ -1283,8 +2147,16 @@ final class MeshAppController extends ValueNotifier<MeshDesktopViewModel>
   @override
   void dispose() {
     _disposed = true;
-    ++_authenticationGeneration;
+    _invalidateAuthentication();
     unawaited(_fleetPoller?.dispose());
+    unawaited(_custodySubscription?.cancel());
+    _custodySubscription = null;
+    if (_ownsProtectedDataEvents) {
+      _protectedDataEvents.dispose();
+    } else {
+      _protectedDataEvents.setUnavailableHandler(null);
+    }
+    unawaited(_authenticationChanges.close());
     if (_ownsLifecycle) {
       (_lifecycle as WidgetsBindingLifecycleSource).dispose();
     }
@@ -1319,11 +2191,53 @@ List<AuthenticationMethod> _presentationMethods(
 ];
 
 MeshRole _presentationRole(String value) => switch (value) {
+  'member' => MeshRole.member,
   'viewer' => MeshRole.viewer,
   'operator' => MeshRole.operator,
   'admin' => MeshRole.admin,
   _ => throw FormatException('Unsupported Mesh role "$value".'),
 };
+
+Set<MeshPermission> _presentationPermissions(
+  Set<auth.MeshPermission> permissions,
+) => Set<MeshPermission>.unmodifiable(
+  permissions.map(
+    (permission) => switch (permission) {
+      auth.MeshPermission.networksRead => MeshPermission.networksRead,
+      auth.MeshPermission.networksWrite => MeshPermission.networksWrite,
+      auth.MeshPermission.networksSecurity => MeshPermission.networksSecurity,
+      auth.MeshPermission.nodesEnrollSelf => MeshPermission.nodesEnrollSelf,
+      auth.MeshPermission.identityManage => MeshPermission.identityManage,
+      auth.MeshPermission.auditRead => MeshPermission.auditRead,
+    },
+  ),
+);
+
+bool _samePermissions(
+  Set<auth.MeshPermission> first,
+  Set<auth.MeshPermission> second,
+) => first.length == second.length && first.containsAll(second);
+
+bool _sameSessionIdentity(
+  core.SessionContext previous,
+  core.SessionContext refreshed,
+) =>
+    previous.sessionId == refreshed.sessionId &&
+    previous.principal.id == refreshed.principal.id &&
+    previous.principal.kind == refreshed.principal.kind &&
+    previous.principal.issuer == refreshed.principal.issuer &&
+    previous.principal.subject == refreshed.principal.subject &&
+    previous.authMethod == refreshed.authMethod;
+
+final class _AuthorityRefresh {
+  const _AuthorityRefresh({
+    required this.auditReadGained,
+    required this.identityManageGained,
+  });
+
+  final bool auditReadGained;
+  final bool identityManageGained;
+}
 
 String _actionLabel(String value) {
   final words = value.replaceAll('-', ' ').trim();

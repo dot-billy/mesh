@@ -86,12 +86,64 @@ case "$(uname -m)" in
 esac
 source_paths=(
   scripts/darwin-native-runtime-smoke.sh
+  cmd/mesh-install/main_darwin.go
+  cmd/mesh-darwin-codesign-verify/main_darwin.go
   cmd/meshctl/agent_entry_other.go
   cmd/meshctl/agent_supervised_runtime_darwin.go
   cmd/meshctl/agent_supervised_runtime_darwin_test.go
+  cmd/meshctl/enrollment_runtime.go
+  cmd/meshctl/enrollment_runtime_darwin.go
   internal/darwinbundle/candidate.go
+  internal/darwinbundle/signed_build.go
+  internal/darwincodesign/contract.go
+  internal/darwincodesign/macho.go
+  internal/darwincodesign/policy.go
+  internal/darwincodesign/receipt.go
+  internal/darwincodesign/verify_darwin.go
+  internal/darwincodesign/verify_darwin_test.go
+  internal/darwininstall/artifact_capture_core.go
+  internal/darwininstall/artifact_capture_darwin.go
+  internal/darwininstall/candidate_core.go
+  internal/darwininstall/candidate_intake_darwin.go
+  internal/darwininstall/current_link_darwin.go
+  internal/darwininstall/current_remove_core.go
+  internal/darwininstall/current_switch_core.go
+  internal/darwininstall/doc.go
+  internal/darwininstall/enrollment_validation_darwin.go
+  internal/darwininstall/highwater_codec.go
+  internal/darwininstall/highwater_core.go
+  internal/darwininstall/highwater_store_darwin.go
+  internal/darwininstall/installed_runtime_darwin.go
+  internal/darwininstall/installed_runtime_darwin_test.go
+  internal/darwininstall/installer_darwin.go
+  internal/darwininstall/intake_record_core.go
+  internal/darwininstall/intake_record_store_darwin.go
+  internal/darwininstall/intake_stage_core.go
+  internal/darwininstall/intake_stage_darwin.go
+  internal/darwininstall/journal_core.go
+  internal/darwininstall/journal_factory_darwin.go
+  internal/darwininstall/journal_store_darwin.go
+  internal/darwininstall/launchctl_controller_core.go
+  internal/darwininstall/launchctl_controller_darwin.go
+  internal/darwininstall/launchctl_system_native_darwin_test.go
+  internal/darwininstall/launchd_activation_core.go
+  internal/darwininstall/launchd_activation_darwin.go
+  internal/darwininstall/launchd_plist_core.go
+  internal/darwininstall/launchd_plist_darwin.go
+  internal/darwininstall/launchd_plist_remove_core.go
+  internal/darwininstall/offline_snapshot_core.go
+  internal/darwininstall/offline_snapshot_darwin.go
+  internal/darwininstall/release_layout_darwin.go
+  internal/darwininstall/release_publication_core.go
+  internal/darwininstall/rollback_darwin.go
+  internal/darwininstall/root_history_core.go
+  internal/darwininstall/root_history_store_darwin.go
+  internal/darwininstall/runtime_gate_core.go
   internal/darwininstall/runtime_gate_darwin.go
   internal/darwininstall/runtime_gate_darwin_test.go
+  internal/darwininstall/runtime_uninstall_core.go
+  internal/darwininstall/runtime_uninstall_darwin.go
+  internal/darwininstall/signature_admission_darwin.go
   internal/nodeagent/darwin_native_pathsecurity_test.go
   internal/nodeagent/pathsecurity_darwin.go
   internal/nodeagent/pathsecurity_platform_darwin.go

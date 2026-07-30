@@ -53,6 +53,21 @@ class ReissueEnrollmentRequest {
 }
 
 @immutable
+class CancelPendingEnrollmentRequest {
+  const CancelPendingEnrollmentRequest({
+    required this.networkId,
+    required this.nodeId,
+    required this.nodeName,
+    required this.confirmedName,
+  });
+
+  final String networkId;
+  final String nodeId;
+  final String nodeName;
+  final String confirmedName;
+}
+
+@immutable
 class RevokeSessionRequest {
   const RevokeSessionRequest({
     required this.sessionId,
@@ -117,6 +132,10 @@ abstract interface class MeshMutationCallbacks {
     ReissueEnrollmentRequest request,
   );
 
+  Future<MutationSubmissionResult> cancelPendingEnrollment(
+    CancelPendingEnrollmentRequest request,
+  );
+
   Future<MutationSubmissionResult> revokeAccessSession(
     RevokeSessionRequest request,
   );
@@ -134,6 +153,7 @@ abstract interface class MeshPresentationCallbacks {
   void addConnection(ConnectionRequest request);
   void selectConnection(String profileId);
   void authenticate(AuthenticationMethod method, {String? credential});
+  void cancelAuthentication();
   void signOut();
 
   void refreshFleet();
@@ -155,6 +175,8 @@ abstract interface class MeshPresentationCallbacks {
   void openPublicDocumentation();
   void openAPIReference();
   void openSystemSettings();
+  void copyDiagnosticBundle();
+  void eraseLocalData();
 
   void acknowledgeOneTimeSecret();
   void scrubOneTimeSecret();
@@ -174,13 +196,22 @@ class NoopMeshPresentationCallbacks implements MeshPresentationCallbacks {
   void authenticate(AuthenticationMethod method, {String? credential}) {}
 
   @override
+  void cancelAuthentication() {}
+
+  @override
   void clearSelectedNetwork() {}
 
   @override
   void createRecoveryCode() {}
 
   @override
+  void copyDiagnosticBundle() {}
+
+  @override
   void dismissReceipt() {}
+
+  @override
+  void eraseLocalData() {}
 
   @override
   void invokeNetworkAction(String networkId, String action) {}

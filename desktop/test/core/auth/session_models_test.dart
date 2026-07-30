@@ -84,6 +84,14 @@ void main() {
 
     expect(viewerWithWriteHint.canChangeNetworks, isTrue);
     expect(viewerWithWriteHint.canPerformSecurityActions, isFalse);
+    expect(
+      <MeshPermission>{
+        MeshPermission.networksRead,
+        MeshPermission.nodesEnrollSelf,
+      }.canSelfEnrollNode,
+      isTrue,
+    );
+    expect(MeshRole.parse('member'), MeshRole.member);
     expect(MeshRole.parse('viewer'), MeshRole.viewer);
     expect(() => MeshRole.parse('owner'), throwsFormatException);
   });

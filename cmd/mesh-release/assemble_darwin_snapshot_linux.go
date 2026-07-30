@@ -122,8 +122,12 @@ func assembleDarwinSnapshotUsing(options darwinSnapshotAssemblyOptions, hooks sn
 	if hooks.afterInputRead != nil {
 		hooks.afterInputRead(artifactInput.path)
 	}
-	if err := validateOpenedSnapshotInput(artifactInput); err != nil {
+	revalidatedArtifactDigest, err := hashRevalidatedSnapshotInput(artifactInput)
+	if err != nil {
 		return "", fmt.Errorf("Darwin bundle artifact changed while copying: %w", err)
+	}
+	if !bytes.Equal(revalidatedArtifactDigest[:], artifactHasher.Sum(nil)) {
+		return "", errors.New("Darwin bundle artifact changed while copying: independently re-read content differs")
 	}
 	descriptorRaw, err := darwininstall.EncodeDarwinInstallSnapshotDescriptor(darwininstall.DarwinInstallSnapshotDescriptor{
 		Schema:       darwininstall.DarwinInstallSnapshotSchema,

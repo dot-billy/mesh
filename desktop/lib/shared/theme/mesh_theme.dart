@@ -60,6 +60,9 @@ abstract final class MeshTheme {
 abstract final class MeshWindowMetrics {
   static const Size defaultSize = Size(1280, 800);
   static const Size minimumSize = Size(900, 600);
+  static const double mobileNavigationBreakpoint = 720;
+  static const double iosNavigationBreakpoint = 1100;
+  static const double iosLandscapeHeightBreakpoint = 600;
   static const double extendedRailBreakpoint = 1100;
   static const double inspectorBreakpoint = 1320;
   static const double contentPadding = 24;

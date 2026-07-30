@@ -449,6 +449,17 @@ NodeViewModel _node(
   final status = _nodeStatus(node, health);
   final agentStatus = _optionalString(node, 'agent_status');
   final nebulaRunning = _boolean(node, 'nebula_running');
+  final runtimeState = health == null
+      ? 'unknown'
+      : _optionalString(health, 'runtime_state') ?? 'unknown';
+  final runtimeObservation = switch (runtimeState) {
+    'running' =>
+      '${agentStatus ?? 'Agent status unavailable'}; Nebula running at the latest current heartbeat',
+    'stopped' =>
+      '${agentStatus ?? 'Agent status unavailable'}; Nebula stopped at the latest current heartbeat',
+    _ =>
+      'Current runtime state unknown; Nebula was last reported ${nebulaRunning ? 'running' : 'stopped'}',
+  };
   return NodeViewModel(
     id: _string(node, 'id'),
     name: _string(node, 'name'),
@@ -467,9 +478,7 @@ NodeViewModel _node(
     appliedRevision: _optionalInteger(node, 'applied_config_revision'),
     lastHeartbeatAt: _optionalTime(node, 'last_seen_at'),
     certificateExpiresAt: _optionalTime(node, 'certificate_expires_at'),
-    runtimeObservation: agentStatus == null
-        ? null
-        : '$agentStatus; Nebula ${nebulaRunning ? 'reported running' : 'not reported running'}',
+    runtimeObservation: runtimeObservation,
     routedSubnets: _stringList(node, 'routed_subnets'),
   );
 }

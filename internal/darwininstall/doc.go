@@ -14,5 +14,19 @@
 // unsigned policy, platform, floor, clock, size, digest, or key field.
 // A fixed system-domain launchctl controller proves absence/loading only
 // through successful bootout/bootstrap mutations and never parses non-API
-// status text. Native execution of that controller remains separate work.
+// status text. Production orchestration accepts canonical online or
+// root-private offline input, drives the durable activation journal, exposes
+// exact-target rollback and recovery, and opens the runtime gate only through
+// an authenticated fixed-service kickstart. The production-enrollment source
+// boundary authenticates the exact active release, current selector, live
+// plist, quiescent installer state, closed gate, and immutable Developer ID
+// policy before runtime execution. The development code-signing sentinel
+// fails closed, and the fixed codesign and launchctl tools are checked against
+// Apple designated requirements;
+// meshctl retains a separate explicit release rejection. Clean-host native
+// execution and fault evidence remain separate release gates. Runtime
+// uninstall closes the gate, proves launchd absence, removes only the exact
+// live plist and current selector, and clears active/previous selections last;
+// immutable releases, agent enrollment state, trusted roots, and high-water
+// authority are retained.
 package darwininstall

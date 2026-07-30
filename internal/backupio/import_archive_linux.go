@@ -18,7 +18,7 @@ import (
 
 const (
 	importControlVersionMin = 2
-	importControlVersionMax = control.ControlStateVersionFirewallScopes
+	importControlVersionMax = control.ControlStateVersionSecurityGroups
 	importIdentitySchema    = "identity-state-v2"
 )
 

@@ -169,7 +169,7 @@ func (lock *InstallerJournalLock) reconcileIntakeRecordPending() error {
 }
 
 func (lock *InstallerJournalLock) writeIntakeRecordPending(raw []byte) (returnErr error) {
-	fd, err := unix.Openat(lock.directory.fd, darwinIntakeRecordPendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, uint32(darwinIntakeRecordFileMode))
+	fd, err := unix.Openat(lock.directory.fd, darwinIntakeRecordPendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY, uint32(darwinIntakeRecordFileMode))
 	if err != nil {
 		return err
 	}
@@ -236,7 +236,7 @@ func (lock *InstallerJournalLock) readIntakeRecordRaw(name string) (result darwi
 	if err := nodeagent.InspectDarwinSensitivePath(path); err != nil {
 		return result, err
 	}
-	fd, err := unix.Openat(lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return result, err
 	}

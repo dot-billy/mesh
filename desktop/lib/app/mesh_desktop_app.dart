@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../features/auth/connection_screen.dart';
+import '../core/platform/macos_admin_menu.dart';
 import '../shared/callbacks/presentation_callbacks.dart';
 import '../shared/models/presentation_models.dart';
 import '../shared/theme/mesh_theme.dart';
@@ -11,11 +12,13 @@ class MeshDesktopApp extends StatelessWidget {
   const MeshDesktopApp({
     required this.viewModel,
     required this.callbacks,
+    this.menuCommands = const Stream<MacAdminMenuCommand>.empty(),
     super.key,
   });
 
   final ValueListenable<MeshDesktopViewModel> viewModel;
   final MeshPresentationCallbacks callbacks;
+  final Stream<MacAdminMenuCommand> menuCommands;
 
   @override
   Widget build(BuildContext context) {
@@ -29,8 +32,16 @@ class MeshDesktopApp extends StatelessWidget {
           darkTheme: MeshTheme.dark(defaultTargetPlatform),
           themeMode: model.preferences.themeMode,
           home: model.authenticated
-              ? MeshAppShell(model: model, callbacks: callbacks)
-              : ConnectionScreen(model: model.connection, callbacks: callbacks),
+              ? MeshAppShell(
+                  model: model,
+                  callbacks: callbacks,
+                  menuCommands: menuCommands,
+                )
+              : ConnectionScreen(
+                  model: model.connection,
+                  managedPolicy: model.managedPolicy,
+                  callbacks: callbacks,
+                ),
         );
       },
     );

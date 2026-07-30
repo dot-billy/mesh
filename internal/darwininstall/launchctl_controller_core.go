@@ -79,6 +79,9 @@ func (contract launchctlCommandContract) validate(arguments []string) error {
 			}
 		}
 	}
+	if len(arguments) == 2 && arguments[0] == "kickstart" && arguments[1] == identity.target {
+		return nil
+	}
 	return errors.New("launchctl command is outside its exact service/plist contract")
 }
 
@@ -137,6 +140,23 @@ func (operations launchctlServiceOperations) Bootstrap(livePlist string) error {
 	}
 	if err := operations.runner.Run("bootstrap", identity.domain, livePlist); err != nil {
 		return fmt.Errorf("bootstrap exact launchd service: %w", err)
+	}
+	return nil
+}
+
+// Kickstart asks launchd to start the already-loaded exact system-domain job.
+// The command intentionally omits -k so retrying runtime activation cannot
+// terminate a healthy agent process.
+func (operations launchctlServiceOperations) Kickstart() error {
+	if operations.runner == nil {
+		return errors.New("launchctl kickstart requires a runner")
+	}
+	identity, err := operations.identity.resolve()
+	if err != nil {
+		return err
+	}
+	if err := operations.runner.Run("kickstart", identity.target); err != nil {
+		return fmt.Errorf("kickstart exact launchd service: %w", err)
 	}
 	return nil
 }

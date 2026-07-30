@@ -15,6 +15,39 @@ Widget _host(RecordingCallbacks callbacks) {
 }
 
 void main() {
+  testWidgets('offers an explicit browser sign-in cancellation action', (
+    tester,
+  ) async {
+    final callbacks = RecordingCallbacks();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ConnectionScreen(
+          model: ConnectionViewModel(
+            profiles: [
+              ConnectionProfileViewModel(
+                id: 'profile_1',
+                displayName: 'Production',
+                origin: _productionOrigin,
+                tlsTrusted: true,
+              ),
+            ],
+            selectedProfileId: 'profile_1',
+            methods: [AuthenticationMethod.oidc],
+            phase: LoadPhase.loading,
+            message: 'Approve this sign-in in the browser.',
+            canCancelAuthentication: true,
+          ),
+          callbacks: callbacks,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('cancel-desktop-sign-in')));
+    await tester.pump();
+
+    expect(callbacks.authenticationCancelledCount, 1);
+  });
+
   testWidgets('accepts exact localhost HTTP for local development', (
     tester,
   ) async {
@@ -62,4 +95,50 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('locked managed origin removes the local connection form', (
+    tester,
+  ) async {
+    final callbacks = RecordingCallbacks();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ConnectionScreen(
+          model: const ConnectionViewModel(),
+          managedPolicy: AppleManagedPolicyViewModel(
+            valid: true,
+            controlPlaneOrigin: Uri.parse('https://mesh.example.com/'),
+            allowOriginChanges: false,
+          ),
+          callbacks: callbacks,
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('connection-name')), findsNothing);
+    expect(find.byKey(const Key('connection-origin')), findsNothing);
+    expect(
+      find.textContaining('locks this app to https://mesh.example.com/'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('invalid managed policy disables connection setup', (
+    tester,
+  ) async {
+    final callbacks = RecordingCallbacks();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ConnectionScreen(
+          model: const ConnectionViewModel(),
+          managedPolicy: const AppleManagedPolicyViewModel.invalid(),
+          callbacks: callbacks,
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('add-control-plane')), findsNothing);
+    expect(find.textContaining('Connection setup is disabled'), findsOneWidget);
+  });
 }
+
+final Uri _productionOrigin = Uri.parse('https://mesh.example');

@@ -89,14 +89,14 @@ func TestDecodeStateMigratesCanonicalV6WithoutFabricatingTransitionHistory(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Schema != StateSchemaV7 || len(state.Records) != 1 || state.Records[0].AppliedConfigSHA256 != "" || state.Records[0].ProbeTransition != ProbeTransitionUnclassified {
+	if state.Schema != StateSchemaV8 || len(state.Records) != 1 || state.Records[0].AppliedConfigSHA256 != "" || state.Records[0].ProbeTransition != ProbeTransitionUnclassified {
 		t.Fatalf("v6 migration fabricated transition history: %#v", state)
 	}
 	current, err := EncodeState(state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v7"`)) || !bytes.Contains(current, []byte(`"applied_config_sha256":"","probe_transition":"unclassified"`)) {
+	if !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v8"`)) || !bytes.Contains(current, []byte(`"applied_config_sha256":"","probe_transition":"unclassified"`)) || !bytes.Contains(current, []byte(`"mobile_records":[]`)) {
 		t.Fatalf("v7 encoding=%s", current)
 	}
 }
@@ -141,14 +141,14 @@ func TestDecodeStateMigratesCanonicalV3ActiveProbe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeState v3: %v", err)
 	}
-	if state.Schema != StateSchemaV7 || len(state.Records) != 1 || state.Records[0].ActiveProbe != UnsupportedActiveProbe() || state.Records[0].ProbeTransition != ProbeTransitionUnavailable || state.Records[0].RouteOverlap != UnsupportedRouteOverlap() || state.Records[0].EndpointDNS != UnsupportedEndpointDNS() {
+	if state.Schema != StateSchemaV8 || len(state.Records) != 1 || state.Records[0].ActiveProbe != UnsupportedActiveProbe() || state.Records[0].ProbeTransition != ProbeTransitionUnavailable || state.Records[0].RouteOverlap != UnsupportedRouteOverlap() || state.Records[0].EndpointDNS != UnsupportedEndpointDNS() {
 		t.Fatalf("migrated state = %#v", state)
 	}
 	current, err := EncodeState(state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v7"`)) ||
+	if !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v8"`)) ||
 		!bytes.Contains(current, []byte(`"active_probe":{"version":1,"state":"unsupported","sample_age_ms":null,"attempted":0,"replied":0,"duration_ms":0}`)) {
 		t.Fatalf("v7 encoding = %s", current)
 	}
@@ -179,14 +179,14 @@ func TestDecodeStateMigratesCanonicalV4RouteEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeState v4: %v", err)
 	}
-	if state.Schema != StateSchemaV7 || len(state.Records) != 1 || state.Records[0].ProbeTransition != ProbeTransitionUnavailable || state.Records[0].RouteOverlap != UnsupportedRouteOverlap() || state.Records[0].EndpointDNS != UnsupportedEndpointDNS() {
+	if state.Schema != StateSchemaV8 || len(state.Records) != 1 || state.Records[0].ProbeTransition != ProbeTransitionUnavailable || state.Records[0].RouteOverlap != UnsupportedRouteOverlap() || state.Records[0].EndpointDNS != UnsupportedEndpointDNS() {
 		t.Fatalf("migrated state = %#v", state)
 	}
 	current, err := EncodeState(state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v7"`)) ||
+	if !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v8"`)) ||
 		!bytes.Contains(current, []byte(`"route_overlap":{"version":1,"state":"unsupported","sample_age_ms":null,"overlap":false}`)) {
 		t.Fatalf("v7 encoding = %s", current)
 	}
@@ -217,14 +217,14 @@ func TestDecodeStateMigratesCanonicalV5EndpointDNS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeState v5: %v", err)
 	}
-	if state.Schema != StateSchemaV7 || len(state.Records) != 1 || state.Records[0].ProbeTransition != ProbeTransitionUnavailable || state.Records[0].EndpointDNS != UnsupportedEndpointDNS() {
+	if state.Schema != StateSchemaV8 || len(state.Records) != 1 || state.Records[0].ProbeTransition != ProbeTransitionUnavailable || state.Records[0].EndpointDNS != UnsupportedEndpointDNS() {
 		t.Fatalf("migrated state = %#v", state)
 	}
 	current, err := EncodeState(state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v7"`)) ||
+	if !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v8"`)) ||
 		!bytes.Contains(current, []byte(`"endpoint_dns":{"version":1,"state":"unsupported","sample_age_ms":null,"dns_names":0,"resolved_names":0}`)) {
 		t.Fatalf("v7 encoding = %s", current)
 	}

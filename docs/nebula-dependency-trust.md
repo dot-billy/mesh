@@ -60,6 +60,17 @@ Publication contains exactly the two mode-0555 executables and a
 canonical mode-0444 `observer-build.json` manifest in a new mode-0555
 directory.
 
+The Darwin bundle smoke prepares that offline prerequisite explicitly. Under
+its private `umask`, it downloads the checksum-pinned v1.10.3 module, copies
+the module source into its private disposable work directory, applies the
+source-controlled patch series there only to resolve the patched module graph,
+and downloads that graph through Go's `go.sum` and checksum-database
+verification. It does not modify the authenticated module-cache source. The
+subsequent `mesh-deps` producer still selects no network input, runs with
+`GOPROXY=off`, reauthenticates the original source and embedded patch bytes,
+and builds twice with clean caches. The harness prefetch is test preparation;
+it does not add a production network override to `mesh-deps`.
+
 The tree digest is domain-separated and path-sorted. Each record binds its
 slash-relative path, directory/regular-file type, executable bits, regular-file
 length, and bytes. It deliberately excludes owner, timestamps, and ordinary
@@ -101,9 +112,12 @@ Mach-O sizes, hashes, and main packages. Each target is built twice with
 isolated caches and only byte-identical locked output is published. Darwin
 bundle schema v1 packages that source-built stage with production-identity
 Mesh and reviewed launchd assets; it does not consume the upstream universal
-archive. The [Darwin staging-bundle security gate](darwin-package-security.md)
-revalidates the full chain inside the canonical artifact and emits the receipt
-required for release creation.
+archive. Protected assembly proves three signed Mach-O replacements derive
+only from those exact staging members and emits deterministic bundle v2. The
+[Darwin final signed-bundle security gate](darwin-package-security.md)
+revalidates the full chain inside that canonical artifact; release creation
+requires both its package receipt and the matching fresh native code-signing
+receipt.
 
 The output path must not exist. Download and extraction failures remove the private temporary archive and staging directory and leave no output. Publication uses Linux `renameat2(RENAME_NOREPLACE)` followed by a parent-directory sync. The archive and every staged regular file are synced, and nested directories are synced deepest-first before publication.
 

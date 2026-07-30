@@ -1,11 +1,15 @@
 package control
 
-import "time"
+import (
+	"time"
+
+	"mesh/internal/configsignature"
+)
 
 // MaxManagedConfigBytes is the shared control-plane/node-agent ceiling for one
 // signed Nebula configuration. It is exported so generation and bundle intake
 // cannot drift onto different acceptance envelopes.
-const MaxManagedConfigBytes = 4 << 20
+const MaxManagedConfigBytes = configsignature.MaximumManagedConfigBytes
 
 type State struct {
 	Version                 int                     `json:"version"`
@@ -31,6 +35,7 @@ type Network struct {
 	RouteTransfer             NetworkRouteTransfer    `json:"route_transfer"`
 	RouteProfileEdit          NetworkRouteProfileEdit `json:"route_profile_edit"`
 	RoutePolicies             []NetworkRoutePolicy    `json:"route_policies,omitempty"`
+	SecurityGroups            []NetworkSecurityGroup  `json:"security_groups,omitempty"`
 	FirewallPolicy            FirewallPolicy          `json:"firewall_policy"`
 	ListenPort                int                     `json:"listen_port"`
 	CertificateTTL            int                     `json:"certificate_ttl_hours"`
@@ -41,6 +46,17 @@ type Network struct {
 	ConfigRevision            int64                   `json:"config_revision"`
 	ConfigUpdatedAt           time.Time               `json:"config_updated_at"`
 	CreatedAt                 time.Time               `json:"created_at"`
+}
+
+// NetworkSecurityGroup is the durable, network-level catalog entry for a
+// Nebula certificate group. Membership remains certificate-bound on Node so a
+// group can exist before its first member and can be managed independently
+// from any individual node.
+type NetworkSecurityGroup struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // NetworkRoutePolicy binds one live routed prefix to its complete active
@@ -284,21 +300,7 @@ type AgentConfig struct {
 // authenticated by a desired-config signature. The config digest is passed
 // separately to SignConfig and VerifyConfig because it is derived from the
 // exact config bytes.
-type ConfigSignatureMetadata struct {
-	NodeID                            string
-	NetworkID                         string
-	Revision                          int64
-	IssuedAt                          time.Time
-	CACertificateSHA256               string
-	PreviousCACertificateSHA256       string
-	CARotationRequired                bool
-	CertificateProfileRenewalRequired bool
-	CertificateFingerprint            string
-	CertificateExpiresAt              time.Time
-	CertificateRenewAfter             time.Time
-	CertificateGeneration             int64
-	PublicKeyHash                     string
-}
+type ConfigSignatureMetadata = configsignature.Metadata
 
 func (a AgentConfig) SignatureMetadata() ConfigSignatureMetadata {
 	return ConfigSignatureMetadata{

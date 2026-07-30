@@ -54,29 +54,45 @@ class _FleetContent extends StatelessWidget {
         key: const Key('fleet-scroll-view'),
         padding: const EdgeInsets.all(24),
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final heading = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Fleet',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  FreshnessStamp(generatedAt: fleet.generatedAt),
+                ],
+              );
+              final evidence = Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  EvidenceBadge(tone: fleet.tone),
+                  IconButton(
+                    tooltip: 'Refresh fleet',
+                    onPressed: onRefresh,
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ],
+              );
+              if (constraints.maxWidth < 480) {
+                return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Fleet',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    const SizedBox(height: 6),
-                    FreshnessStamp(generatedAt: fleet.generatedAt),
-                  ],
-                ),
-              ),
-              EvidenceBadge(tone: fleet.tone),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: 'Refresh fleet',
-                onPressed: onRefresh,
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
+                  children: [heading, const SizedBox(height: 12), evidence],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: heading),
+                  evidence,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 20),
           Wrap(
@@ -101,7 +117,12 @@ class _FleetContent extends StatelessWidget {
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
-                      Text(fleet.rolloutLabel),
+                      Flexible(
+                        child: Text(
+                          fleet.rolloutLabel,
+                          textAlign: TextAlign.end,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),

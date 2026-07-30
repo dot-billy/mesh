@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"mesh/internal/buildinfo"
+	"mesh/internal/darwincodesign"
+	"mesh/internal/darwinnodepackage"
 	"mesh/internal/installtrust"
 	"mesh/internal/onlinerelease"
 	releasetrust "mesh/internal/release"
@@ -22,8 +24,63 @@ import (
 )
 
 func TestReleaseUsageIncludesOnlineBundleAssembler(t *testing.T) {
-	if !strings.Contains(releaseUsage, "assemble-online-bundle") || !strings.Contains(releaseUsage, "assemble-darwin-snapshot") || !strings.Contains(releaseUsage, "create-origin-index") || !strings.Contains(releaseUsage, "create-bootstrap-handoff") || !strings.Contains(releaseUsage, "create-bootstrap-anchor") || !strings.Contains(releaseUsage, "publish-origin-generation") || !strings.Contains(releaseUsage, "inspect-origin-generation") {
+	if !strings.Contains(releaseUsage, "assemble-online-bundle") || !strings.Contains(releaseUsage, "assemble-darwin-snapshot") || !strings.Contains(releaseUsage, "create-origin-index") || !strings.Contains(releaseUsage, "create-bootstrap-handoff") || !strings.Contains(releaseUsage, "create-bootstrap-anchor") || !strings.Contains(releaseUsage, "publish-origin-generation") || !strings.Contains(releaseUsage, "inspect-origin-generation") || !strings.Contains(releaseUsage, "darwin-codesign-policy") || !strings.Contains(releaseUsage, "darwin-node-package-policy") {
 		t.Fatalf("release usage omits online bundle assembler: %q", releaseUsage)
+	}
+}
+
+func TestDarwinNodePackagePolicyCommandEmitsCanonicalFrameOrDigest(t *testing.T) {
+	arguments := []string{
+		"--package-identifier", "io.mesh.node",
+		"--package-root-path", "/Library/Application Support/Mesh/NodePackage",
+		"--installed-bootstrap-path", "/Library/Application Support/Mesh/NodePackage/mesh-install",
+		"--package-snapshot-path", "/Library/Application Support/Mesh/NodePackage/snapshot",
+	}
+	var frameOutput bytes.Buffer
+	if err := darwinNodePackagePolicy(arguments, &frameOutput); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := darwinnodepackage.ParsePolicyIdentity(strings.TrimSuffix(frameOutput.String(), "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var digestOutput bytes.Buffer
+	if err := darwinNodePackagePolicy(append(arguments, "--print-sha256"), &digestOutput); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSuffix(digestOutput.String(), "\n") != policy.SHA256 {
+		t.Fatalf("digest=%q want=%q", digestOutput.String(), policy.SHA256)
+	}
+	if err := darwinNodePackagePolicy([]string{"--package-identifier", "io.mesh.node"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("incomplete Darwin node package policy accepted")
+	}
+}
+
+func TestDarwinCodesignPolicyCommandEmitsCanonicalFrameOrDigest(t *testing.T) {
+	arguments := []string{
+		"--team-id", "AB12CD34EF",
+		"--mesh-install-identifier", "io.mesh.node.mesh-install",
+		"--meshctl-identifier", "io.mesh.node.meshctl",
+		"--nebula-identifier", "io.mesh.node.nebula",
+		"--nebula-cert-identifier", "io.mesh.node.nebula-cert",
+	}
+	var frameOutput bytes.Buffer
+	if err := darwinCodesignPolicy(arguments, &frameOutput); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := darwincodesign.ParsePolicyIdentity(strings.TrimSuffix(frameOutput.String(), "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var digestOutput bytes.Buffer
+	if err := darwinCodesignPolicy(append(arguments, "--print-sha256"), &digestOutput); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSuffix(digestOutput.String(), "\n") != policy.SHA256 {
+		t.Fatalf("digest=%q want=%q", digestOutput.String(), policy.SHA256)
+	}
+	if err := darwinCodesignPolicy([]string{"--team-id", "PROVISIONAL"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("incomplete Darwin code-signing policy accepted")
 	}
 }
 

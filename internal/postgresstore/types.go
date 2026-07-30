@@ -35,11 +35,12 @@ const (
 
 	ImportSourceFormat      = "mesh-json-two-document-v1"
 	ImportControlVersionMin = 2
-	ImportControlVersionMax = 12
+	ImportControlVersionMax = 14
 	// ImportControlVersion is the current version emitted by a freshly started
 	// server. Older authenticated archives remain eligible for the ordered
 	// topology, managed-DNS, managed-relay, CA-lifecycle, firewall-rollout,
-	// firewall-pause, route-transfer, and route-profile transitions.
+	// firewall-pause, route-transfer, route-profile, route-policy, native-DNS,
+	// firewall-scope, and security-group transitions.
 	ImportControlVersion  = ImportControlVersionMax
 	ImportIdentitySchema  = "identity-state-v2"
 	MaxImporterBuildBytes = 256

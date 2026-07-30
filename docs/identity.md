@@ -31,13 +31,14 @@ Mesh resolves one role for every authenticated request and enforces permissions 
 
 | Role | Network visibility | Routine lifecycle changes | Trust/security changes | Identity administration |
 | --- | --- | --- | --- | --- |
+| `member` | Read network inventory needed to choose a self-enrollment target | Create or safely retry only its own fixed-policy mobile enrollment | No | No |
 | `viewer` | Read inventory, health, readiness, policy state, telemetry, and audit | No | No | No |
 | `operator` | Same as viewer | Create networks/nodes; manage enrollment, topology, DNS, relays, firewall, and routes | No | No |
 | `admin` | Full | Full | CA rotation, network retirement, agent recovery, identity replacement, certificate rotation, revocation, and archival | Session and recovery-code management |
 
 The legacy administrator bearer, legacy browser session, service principals, and break-glass sessions resolve to `admin`. Existing break-glass restrictions still apply: a break-glass session cannot list, create, or revoke recovery codes even though it can recover the rest of the control plane.
 
-OIDC role bindings are part of the identity policy fingerprint. Adding, removing, or changing a binding intentionally invalidates existing browser sessions at the next restart, ensuring a stale session cannot retain authority from an older policy. When a principal matches more than one binding, Mesh selects the highest role (`admin`, then `operator`, then `viewer`).
+OIDC role bindings are part of the identity policy fingerprint. Adding, removing, or changing a binding intentionally invalidates existing browser sessions at the next restart, ensuring a stale session cannot retain authority from an older policy. When a principal matches more than one binding, Mesh selects the highest role (`admin`, then `operator`, then `viewer`, then `member`).
 
 Example group bindings:
 
@@ -46,6 +47,10 @@ Example group bindings:
   { "kind": "group", "value": "mesh-admins" }
 ],
 "role_bindings": [
+  {
+    "role": "member",
+    "selector": { "kind": "group", "value": "mesh-members" }
+  },
   {
     "role": "operator",
     "selector": { "kind": "group", "value": "mesh-operators" }
@@ -56,6 +61,12 @@ Example group bindings:
   }
 ]
 ```
+
+The `member` role exists for native self-service onboarding. A native client starts the existing device-authorization flow, opens the server-supplied same-origin verification URL in a system authentication session, and polls with the separate secret that never enters the browser URL. The person signs in through the configured OIDC provider and explicitly approves the request. Completion creates a normal short-lived Mesh session and CSRF cookie pair for the native client; it does not give the app the person's provider password or provider tokens.
+
+With that OIDC session, `POST /api/v1/networks/{networkID}/self-enrollment` accepts exactly one node name and returns a 30-minute one-time enrollment token with `Cache-Control: no-store`. The server fixes the node to role `member`, site `mobile`, and groups `all` and `members`; the caller cannot submit an address, route, lighthouse endpoint, topology label, or alternate group. A same-principal retry for the same stable device name reissues the still-pending node's token and invalidates the earlier token. A different principal, an active node, or a node with different policy cannot use that retry path.
+
+The iOS host keeps the resulting Mesh session and one-time enrollment token only in an ephemeral in-memory URL session and request envelope. It asks Apple to save the non-secret VPN origin before creating the server enrollment, then passes the token only to a narrow in-process Go enrollment session. That session creates the device-only identity, enrolls it, and returns a verified non-secret configuration. Before each app-driven start, the host refreshes and activates the site, stores a one-use exact-configuration start authorization in the shared device-only Keychain, and supplies only that authorization through `startTunnel(options:)`; the provider rejects an unapproved Settings-only start. Apple's VPN permission prompt remains mandatory and cannot be silently approved by Mesh.
 
 3. Provision the client secret separately as a mode-0600 file at the clean absolute `client_secret_file` path. The service account must own this single-link, owner-readable, non-executable regular file. The file is read as exact UTF-8 secret bytes: do not add a newline or surrounding whitespace. Use a secret manager or an equivalent private-file delivery path rather than putting the secret in the JSON policy.
 

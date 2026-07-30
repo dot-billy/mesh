@@ -210,14 +210,24 @@ func assembleSnapshotUsing(options snapshotAssemblyOptions, hooks snapshotAssemb
 		}
 		releaseNames[index] = name
 	}
-	if err := writeSnapshotReader(temporaryPath, snapshotArtifactName, artifact.file, artifact.identity.size); err != nil {
+	artifactHasher := sha256.New()
+	if err := writeSnapshotReader(
+		temporaryPath,
+		snapshotArtifactName,
+		io.TeeReader(artifact.file, artifactHasher),
+		artifact.identity.size,
+	); err != nil {
 		return "", fmt.Errorf("copy Linux bundle artifact %q: %w", artifact.path, err)
 	}
 	if hooks.afterInputRead != nil {
 		hooks.afterInputRead(artifact.path)
 	}
-	if err := validateOpenedSnapshotInput(artifact); err != nil {
+	revalidatedArtifactDigest, err := hashRevalidatedSnapshotInput(artifact)
+	if err != nil {
 		return "", fmt.Errorf("Linux bundle artifact %q changed while copying: %w", artifact.path, err)
+	}
+	if !bytes.Equal(revalidatedArtifactDigest[:], artifactHasher.Sum(nil)) {
+		return "", fmt.Errorf("Linux bundle artifact %q changed while copying: independently re-read content differs", artifact.path)
 	}
 
 	descriptor := linuxinstall.InstallSnapshotDescriptor{
@@ -470,6 +480,19 @@ func readStableSnapshotInput(input *openedSnapshotInput, hooks snapshotAssemblyH
 	if err := validateOpenedSnapshotInput(input); err != nil {
 		return nil, err
 	}
+	if _, err := input.file.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("seek input for independent content revalidation: %w", err)
+	}
+	revalidated, err := io.ReadAll(io.LimitReader(input.file, input.identity.size+1))
+	if err != nil {
+		return nil, fmt.Errorf("independently re-read input: %w", err)
+	}
+	if int64(len(revalidated)) != input.identity.size || !bytes.Equal(revalidated, raw) {
+		return nil, errors.New("input content changed after its first bounded read")
+	}
+	if err := validateOpenedSnapshotInput(input); err != nil {
+		return nil, err
+	}
 	return raw, nil
 }
 
@@ -480,6 +503,29 @@ func validateOpenedSnapshotInput(input *openedSnapshotInput) error {
 		return errors.New("input identity, size, mode, ownership, link count, or timestamps changed")
 	}
 	return nil
+}
+
+func hashRevalidatedSnapshotInput(input *openedSnapshotInput) ([sha256.Size]byte, error) {
+	var digest [sha256.Size]byte
+	if err := validateOpenedSnapshotInput(input); err != nil {
+		return digest, err
+	}
+	if _, err := input.file.Seek(0, io.SeekStart); err != nil {
+		return digest, fmt.Errorf("seek input for independent hash: %w", err)
+	}
+	hasher := sha256.New()
+	written, err := io.Copy(hasher, io.LimitReader(input.file, input.identity.size+1))
+	if err != nil {
+		return digest, fmt.Errorf("independently hash input: %w", err)
+	}
+	if written != input.identity.size {
+		return digest, errors.New("input changed size during independent hash")
+	}
+	if err := validateOpenedSnapshotInput(input); err != nil {
+		return digest, err
+	}
+	copy(digest[:], hasher.Sum(nil))
+	return digest, nil
 }
 
 func validateAllSnapshotInputs(inputs []*openedSnapshotInput) error {

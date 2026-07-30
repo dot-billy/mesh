@@ -1,4 +1,5 @@
 enum MeshRole {
+  member('member'),
   viewer('viewer'),
   operator('operator'),
   admin('admin');
@@ -22,6 +23,7 @@ enum MeshPermission {
   networksRead('networks.read'),
   networksWrite('networks.write'),
   networksSecurity('networks.security'),
+  nodesEnrollSelf('nodes.enroll.self'),
   identityManage('identity.manage'),
   auditRead('audit.read');
 
@@ -52,6 +54,7 @@ extension MeshPermissionSet on Set<MeshPermission> {
   bool get canReadNetworks => allows(MeshPermission.networksRead);
   bool get canChangeNetworks => allows(MeshPermission.networksWrite);
   bool get canPerformSecurityActions => allows(MeshPermission.networksSecurity);
+  bool get canSelfEnrollNode => allows(MeshPermission.nodesEnrollSelf);
   bool get canManageIdentity => allows(MeshPermission.identityManage);
   bool get canReadAudit => allows(MeshPermission.auditRead);
 }

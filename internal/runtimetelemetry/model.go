@@ -21,7 +21,8 @@ const (
 	StateSchemaV5 = "mesh-runtime-telemetry-state-v5"
 	StateSchemaV6 = "mesh-runtime-telemetry-state-v6"
 	StateSchemaV7 = "mesh-runtime-telemetry-state-v7"
-	StateSchema   = StateSchemaV7
+	StateSchemaV8 = "mesh-runtime-telemetry-state-v8"
+	StateSchema   = StateSchemaV8
 	VersionV1     = 1
 	VersionV2     = 2
 	MaxRecords    = 1 << 16
@@ -123,8 +124,9 @@ type Record struct {
 }
 
 type State struct {
-	Schema  string   `json:"schema"`
-	Records []Record `json:"records"`
+	Schema        string                `json:"schema"`
+	Records       []Record              `json:"records"`
+	MobileRecords []MobileRuntimeRecord `json:"mobile_records"`
 }
 
 // ReportInput is the agent API envelope. HeartbeatSequence must identify the
@@ -138,7 +140,11 @@ type ReportInput struct {
 }
 
 func EmptyState() State {
-	return State{Schema: StateSchema, Records: []Record{}}
+	return State{
+		Schema:        StateSchema,
+		Records:       []Record{},
+		MobileRecords: []MobileRuntimeRecord{},
+	}
 }
 
 func ValidateObservation(observation Observation) error {
@@ -299,7 +305,10 @@ func comparativeProbeTransition(transition ProbeTransition) bool {
 }
 
 func ValidateState(state State) error {
-	if state.Schema != StateSchema || state.Records == nil || len(state.Records) > MaxRecords {
+	if state.Schema != StateSchema ||
+		state.Records == nil ||
+		len(state.Records) > MaxRecords ||
+		len(state.MobileRecords) > MaxRecords {
 		return fmt.Errorf("%w: invalid state schema or cardinality", ErrInvalid)
 	}
 	if !sort.SliceIsSorted(state.Records, func(i, j int) bool { return state.Records[i].NodeID < state.Records[j].NodeID }) {
@@ -311,6 +320,19 @@ func ValidateState(state State) error {
 		}
 		if index > 0 && state.Records[index-1].NodeID == record.NodeID {
 			return fmt.Errorf("%w: duplicate node record", ErrInvalid)
+		}
+	}
+	if !sort.SliceIsSorted(state.MobileRecords, func(i, j int) bool {
+		return state.MobileRecords[i].NodeID < state.MobileRecords[j].NodeID
+	}) {
+		return fmt.Errorf("%w: mobile records are not canonically ordered", ErrInvalid)
+	}
+	for index, record := range state.MobileRecords {
+		if err := ValidateMobileRuntimeRecord(record); err != nil {
+			return fmt.Errorf("mobile record %d: %w", index, err)
+		}
+		if index > 0 && state.MobileRecords[index-1].NodeID == record.NodeID {
+			return fmt.Errorf("%w: duplicate mobile node record", ErrInvalid)
 		}
 	}
 	return nil

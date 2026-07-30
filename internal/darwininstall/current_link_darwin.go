@@ -5,6 +5,7 @@ package darwininstall
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,6 +105,23 @@ func (current *CurrentSwitch) ProveSelected() error {
 	return proveCurrentRelease(current, current.target)
 }
 
+// RemoveSelected removes only this exact authenticated current selector while
+// retaining its immutable release. The caller must hold the installer
+// transaction lock across the complete runtime-uninstall sequence.
+func (current *CurrentSwitch) RemoveSelected() error {
+	if current == nil || current.layout == nil {
+		return errors.New("Darwin current switch is required")
+	}
+	current.layout.mu.Lock()
+	defer current.layout.mu.Unlock()
+	current.mu.Lock()
+	defer current.mu.Unlock()
+	if err := current.layout.validateAnchorsLocked(); err != nil {
+		return err
+	}
+	return removeDarwinCurrentSelection(current, current.target)
+}
+
 func (current *CurrentSwitch) InspectTarget() error {
 	return current.layout.validatePublishedReleaseLocked(current.target, current.inspection)
 }
@@ -120,6 +138,12 @@ func (current *CurrentSwitch) CreateTemporary() error {
 	target := "releases/" + current.target
 	if err := unix.Symlinkat(target, current.layout.rootFD, current.temporaryName); err != nil {
 		return fmt.Errorf("create Darwin current-switch temporary: %w", err)
+	}
+	// Darwin 25 applies the process umask to new symlink mode bits. Normalize
+	// the descriptor-relative link itself so inspection and recovery retain one
+	// canonical mode independent of the installer's restrictive umask.
+	if err := unix.Fchmodat(current.layout.rootFD, current.temporaryName, 0o777, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return fmt.Errorf("normalize Darwin current-switch temporary mode: %w", err)
 	}
 	present, err := inspectDarwinManagedSymlink(current.layout.rootFD, current.temporaryName, target)
 	if err != nil {
@@ -167,12 +191,23 @@ func (current *CurrentSwitch) ReplaceCurrent() error {
 	return unix.Renameat(current.layout.rootFD, current.temporaryName, current.layout.rootFD, "current")
 }
 
+func (current *CurrentSwitch) RemoveCurrent() error {
+	selection, err := current.InspectCurrent()
+	if err != nil {
+		return err
+	}
+	if !selection.Exists || selection.InstalledID != current.target {
+		return errors.New("Darwin current selection changed immediately before removal")
+	}
+	return unix.Unlinkat(current.layout.rootFD, "current", 0)
+}
+
 func (layout *ReleaseLayout) validatePublishedReleaseLocked(installedID string, inspection darwinbundle.CandidateInspection) (returnErr error) {
 	if !darwinInstalledIDPattern.MatchString(installedID) || inspection.Schema != darwinbundle.CandidateInspectionSchema {
 		return errors.New("Darwin published-release inspection identity is invalid")
 	}
 	path := filepath.Join(layout.releasesPath, installedID)
-	fd, err := unix.Openat(layout.releasesFD, installedID, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Openat(layout.releasesFD, installedID, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return err
 	}
@@ -215,7 +250,7 @@ func (layout *ReleaseLayout) InspectPublishedAuthority(authority AuthenticatedDa
 		return inspection, err
 	}
 	path := filepath.Join(layout.releasesPath, authority.InstalledID)
-	fd, err := unix.Openat(layout.releasesFD, authority.InstalledID, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Openat(layout.releasesFD, authority.InstalledID, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return inspection, err
 	}
@@ -258,6 +293,44 @@ func (layout *ReleaseLayout) InspectPublishedAuthority(authority AuthenticatedDa
 		return darwinbundle.CandidateInspection{}, err
 	}
 	return inspection, nil
+}
+
+// RejectCurrentTransactionTemporaries proves that no current-switch recovery
+// object exists outside a durable installer journal. Any name with the
+// reserved prefix is residue, including malformed names.
+func (layout *ReleaseLayout) RejectCurrentTransactionTemporaries() (returnErr error) {
+	if layout == nil {
+		return errors.New("Darwin release layout is required")
+	}
+	layout.mu.Lock()
+	defer layout.mu.Unlock()
+	if err := layout.validateAnchorsLocked(); err != nil {
+		return err
+	}
+	fd, err := unix.Openat(layout.rootFD, ".", unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
+	if err != nil {
+		return err
+	}
+	directory := os.NewFile(uintptr(fd), layout.rootPath)
+	if directory == nil {
+		_ = unix.Close(fd)
+		return errors.New("adopt Darwin release root for current-temporary inspection")
+	}
+	defer func() { returnErr = errors.Join(returnErr, directory.Close()) }()
+	const maximumRootEntries = 128
+	entries, err := directory.ReadDir(maximumRootEntries + 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	if len(entries) > maximumRootEntries {
+		return errors.New("Darwin release root exceeds its current-temporary inspection bound")
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".current-") {
+			return fmt.Errorf("Darwin current-switch transaction residue %q exists without journal authority", entry.Name())
+		}
+	}
+	return layout.validateAnchorsLocked()
 }
 
 func (layout *ReleaseLayout) readCurrentLocked() (currentReleaseSelection, error) {

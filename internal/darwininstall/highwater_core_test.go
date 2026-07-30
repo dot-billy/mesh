@@ -81,6 +81,31 @@ func TestDarwinRollbackSwapsOnlyRecordedReversiblePrevious(t *testing.T) {
 	}
 }
 
+func TestDarwinRuntimeDeactivationRetainsInstallAuthority(t *testing.T) {
+	previous := validAuthenticatedDarwinRelease(1, 9, 1, "1", "2")
+	active := validAuthenticatedDarwinRelease(1, 10, 2, "3", "4")
+	state := validDarwinInstallState(active)
+	state.Active, state.Previous = &active, &previous
+
+	deactivated, err := state.DeactivateRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deactivated.Active != nil || deactivated.Previous != nil ||
+		deactivated.HighWater != state.HighWater ||
+		deactivated.BootstrapTrustSHA256 != state.BootstrapTrustSHA256 ||
+		deactivated.Channel != state.Channel || deactivated.Arch != state.Arch {
+		t.Fatalf("Darwin runtime deactivation changed retained authority: %+v", deactivated)
+	}
+	replayed, err := deactivated.DeactivateRuntime()
+	if err != nil || !sameDarwinInstallState(replayed, deactivated) {
+		t.Fatalf("Darwin runtime deactivation replay = %+v, %v", replayed, err)
+	}
+	if err := validateDarwinInstallStateTransition(true, state, deactivated); err != nil {
+		t.Fatalf("Darwin runtime deactivation transition: %v", err)
+	}
+}
+
 func TestDarwinActivationRequiresBidirectionalAgentStateCompatibility(t *testing.T) {
 	active := validAuthenticatedDarwinRelease(1, 9, 1, "1", "2")
 	target := validAuthenticatedDarwinRelease(1, 10, 1, "3", "4")

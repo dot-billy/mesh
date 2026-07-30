@@ -1,6 +1,6 @@
 # PostgreSQL intended-workload micro-soak gate
 
-`make postgres-load-soak-smoke` is the first fixed-count intended-workload gate for the PostgreSQL exact-document preview. It builds clean-room test binaries, imports one authenticated current control-v13 JSON backup, starts one exact labeled `postgres:17-alpine` primary capped at two CPUs and 512 MiB, and starts two real PostgreSQL-backed `mesh-server` replicas with eight connections each. Cached Docker and exact Nebula 1.10.3 prerequisites are required; an unavailable prerequisite exits with status 77.
+`make postgres-load-soak-smoke` is the first fixed-count intended-workload gate for the PostgreSQL exact-document preview. It builds clean-room test binaries, imports one authenticated current control-v14 JSON backup, starts one exact labeled `postgres:17-alpine` primary capped at two CPUs and 512 MiB, and starts two real PostgreSQL-backed `mesh-server` replicas with eight connections each. Cached Docker and exact Nebula 1.10.3 prerequisites are required; an unavailable prerequisite exits with status 77.
 
 This is deliberately a reproducible micro-soak, not an open-ended benchmark. The operation counts, concurrency, duration, percentile definition, and budgets are constants in `internal/postgresloadgate`. The HTTP driver does not retry. Mutation bodies are not transport-replayable, environment proxies are disabled, redirects are rejected, and every logical operation ID has exactly one response record containing only status, duration, response size/SHA-256, and a non-secret resource ID.
 

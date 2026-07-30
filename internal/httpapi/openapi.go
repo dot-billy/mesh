@@ -125,12 +125,14 @@ type openAPIAgentCredentialRotationRequest struct {
 type openAPIRetiredNetworkResponse struct {
 	control.RetiredNetwork
 	RuntimeTelemetryRecordsRemoved  int  `json:"runtime_telemetry_records_removed"`
+	MobileRuntimeRecordsRemoved     int  `json:"mobile_runtime_records_removed"`
 	RuntimeTelemetryCleanupComplete bool `json:"runtime_telemetry_cleanup_complete"`
 }
 
 type openAPIArchivedNodeResponse struct {
 	control.ArchivedNode
 	RuntimeTelemetryRecordRemoved   bool `json:"runtime_telemetry_record_removed"`
+	MobileRuntimeRecordRemoved      bool `json:"mobile_runtime_record_removed"`
 	RuntimeTelemetryCleanupComplete bool `json:"runtime_telemetry_cleanup_complete"`
 }
 
@@ -191,6 +193,7 @@ func openAPIOperations() []openAPIOperation {
 	read := identity.PermissionNetworksRead
 	write := identity.PermissionNetworksWrite
 	security := identity.PermissionNetworksSecurity
+	selfEnroll := identity.PermissionNodesEnrollSelf
 	identityManage := identity.PermissionIdentityManage
 	auditRead := identity.PermissionAuditRead
 	return []openAPIOperation{
@@ -198,9 +201,9 @@ func openAPIOperations() []openAPIOperation {
 		{Method: http.MethodGet, Path: "/readyz", OperationID: "getReadiness", Tag: "System", Summary: "Check service readiness", Description: "Checks the configured durable-store dependency and returns either ready or unavailable.", Security: public, Response: openAPIType[openAPIStatusResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "The service is ready.", Interactive: true},
 		{Method: http.MethodHead, Path: "/readyz", OperationID: "headReadiness", Tag: "System", Summary: "Check readiness without a body", Description: "Returns the same status code as GET /readyz without a response body.", Security: public, ResponseStatus: http.StatusOK, ResponseSummary: "The service is ready.", Interactive: true},
 		{Method: http.MethodGet, Path: "/api/v1/auth/methods", OperationID: "getAuthenticationMethods", Tag: "Authentication", Summary: "List enabled browser authentication methods", Description: "Returns deployment-specific availability for OIDC, legacy browser login, and break-glass login.", Security: public, Response: openAPIType[openAPIAuthMethodsResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Enabled browser authentication methods.", Interactive: true},
-		{Method: http.MethodPost, Path: "/api/v1/auth/desktop/start", OperationID: "startDesktopAuthorization", Tag: "Authentication", Summary: "Start desktop authorization", Description: "Creates a desktop sign-in request that expires after five minutes in the configured shared identity store. Any current control-plane replica can approve or complete it. The response returns the poll secret once. The store keeps only its hash, and the native client must never put the secret in a URL or browser.", Security: "desktop", Request: openAPIType[openAPIDesktopAuthorizationStartRequest](), Response: openAPIType[openAPIDesktopAuthorizationStartResponse](), ResponseStatus: http.StatusCreated, ResponseSummary: "One-time desktop authorization request.", Interactive: false},
-		{Method: http.MethodPost, Path: "/api/v1/auth/desktop/{requestID}/decision", OperationID: "decideDesktopAuthorization", Tag: "Authentication", Summary: "Approve or deny desktop authorization", Description: "Approves an outstanding request for the principal in the current browser session, or denies the request. Legacy bearer authentication cannot make this decision. Approval requires the normal browser cookies, matching CSRF proof, and exact configured Origin.", Security: "browser", Request: openAPIType[openAPIDesktopAuthorizationDecisionRequest](), ResponseStatus: http.StatusNoContent, ResponseSummary: "The browser decision was recorded.", Interactive: false},
-		{Method: http.MethodPost, Path: "/api/v1/auth/desktop/complete", OperationID: "completeDesktopAuthorization", Tag: "Authentication", Summary: "Poll desktop authorization", Description: "Uses the request ID and one-time poll secret to read the request state. Pending, denied, and expired responses contain no credentials. The first completion after approval creates a normal Mesh session and returns its session and CSRF cookies.", Security: "desktop", Request: openAPIType[openAPIDesktopAuthorizationCompleteRequest](), Response: openAPIType[openAPIDesktopAuthorizationCompletionResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Current desktop authorization state and, once, an authorized session.", Interactive: false},
+		{Method: http.MethodPost, Path: "/api/v1/auth/desktop/start", OperationID: "startDesktopAuthorization", Tag: "Authentication", Summary: "Start native-app authorization", Description: "Creates a native-app sign-in request that expires after five minutes in the configured shared identity store. Any current control-plane replica can approve or complete it. The response returns the poll secret once. The store keeps only its hash, and the native client must never put the secret in a URL or browser.", Security: "desktop", Request: openAPIType[openAPIDesktopAuthorizationStartRequest](), Response: openAPIType[openAPIDesktopAuthorizationStartResponse](), ResponseStatus: http.StatusCreated, ResponseSummary: "One-time native-app authorization request.", Interactive: false},
+		{Method: http.MethodPost, Path: "/api/v1/auth/desktop/{requestID}/decision", OperationID: "decideDesktopAuthorization", Tag: "Authentication", Summary: "Approve or deny native-app authorization", Description: "Approves an outstanding request for the principal in the current browser session, or denies the request. Legacy bearer authentication cannot make this decision. Approval requires the normal browser cookies, matching CSRF proof, and exact configured Origin.", Security: "browser", Request: openAPIType[openAPIDesktopAuthorizationDecisionRequest](), ResponseStatus: http.StatusNoContent, ResponseSummary: "The browser decision was recorded.", Interactive: false},
+		{Method: http.MethodPost, Path: "/api/v1/auth/desktop/complete", OperationID: "completeDesktopAuthorization", Tag: "Authentication", Summary: "Poll native-app authorization", Description: "Uses the request ID and one-time poll secret to read the request state. Pending, denied, and expired responses contain no credentials. The first completion after approval creates a normal Mesh session and returns its session and CSRF cookies.", Security: "desktop", Request: openAPIType[openAPIDesktopAuthorizationCompleteRequest](), Response: openAPIType[openAPIDesktopAuthorizationCompletionResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "Current native-app authorization state and, once, an authorized session.", Interactive: false},
 		{Method: http.MethodPost, Path: "/api/v1/auth/oidc/start", OperationID: "startOIDCLogin", Tag: "Authentication", Summary: "Start an OIDC login", Description: "Creates a bounded OIDC transaction after same-origin and JSON-content checks. The browser must follow the returned provider URL.", Security: oidc, Request: openAPIType[openAPIOIDCStartRequest](), Response: openAPIType[openAPIOIDCStartResponse](), ResponseStatus: http.StatusOK, ResponseSummary: "OIDC authorization URL.", Optional: "OIDC", Interactive: false},
 		{Method: http.MethodGet, Path: "/api/v1/auth/oidc/callback", OperationID: "completeOIDCLogin", Tag: "Authentication", Summary: "Complete an OIDC callback", Description: "Consumes the provider callback and transaction cookie, creates the Mesh browser session, and redirects to the bound return path.", Security: oidc, ResponseStatus: http.StatusSeeOther, ResponseSummary: "Browser redirect after successful authentication.", Optional: "OIDC", Interactive: false, Query: []openAPIQueryParameter{
 			{Name: "state", Description: "Opaque OIDC state bound to the transaction cookie.", Required: true, Schema: map[string]any{"type": "string"}},
@@ -228,11 +231,13 @@ func openAPIOperations() []openAPIOperation {
 		{Method: http.MethodPost, Path: "/api/v1/agent/heartbeat", OperationID: "reportAgentHeartbeat", Tag: "Agent lifecycle", Summary: "Report lifecycle convergence", Description: "Reports the exact configuration, certificate, credential, process, resolver, and probe evidence observed by the managed agent.", Security: agent, Request: openAPIType[control.HeartbeatInput](), ResponseStatus: http.StatusNoContent, ResponseSummary: "Heartbeat accepted.", Interactive: false},
 		{Method: http.MethodPost, Path: "/api/v1/agent/config-apply-failure", OperationID: "reportConfigApplyFailure", Tag: "Agent lifecycle", Summary: "Report signed-config activation failure", Description: "Records a bounded failure reason for the exact desired configuration revision.", Security: agent, Request: openAPIType[control.ConfigApplyFailureInput](), ResponseStatus: http.StatusNoContent, ResponseSummary: "Failure evidence accepted.", Interactive: false},
 		{Method: http.MethodPost, Path: "/api/v1/agent/runtime-telemetry", OperationID: "reportRuntimeTelemetry", Tag: "Runtime telemetry", Summary: "Publish aggregate Nebula runtime observations", Description: "Publishes allowlisted aggregate observations bound to the latest accepted heartbeat sequence.", Security: agent, Request: openAPIType[runtimetelemetry.ReportInput](), ResponseStatus: http.StatusNoContent, ResponseSummary: "Runtime observation accepted.", Optional: "Runtime telemetry", Interactive: false},
+		{Method: http.MethodPost, Path: "/api/v1/agent/mobile-runtime", OperationID: "reportMobileRuntime", Tag: "Mobile runtime", Summary: "Publish Packet Tunnel lifecycle evidence", Description: "Publishes versioned iOS Packet Tunnel evidence bound to the current agent credential, signed configuration, certificate, extension instance, and monotonic sequence without creating a desktop heartbeat.", Security: agent, Request: openAPIType[runtimetelemetry.MobileRuntimeReportInput](), ResponseStatus: http.StatusNoContent, ResponseSummary: "Mobile runtime evidence accepted.", Optional: "Mobile runtime evidence", Interactive: false},
 		{Method: http.MethodGet, Path: "/api/v1/fleet/runtime-telemetry", OperationID: "getFleetRuntimeTelemetry", Tag: "Runtime telemetry", Summary: "Read aggregate runtime telemetry", Description: "Returns a secret-free fleet projection separate from lifecycle health.", Security: admin, Permission: read, Response: openAPIType[runtimetelemetry.FleetProjection](), ResponseStatus: http.StatusOK, ResponseSummary: "Fleet runtime projection.", Optional: "Runtime telemetry", Interactive: true},
+		{Method: http.MethodGet, Path: "/api/v1/nodes/{nodeID}/mobile-runtime", OperationID: "getNodeMobileRuntime", Tag: "Mobile runtime", Summary: "Read Packet Tunnel lifecycle evidence", Description: "Returns the bounded server projection of the latest authenticated extension evidence. Server stale or revoked state dominates the historical client state.", Security: admin, Permission: read, Response: openAPIType[runtimetelemetry.MobileRuntimeProjection](), ResponseStatus: http.StatusOK, ResponseSummary: "Mobile runtime projection.", Optional: "Mobile runtime evidence", Interactive: true},
 		{Method: http.MethodPost, Path: "/api/v1/agent/certificate/renew", OperationID: "renewAgentCertificate", Tag: "Agent lifecycle", Summary: "Renew a node certificate", Description: "Signs the supplied node public key when renewal policy and certificate-generation gates permit it.", Security: agent, Request: openAPIType[openAPIAgentRenewRequest](), Response: openAPIType[control.RenewalBundle](), ResponseStatus: http.StatusOK, ResponseSummary: "Renewed certificate bundle.", Interactive: false},
 		{Method: http.MethodPost, Path: "/api/v1/agent/credentials/rotate", OperationID: "rotateAgentCredential", Tag: "Agent lifecycle", Summary: "Rotate an agent credential", Description: "Replaces the active agent credential hash while preserving one bounded overlap for recovery from response loss.", Security: agent, Request: openAPIType[openAPIAgentCredentialRotationRequest](), Response: openAPIType[control.CredentialRotation](), ResponseStatus: http.StatusOK, ResponseSummary: "Credential-rotation receipt.", Interactive: false},
-		{Method: http.MethodGet, Path: "/api/v1/fleet/health", OperationID: "getFleetHealth", Tag: "Health and readiness", Summary: "Read fleet health", Description: "Returns one authoritative fleet snapshot across every network.", Security: admin, Permission: read, Response: openAPIType[control.FleetHealthCollection](), ResponseStatus: http.StatusOK, ResponseSummary: "Fleet health collection.", Interactive: true},
-		{Method: http.MethodGet, Path: "/api/v1/networks/{networkID}/health", OperationID: "getNetworkHealth", Tag: "Health and readiness", Summary: "Read network health", Description: "Returns lifecycle, redundancy, rollout, and revocation health for one network.", Security: admin, Permission: read, Response: openAPIType[control.FleetHealthReport](), ResponseStatus: http.StatusOK, ResponseSummary: "Network health report.", Interactive: true},
+		{Method: http.MethodGet, Path: "/api/v1/fleet/health", OperationID: "getFleetHealth", Tag: "Health and readiness", Summary: "Read fleet health", Description: "Returns one authoritative fleet snapshot across every network. Runtime state is freshness-qualified; the Nebula-running boolean is only the last authenticated reported value.", Security: admin, Permission: read, Response: openAPIType[control.FleetHealthCollection](), ResponseStatus: http.StatusOK, ResponseSummary: "Fleet health collection.", Interactive: true},
+		{Method: http.MethodGet, Path: "/api/v1/networks/{networkID}/health", OperationID: "getNetworkHealth", Tag: "Health and readiness", Summary: "Read network health", Description: "Returns lifecycle, redundancy, rollout, and revocation health for one network, including a freshness-qualified runtime state.", Security: admin, Permission: read, Response: openAPIType[control.FleetHealthReport](), ResponseStatus: http.StatusOK, ResponseSummary: "Network health report.", Interactive: true},
 		{Method: http.MethodGet, Path: "/api/v1/networks/{networkID}/readiness", OperationID: "getNetworkReadiness", Tag: "Health and readiness", Summary: "Read deployment readiness", Description: "Returns exact control and optional runtime evidence for the network deployment checklist.", Security: admin, Permission: read, Response: openAPIType[control.NetworkReadinessReport](), ResponseStatus: http.StatusOK, ResponseSummary: "Network readiness report.", Interactive: true},
 		{Method: http.MethodGet, Path: "/api/v1/networks", OperationID: "listNetworks", Tag: "Networks", Summary: "List networks", Description: "Returns the non-secret network inventory.", Security: admin, Permission: read, Response: openAPIType[[]control.NetworkSummary](), ResponseStatus: http.StatusOK, ResponseSummary: "Network inventory.", Interactive: true},
 		{Method: http.MethodPost, Path: "/api/v1/networks", OperationID: "createNetwork", Tag: "Networks", Summary: "Create a network", Description: "Creates an encrypted Nebula certificate authority and configuration-signing identity for one non-overlapping overlay CIDR. listen_port defaults to 4242 and certificate_ttl_hours defaults to 8760 when omitted.", Security: admin, Permission: write, Request: openAPIType[openAPICreateNetworkRequest](), Response: openAPIType[control.Network](), ResponseStatus: http.StatusCreated, ResponseSummary: "Created network.", Interactive: true},
@@ -248,14 +253,19 @@ func openAPIOperations() []openAPIOperation {
 		{Method: http.MethodGet, Path: "/api/v1/networks/{networkID}/firewall", OperationID: "getFirewallPolicy", Tag: "Firewall", Summary: "Read firewall policy", Description: "Returns the desired managed Nebula firewall policy and its revision metadata.", Security: admin, Permission: read, Response: openAPIType[control.FirewallPolicyDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Firewall policy document.", Interactive: true},
 		{Method: http.MethodPut, Path: "/api/v1/networks/{networkID}/firewall/preview", OperationID: "previewFirewallPolicy", Tag: "Firewall", Summary: "Preview effective firewall policy", Description: "Compiles candidate rules for every active node without changing signed state.", Security: admin, Permission: write, Request: openAPIType[control.FirewallPolicyInput](), Response: openAPIType[control.FirewallPolicyPreview](), ResponseStatus: http.StatusOK, ResponseSummary: "Per-node effective firewall preview.", Interactive: true},
 		{Method: http.MethodPut, Path: "/api/v1/networks/{networkID}/firewall", OperationID: "updateFirewallPolicy", Tag: "Firewall", Summary: "Replace firewall policy", Description: "Atomically replaces the managed policy under an optimistic network revision.", Security: admin, Permission: write, Request: openAPIType[control.UpdateFirewallPolicyInput](), Response: openAPIType[control.FirewallPolicyDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Updated firewall policy document.", Interactive: true},
+		{Method: http.MethodGet, Path: "/api/v1/networks/{networkID}/groups", OperationID: "listNetworkSecurityGroups", Tag: "Security groups", Summary: "List network security groups", Description: "Returns the built-in all group plus independently managed group definitions, certificate-bound pending and active node membership, and stable plus staged firewall-reference counts.", Security: admin, Permission: read, Response: openAPIType[control.NetworkSecurityGroupsDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Network security-group catalog.", Interactive: true},
+		{Method: http.MethodPost, Path: "/api/v1/networks/{networkID}/groups", OperationID: "createNetworkSecurityGroup", Tag: "Security groups", Summary: "Create a network security group", Description: "Creates an empty reusable group definition without changing certificates or signed network configuration. Assign active members through the revision-bound node-groups operation.", Security: admin, Permission: security, Request: openAPIType[control.CreateNetworkSecurityGroupInput](), Response: openAPIType[control.NetworkSecurityGroupsDocument](), ResponseStatus: http.StatusCreated, ResponseSummary: "Updated network security-group catalog.", Interactive: true},
+		{Method: http.MethodPut, Path: "/api/v1/networks/{networkID}/groups/{groupName}", OperationID: "updateNetworkSecurityGroup", Tag: "Security groups", Summary: "Update a security-group description", Description: "Updates operator-facing group metadata. Group names are immutable because they are embedded in certificates and referenced by firewall rules.", Security: admin, Permission: security, Request: openAPIType[control.UpdateNetworkSecurityGroupInput](), Response: openAPIType[control.NetworkSecurityGroupsDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Updated network security-group catalog.", Interactive: true},
+		{Method: http.MethodDelete, Path: "/api/v1/networks/{networkID}/groups/{groupName}", OperationID: "deleteNetworkSecurityGroup", Tag: "Security groups", Summary: "Delete an unused security group", Description: "Deletes a custom group only after all pending or active membership and stable or staged firewall references have been removed. The built-in all group cannot be deleted.", Security: admin, Permission: security, Request: openAPIType[control.DeleteNetworkSecurityGroupInput](), Response: openAPIType[control.NetworkSecurityGroupsDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Updated network security-group catalog.", Interactive: true},
 		{Method: http.MethodGet, Path: "/api/v1/networks/{networkID}/route-transfer", OperationID: "getRouteTransfer", Tag: "Routing", Summary: "Read routed-subnet transfer state", Description: "Returns the current certificate-first route ownership transfer and convergence evidence.", Security: admin, Permission: read, Response: openAPIType[control.NetworkRouteTransferDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Route transfer document.", Interactive: true},
 		{Method: http.MethodPost, Path: "/api/v1/networks/{networkID}/route-transfer", OperationID: "startRouteTransfer", Tag: "Routing", Summary: "Start a routed-subnet transfer", Description: "Stages exact prefixes from one active owner to another while preserving the current route.", Security: admin, Permission: write, Request: openAPIType[control.StartRouteTransferInput](), Response: openAPIType[control.NetworkRouteTransferDocument](), ResponseStatus: http.StatusCreated, ResponseSummary: "Created route transfer document.", Interactive: true},
 		{Method: http.MethodPost, Path: "/api/v1/networks/{networkID}/route-transfer/advance", OperationID: "advanceRouteTransfer", Tag: "Routing", Summary: "Advance a routed-subnet transfer", Description: "Promotes or completes the active transfer only after its certificate convergence gate.", Security: admin, Permission: write, Request: openAPIType[control.UpdateRouteTransferInput](), Response: openAPIType[control.NetworkRouteTransferDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Advanced route transfer document.", Interactive: true},
 		{Method: http.MethodPost, Path: "/api/v1/networks/{networkID}/route-transfer/cancel", OperationID: "cancelRouteTransfer", Tag: "Routing", Summary: "Cancel a routed-subnet transfer", Description: "Cancels the active transfer, waiting for certificate cleanup when issuance has already occurred.", Security: admin, Permission: write, Request: openAPIType[control.UpdateRouteTransferInput](), Response: openAPIType[control.NetworkRouteTransferDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Cancelled route transfer document.", Interactive: true},
 		{Method: http.MethodGet, Path: "/api/v1/networks/{networkID}/route-policies", OperationID: "getRoutePolicies", Tag: "Routing", Summary: "Read weighted route policies", Description: "Returns per-prefix gateway weights, MTU, metric, and convergence.", Security: admin, Permission: read, Response: openAPIType[control.NetworkRoutePoliciesDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Route-policy collection.", Interactive: true},
 		{Method: http.MethodPost, Path: "/api/v1/networks/{networkID}/route-policies", OperationID: "updateRoutePolicy", Tag: "Routing", Summary: "Update one weighted route policy", Description: "Updates owner weights and route attributes for one exact managed prefix.", Security: admin, Permission: write, Request: openAPIType[control.UpdateNetworkRoutePolicyInput](), Response: openAPIType[control.NetworkRoutePoliciesDocument](), ResponseStatus: http.StatusOK, ResponseSummary: "Updated route-policy collection.", Interactive: true},
-		{Method: http.MethodGet, Path: "/api/v1/networks/{networkID}/nodes", OperationID: "listNodes", Tag: "Nodes", Summary: "List network nodes", Description: "Returns pending, active, and revoked node inventory for one network.", Security: admin, Permission: read, Response: openAPIType[[]control.Node](), ResponseStatus: http.StatusOK, ResponseSummary: "Node inventory.", Interactive: true},
+		{Method: http.MethodGet, Path: "/api/v1/networks/{networkID}/nodes", OperationID: "listNodes", Tag: "Nodes", Summary: "List network nodes", Description: "Returns pending, active, and revoked node inventory for one network. The web console uses this inventory to keep each node's permitted lifecycle actions grouped below its identity and health evidence; route permissions remain authoritative.", Security: admin, Permission: read, Response: openAPIType[[]control.Node](), ResponseStatus: http.StatusOK, ResponseSummary: "Node inventory.", Interactive: true},
 		{Method: http.MethodPost, Path: "/api/v1/networks/{networkID}/nodes", OperationID: "createNode", Tag: "Nodes", Summary: "Create a pending node", Description: "Reserves one overlay identity and creates a one-time enrollment credential.", Security: admin, Permission: write, Request: openAPIType[control.CreateNodeInput](), Response: openAPIType[control.CreatedNode](), ResponseStatus: http.StatusCreated, ResponseSummary: "Created pending node and one-time enrollment material.", Interactive: false},
+		{Method: http.MethodPost, Path: "/api/v1/networks/{networkID}/self-enrollment", OperationID: "createSelfEnrollment", Tag: "Enrollment", Summary: "Create the signed-in user's mobile enrollment", Description: "Requires an OIDC user session with nodes.enroll.self. Creates only a member in the fixed mobile site and all/members groups, and returns its one-time enrollment token once. A same-principal retry for the same still-pending fixed-policy node invalidates the previous token and returns a replacement.", Security: admin, Permission: selfEnroll, Request: openAPIType[selfEnrollmentRequest](), Response: openAPIType[control.CreatedNode](), ResponseStatus: http.StatusCreated, ResponseSummary: "Created or safely retried mobile member enrollment material.", Interactive: false},
 		{Method: http.MethodPut, Path: "/api/v1/nodes/{nodeID}/topology", OperationID: "updateNodeTopology", Tag: "Nodes", Summary: "Update node placement metadata", Description: "Updates site, failure-domain, and public endpoint metadata without changing certificate identity.", Security: admin, Permission: write, Request: openAPIType[control.UpdateNodeTopologyInput](), Response: openAPIType[control.Node](), ResponseStatus: http.StatusOK, ResponseSummary: "Updated node.", Interactive: true},
 		{Method: http.MethodPost, Path: "/api/v1/nodes/{nodeID}/enrollment/reissue", OperationID: "reissueNodeEnrollment", Tag: "Nodes", Summary: "Reissue pending enrollment", Description: "Invalidates prior enrollment tokens and returns one replacement for a still-pending node.", Security: admin, Permission: write, Response: openAPIType[control.ReissuedEnrollment](), ResponseStatus: http.StatusOK, ResponseSummary: "Replacement one-time enrollment.", Interactive: false},
 		{Method: http.MethodPost, Path: "/api/v1/nodes/{nodeID}/enrollment/cancel", OperationID: "cancelNodeEnrollment", Tag: "Nodes", Summary: "Cancel pending enrollment", Description: "Atomically removes a never-enrolled node and releases its reservations.", Security: admin, Permission: write, Request: openAPIType[control.CancelPendingNodeInput](), Response: openAPIType[control.CancelledPendingNode](), ResponseStatus: http.StatusOK, ResponseSummary: "Pending-node cancellation receipt.", Interactive: true},
@@ -582,6 +592,20 @@ func openAPIRequestExample(operation openAPIOperation) any {
 			"public_key":       "<node-public-key>",
 			"agent_token_hash": "<agent-token-hash>",
 		},
+		"reportMobileRuntime": map[string]any{
+			"version":                 1,
+			"instance_generation":     1,
+			"sequence":                1,
+			"state":                   "tunnel-running",
+			"config_revision":         1,
+			"config_sha256":           strings.Repeat("ab", 32),
+			"certificate_fingerprint": strings.Repeat("cd", 32),
+			"certificate_generation":  1,
+			"engine_identity":         strings.Repeat("ef", 32),
+			"runtime_uptime_ms":       1000,
+			"packets_read":            12,
+			"packets_written":         10,
+		},
 		"createNetwork": map[string]any{
 			"name":                  "example-network",
 			"cidr":                  "10.80.0.0/24",
@@ -609,6 +633,25 @@ func openAPIResponseExample(operation openAPIOperation) any {
 			"state":            "pending",
 			"expires_at":       "2026-07-23T12:05:00Z",
 			"interval_seconds": 5,
+		}
+	case "getNodeMobileRuntime":
+		return map[string]any{
+			"schema":                 "mesh-mobile-runtime-projection-v1",
+			"node_id":                "node_example",
+			"server_state":           "tunnel-running",
+			"client_state":           "tunnel-running",
+			"fresh":                  true,
+			"received_at":            "2026-07-23T12:00:00Z",
+			"stale_after":            "2026-07-23T12:02:00Z",
+			"age_seconds":            5,
+			"instance_generation":    1,
+			"sequence":               1,
+			"config_revision":        1,
+			"certificate_generation": 1,
+			"engine_identity":        strings.Repeat("ef", 32),
+			"runtime_uptime_ms":      1000,
+			"packets_read":           12,
+			"packets_written":        10,
 		}
 	default:
 		return openAPIExample(operation.Response)
@@ -856,6 +899,7 @@ func buildOpenAPIDocument() (map[string]any, error) {
 		pathItem[method] = item
 	}
 	refineDesktopAuthorizationSchemas(builder.schemas)
+	refineMobileRuntimeSchemas(builder.schemas)
 
 	// Error is intentionally defined independently of Go reflection: every
 	// HTTP error boundary exposes exactly one generic, non-secret message.
@@ -961,6 +1005,143 @@ func refineDesktopAuthorizationSchemas(schemas map[string]any) {
 		interval, _ := properties["interval_seconds"].(map[string]any)
 		interval["minimum"], interval["maximum"] = 1, 30
 	}
+}
+
+func refineMobileRuntimeSchemas(schemas map[string]any) {
+	property := func(schemaName, propertyName string) map[string]any {
+		schema, _ := schemas[schemaName].(map[string]any)
+		properties, _ := schema["properties"].(map[string]any)
+		value, _ := properties[propertyName].(map[string]any)
+		return value
+	}
+	const maximumExactJSONInteger = 9007199254740991
+	for _, name := range []string{
+		"instance_generation",
+		"sequence",
+		"config_revision",
+		"certificate_generation",
+	} {
+		value := property("MobileruntimeReportInput", name)
+		value["minimum"] = 1
+		value["maximum"] = maximumExactJSONInteger
+	}
+	for _, name := range []string{
+		"runtime_uptime_ms",
+		"packets_read",
+		"packets_written",
+	} {
+		value := property("MobileruntimeReportInput", name)
+		value["minimum"] = 0
+		value["maximum"] = maximumExactJSONInteger
+	}
+	version := property("MobileruntimeReportInput", "version")
+	version["const"] = 1
+	for _, name := range []string{
+		"config_sha256",
+		"certificate_fingerprint",
+		"engine_identity",
+	} {
+		value := property("MobileruntimeReportInput", name)
+		value["minLength"] = 64
+		value["maxLength"] = 64
+		value["pattern"] = `^[0-9a-f]{64}$`
+	}
+	states := []string{
+		"tunnel-starting",
+		"tunnel-running",
+		"tunnel-stopping",
+		"stopped",
+		"suspended",
+		"quarantined",
+		"extension-error",
+	}
+	property("MobileruntimeReportInput", "state")["enum"] = states
+	errorCode := property("MobileruntimeReportInput", "error_code")
+	errorCode["minLength"] = 1
+	errorCode["maxLength"] = 64
+	errorCode["pattern"] = `^[a-z0-9][a-z0-9-]{0,63}$`
+	input, _ := schemas["MobileruntimeReportInput"].(map[string]any)
+	input["oneOf"] = []any{
+		map[string]any{
+			"properties": map[string]any{
+				"state": map[string]any{"const": "tunnel-running"},
+			},
+			"required": []string{"packets_read", "packets_written"},
+			"not":      map[string]any{"required": []string{"error_code"}},
+		},
+		map[string]any{
+			"properties": map[string]any{
+				"state": map[string]any{
+					"enum": []string{"quarantined", "extension-error"},
+				},
+			},
+			"required": []string{"error_code"},
+			"not": map[string]any{
+				"anyOf": []any{
+					map[string]any{"required": []string{"packets_read"}},
+					map[string]any{"required": []string{"packets_written"}},
+				},
+			},
+		},
+		map[string]any{
+			"properties": map[string]any{
+				"state": map[string]any{
+					"enum": []string{
+						"tunnel-starting",
+						"tunnel-stopping",
+						"stopped",
+						"suspended",
+					},
+				},
+			},
+			"not": map[string]any{
+				"anyOf": []any{
+					map[string]any{"required": []string{"packets_read"}},
+					map[string]any{"required": []string{"packets_written"}},
+					map[string]any{"required": []string{"error_code"}},
+				},
+			},
+		},
+	}
+
+	projection := func(name string) map[string]any {
+		return property("MobileRuntimeProjection", name)
+	}
+	projection("schema")["const"] = "mesh-mobile-runtime-projection-v1"
+	projection("server_state")["enum"] = append(
+		append([]string{}, states...),
+		"stale",
+		"revoked",
+	)
+	projection("client_state")["enum"] = states
+	for _, name := range []string{
+		"instance_generation",
+		"sequence",
+		"config_revision",
+		"certificate_generation",
+	} {
+		value := projection(name)
+		value["minimum"] = 1
+		value["maximum"] = maximumExactJSONInteger
+	}
+	for _, name := range []string{
+		"age_seconds",
+		"runtime_uptime_ms",
+		"packets_read",
+		"packets_written",
+	} {
+		value := projection(name)
+		value["minimum"] = 0
+		value["maximum"] = maximumExactJSONInteger
+	}
+	engineIdentity := projection("engine_identity")
+	engineIdentity["minLength"] = 64
+	engineIdentity["maxLength"] = 64
+	engineIdentity["pattern"] = `^[0-9a-f]{64}$`
+	projectionError := projection("error_code")
+	projectionError["minLength"] = 1
+	projectionError["maxLength"] = 64
+	projectionError["pattern"] = `^[a-z0-9][a-z0-9-]{0,63}$`
 }
 
 var (

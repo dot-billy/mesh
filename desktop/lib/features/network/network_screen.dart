@@ -48,12 +48,14 @@ class NetworkScreen extends StatefulWidget {
   const NetworkScreen({
     required this.state,
     required this.role,
+    required this.permissions,
     required this.callbacks,
     super.key,
   });
 
   final LoadableViewModel<NetworkOverviewViewModel> state;
   final MeshRole role;
+  final Set<MeshPermission> permissions;
   final MeshPresentationCallbacks callbacks;
 
   @override
@@ -79,6 +81,7 @@ class _NetworkScreenState extends State<NetworkScreen> {
         return LayoutBuilder(
           builder: (context, constraints) {
             final vertical = constraints.maxWidth >= 880;
+            final compactHeader = constraints.maxWidth < 600;
             final navigation = _NetworkNavigation(
               selected: _destination,
               vertical: vertical,
@@ -88,48 +91,10 @@ class _NetworkScreenState extends State<NetworkScreen> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        tooltip: 'Back to fleet',
-                        onPressed: widget.callbacks.clearSelectedNetwork,
-                        icon: const Icon(Icons.arrow_back),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    model.network.name,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.headlineMedium,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                EvidenceBadge(
-                                  tone: model.network.tone,
-                                  label: model.network.statusLabel,
-                                  compact: true,
-                                ),
-                              ],
-                            ),
-                            Text(model.network.cidr),
-                          ],
-                        ),
-                      ),
-                      FreshnessStamp(
-                        generatedAt: model.updatedAt,
-                        prefix: 'Updated',
-                      ),
-                    ],
-                  ),
+                _NetworkHeader(
+                  model: model,
+                  compact: compactHeader,
+                  onBack: widget.callbacks.clearSelectedNetwork,
                 ),
                 const Divider(height: 1),
                 Expanded(
@@ -173,6 +138,7 @@ class _NetworkScreenState extends State<NetworkScreen> {
       NetworkDestination.overview => _Overview(
         model: model,
         role: widget.role,
+        permissions: widget.permissions,
         onNextAction: () =>
             setState(() => _destination = NetworkDestination.nodes),
         onOpenNodes: () =>
@@ -182,6 +148,7 @@ class _NetworkScreenState extends State<NetworkScreen> {
         networkId: model.network.id,
         nodes: model.nodes,
         role: widget.role,
+        permissions: widget.permissions,
         mutationCallbacks: _mutations,
         onSelectNode: (nodeId) =>
             widget.callbacks.selectNode(model.network.id, nodeId),
@@ -219,6 +186,7 @@ class _NetworkScreenState extends State<NetworkScreen> {
       ),
       NetworkDestination.security => PermissionGate(
         role: widget.role,
+        permissions: widget.permissions,
         permission: MeshPermission.networksSecurity,
         readOnlyChild: OperationPanel(
           state: model.caRotation,
@@ -236,6 +204,100 @@ class _NetworkScreenState extends State<NetworkScreen> {
         ),
       ),
     };
+  }
+}
+
+class _NetworkHeader extends StatelessWidget {
+  const _NetworkHeader({
+    required this.model,
+    required this.compact,
+    required this.onBack,
+  });
+
+  final NetworkOverviewViewModel model;
+  final bool compact;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final back = IconButton(
+      tooltip: 'Back to fleet',
+      onPressed: onBack,
+      icon: const Icon(Icons.arrow_back),
+    );
+    final status = EvidenceBadge(
+      tone: model.network.tone,
+      label: model.network.statusLabel,
+      compact: true,
+    );
+    final freshness = FreshnessStamp(
+      generatedAt: model.updatedAt,
+      prefix: 'Updated',
+    );
+
+    if (compact) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 16, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            back,
+            const SizedBox(width: 4),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    model.network.name,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [Text(model.network.cidr), status],
+                  ),
+                  const SizedBox(height: 6),
+                  freshness,
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+      child: Row(
+        children: [
+          back,
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        model.network.name,
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    status,
+                  ],
+                ),
+                Text(model.network.cidr),
+              ],
+            ),
+          ),
+          freshness,
+        ],
+      ),
+    );
   }
 }
 
@@ -289,12 +351,14 @@ class _Overview extends StatelessWidget {
   const _Overview({
     required this.model,
     required this.role,
+    required this.permissions,
     required this.onNextAction,
     required this.onOpenNodes,
   });
 
   final NetworkOverviewViewModel model;
   final MeshRole role;
+  final Set<MeshPermission> permissions;
   final VoidCallback onNextAction;
   final VoidCallback onOpenNodes;
 
@@ -309,6 +373,7 @@ class _Overview extends StatelessWidget {
             final setup = _Setup(
               model: model,
               role: role,
+              permissions: permissions,
               onNextAction: onNextAction,
             );
             if (wide) {
@@ -442,11 +507,13 @@ class _Setup extends StatelessWidget {
   const _Setup({
     required this.model,
     required this.role,
+    required this.permissions,
     required this.onNextAction,
   });
 
   final NetworkOverviewViewModel model;
   final MeshRole role;
+  final Set<MeshPermission> permissions;
   final VoidCallback onNextAction;
 
   @override
@@ -474,7 +541,12 @@ class _Setup extends StatelessWidget {
             if (permission == null)
               action
             else
-              PermissionGate(role: role, permission: permission, child: action),
+              PermissionGate(
+                role: role,
+                permissions: permissions,
+                permission: permission,
+                child: action,
+              ),
             const Divider(height: 28),
             Text(
               'Setup progress',

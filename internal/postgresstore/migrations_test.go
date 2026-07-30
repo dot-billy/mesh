@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -13,8 +14,24 @@ func TestEmbeddedMigrationChecksumIsPinned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 3 || migrations[0].version != 1 || migrations[0].SQL == "" || migrations[1].version != 2 || migrations[1].SQL == "" || migrations[2].version != 3 || migrations[2].SQL == "" {
+	if len(migrations) != 5 ||
+		migrations[0].version != 1 || migrations[0].SQL == "" ||
+		migrations[1].version != 2 || migrations[1].SQL == "" ||
+		migrations[2].version != 3 || migrations[2].SQL == "" ||
+		migrations[3].version != 4 || migrations[3].SQL == "" ||
+		migrations[4].version != 5 || migrations[4].SQL == "" {
 		t.Fatalf("unexpected migrations: %+v", migrations)
+	}
+}
+
+func TestLatestImportVersionMigrationMatchesCompiledRange(t *testing.T) {
+	want := fmt.Sprintf(
+		"BETWEEN %d AND %d",
+		ImportControlVersionMin,
+		ImportControlVersionMax,
+	)
+	if !strings.Contains(migration005SQL, want) {
+		t.Fatalf("latest import migration does not contain %q", want)
 	}
 }
 

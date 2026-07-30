@@ -42,6 +42,7 @@ func TestHTTPRBACEnforcesViewerOperatorAndAdminBoundaries(t *testing.T) {
 			Scopes: []string{"openid"}, GroupsClaim: "groups", AllowedSigningAlgs: []string{"RS256"},
 			Admins: []identity.AdminSelector{{Kind: "group", Value: "mesh-admins"}},
 			RoleBindings: []identity.RoleBinding{
+				{Role: identity.RoleMember, Selector: identity.AdminSelector{Kind: "group", Value: "mesh-members"}},
 				{Role: identity.RoleViewer, Selector: identity.AdminSelector{Kind: "group", Value: "mesh-viewers"}},
 				{Role: identity.RoleOperator, Selector: identity.AdminSelector{Kind: "group", Value: "mesh-operators"}},
 			},
@@ -78,11 +79,20 @@ func TestHTTPRBACEnforcesViewerOperatorAndAdminBoundaries(t *testing.T) {
 	testServer.Start()
 	defer testServer.Close()
 
+	memberSession, _ := createRBACSession(t, store, config, fingerprint, now, "member", "mesh-members")
 	viewerSession, viewerCSRF := createRBACSession(t, store, config, fingerprint, now, "viewer", "mesh-viewers")
 	operatorSession, operatorCSRF := createRBACSession(t, store, config, fingerprint, now, "operator", "mesh-operators")
 
-	response := rbacRequest(t, testServer.Client(), http.MethodGet, publicURL+"/api/v1/session", nil, viewerSession, "", publicURL, "")
+	response := rbacRequest(t, testServer.Client(), http.MethodGet, publicURL+"/api/v1/session", nil, memberSession, "", publicURL, "")
 	var current sessionResponse
+	decodeRBACResponse(t, response, http.StatusOK, &current)
+	if current.Role != identity.RoleMember || !identity.RoleAllows(current.Role, identity.PermissionNodesEnrollSelf) ||
+		identity.RoleAllows(current.Role, identity.PermissionNetworksWrite) {
+		t.Fatalf("member session access=%#v", current)
+	}
+
+	response = rbacRequest(t, testServer.Client(), http.MethodGet, publicURL+"/api/v1/session", nil, viewerSession, "", publicURL, "")
+	current = sessionResponse{}
 	decodeRBACResponse(t, response, http.StatusOK, &current)
 	if current.Role != identity.RoleViewer || !identity.RoleAllows(current.Role, identity.PermissionNetworksRead) || len(current.Permissions) != 2 {
 		t.Fatalf("viewer session access=%#v", current)

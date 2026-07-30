@@ -259,7 +259,7 @@
   function validateNode(raw, name, desiredRevision, generatedAtMS, policy) {
     const required = [
       'id', 'name', 'ip', 'routed_subnets', 'site', 'failure_domain', 'role', 'lifecycle_status', 'heartbeat_sequence', 'phase', 'severity', 'operational', 'rollout_current',
-      'nebula_running', 'desired_config_revision', 'applied_config_revision', 'desired_certificate_generation',
+      'runtime_state', 'nebula_running', 'desired_config_revision', 'applied_config_revision', 'desired_certificate_generation',
       'applied_certificate_generation', 'alerts',
     ];
     const optional = ['last_seen_at', 'agent_status', 'certificate_expires_at', 'certificate_renew_after', 'agent_credential_expires_at'];
@@ -292,6 +292,8 @@
     }
     const operational = boolean(raw.operational, `${name}.operational`);
     const rolloutCurrent = boolean(raw.rollout_current, `${name}.rollout_current`);
+    const runtimeState = raw.runtime_state;
+    if (!['unknown', 'running', 'stopped'].includes(runtimeState)) fail(`${name}.runtime_state is invalid`);
     const nebulaRunning = boolean(raw.nebula_running, `${name}.nebula_running`);
     const appliedConfigRevision = integer(raw.applied_config_revision, `${name}.applied_config_revision`);
     const desiredCertificateGeneration = integer(raw.desired_certificate_generation, `${name}.desired_certificate_generation`);
@@ -301,6 +303,10 @@
     const agentCredentialExpiresAt = optionalTimestamp(raw.agent_credential_expires_at, `${name}.agent_credential_expires_at`);
     const hasAlert = (code) => alerts.some((alert) => alert.code === code);
     const telemetryInvalid = hasAlert('telemetry_invalid');
+    const heartbeatCurrent = lifecycleStatus === 'active' && lastSeen !== null && lastSeen.milliseconds <= generatedAtMS &&
+      generatedAtMS - lastSeen.milliseconds < policy.heartbeat_offline_after_seconds * 1000;
+    const expectedRuntimeState = heartbeatCurrent ? (nebulaRunning ? 'running' : 'stopped') : 'unknown';
+    if (runtimeState !== expectedRuntimeState) fail(`${name}.runtime_state conflicts with heartbeat freshness`);
     const certificateLifecycleValid = Boolean(certificateExpiresAt && certificateRenewAfter &&
       !isGoZeroTimestamp(certificateRenewAfter) && certificateRenewAfter.milliseconds < certificateExpiresAt.milliseconds);
     if (lifecycleStatus === 'active') {
@@ -324,7 +330,7 @@
     if ((operational || rolloutCurrent) && lifecycleStatus !== 'active') fail(`${name} reports active state for a non-active node`);
     if (operational && phase !== 'active') fail(`${name}.operational conflicts with phase`);
     if (operational && agentStatus !== 'healthy') fail(`${name}.operational requires healthy agent status`);
-    if (operational && (!lastSeen || lastSeen.milliseconds > generatedAtMS || generatedAtMS - lastSeen.milliseconds >= policy.heartbeat_offline_after_seconds * 1000 || !nebulaRunning || !rolloutCurrent || nodeSeverity === 'critical' || !certificateLifecycleValid || certificateExpiresAt.milliseconds <= generatedAtMS || !agentCredentialExpiresAt || agentCredentialExpiresAt.milliseconds <= generatedAtMS)) fail(`${name}.operational is internally inconsistent`);
+    if (operational && (!lastSeen || lastSeen.milliseconds > generatedAtMS || generatedAtMS - lastSeen.milliseconds >= policy.heartbeat_offline_after_seconds * 1000 || runtimeState !== 'running' || !nebulaRunning || !rolloutCurrent || nodeSeverity === 'critical' || !certificateLifecycleValid || certificateExpiresAt.milliseconds <= generatedAtMS || !agentCredentialExpiresAt || agentCredentialExpiresAt.milliseconds <= generatedAtMS)) fail(`${name}.operational is internally inconsistent`);
     const rolloutEvidenceInvalid = lifecycleStatus !== 'active' || !lastSeen || lastSeen.milliseconds > generatedAtMS ||
       generatedAtMS - lastSeen.milliseconds >= policy.heartbeat_offline_after_seconds * 1000 || agentStatus === '' ||
       !nebulaRunning || appliedConfigRevision !== desiredRevision || appliedCertificateGeneration !== desiredCertificateGeneration ||
@@ -353,6 +359,7 @@
       rolloutCurrent,
       last_seen_at: lastSeen === null ? '' : lastSeen.value,
       agent_status: agentStatus,
+      runtime_state: runtimeState,
       nebula_running: nebulaRunning,
       desiredConfigRevision,
       applied_config_revision: appliedConfigRevision,

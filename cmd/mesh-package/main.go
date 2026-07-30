@@ -23,6 +23,7 @@ type linuxBuilder func(linuxbundle.BuildOptions) (linuxbundle.BuildResult, error
 type windowsBuilder func(windowsbundle.BuildOptions) (windowsbundle.BuildResult, error)
 type windowsSignedBuilder func(windowsbundle.SignedBuildOptions) (windowsbundle.BuildResult, error)
 type darwinBuilder func(darwinbundle.BuildOptions) (darwinbundle.BuildResult, error)
+type darwinSignedBuilder func(darwinbundle.SignedBuildOptions) (darwinbundle.BuildResult, error)
 type verifierBuilder func(verifierbundle.BuildOptions) (verifierbundle.BuildResult, error)
 
 func main() {
@@ -63,6 +64,8 @@ func runWithPlatformBuilders(args []string, output io.Writer, linux linuxBuilder
 		return buildWindowsSigned(args, output, windowsSigned)
 	case "build-darwin":
 		return buildDarwin(args, output, darwin)
+	case "build-darwin-signed":
+		return buildDarwinSigned(args, output, darwinbundle.BuildSigned)
 	case "build-bootstrap-verifier":
 		return buildBootstrapVerifier(args, output, verifier)
 	default:
@@ -409,8 +412,56 @@ func buildDarwin(args []string, output io.Writer, builder darwinBuilder) error {
 	return err
 }
 
+func buildDarwinSigned(args []string, output io.Writer, builder darwinSignedBuilder) error {
+	if runtime.GOOS != "linux" {
+		return fmt.Errorf("build-darwin-signed requires a Linux packaging host for exact artifact verification and publication")
+	}
+	if builder == nil {
+		return fmt.Errorf("signed Darwin bundle builder is unavailable")
+	}
+	flags := flag.NewFlagSet("build-darwin-signed", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	unsignedBundle := flags.String("unsigned-bundle", "", "authenticated unsigned Darwin staging bundle v1")
+	meshctl := flags.String("meshctl", "", "Developer ID signed meshctl")
+	nebula := flags.String("nebula", "", "Developer ID signed nebula")
+	nebulaCert := flags.String("nebula-cert", "", "Developer ID signed nebula-cert")
+	codesignReceipt := flags.String("codesign-receipt", "", "fresh native Darwin code-signing receipt")
+	expectedPolicySHA256 := flags.String("expected-codesign-policy-sha256", "", "independently authenticated compiled Darwin code-signing policy SHA-256")
+	outputPath := flags.String("output", "", "new final signed uncompressed USTAR output path")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("build-darwin-signed does not accept positional arguments")
+	}
+	values := []struct {
+		name  string
+		value string
+	}{
+		{"--unsigned-bundle", *unsignedBundle}, {"--meshctl", *meshctl}, {"--nebula", *nebula},
+		{"--nebula-cert", *nebulaCert}, {"--codesign-receipt", *codesignReceipt},
+		{"--expected-codesign-policy-sha256", *expectedPolicySHA256}, {"--output", *outputPath},
+	}
+	for _, value := range values {
+		if strings.TrimSpace(value.value) == "" {
+			return fmt.Errorf("%s is required", value.name)
+		}
+	}
+	result, err := builder(darwinbundle.SignedBuildOptions{
+		UnsignedBundlePath: strings.TrimSpace(*unsignedBundle),
+		SignedMeshctlPath:  strings.TrimSpace(*meshctl), SignedNebulaPath: strings.TrimSpace(*nebula),
+		SignedNebulaCertPath: strings.TrimSpace(*nebulaCert), CodesignReceiptPath: strings.TrimSpace(*codesignReceipt),
+		ExpectedPolicySHA256: strings.TrimSpace(*expectedPolicySHA256), OutputPath: strings.TrimSpace(*outputPath),
+	})
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(output, "Built final signed Darwin node bundle %s for darwin/%s (%d bytes, SHA-256 %s, package.json SHA-256 %s). Every executable is bound to its exact linker-signed source and native code-signing receipt; no software was installed and no launchd state or ACL was changed.\n", result.OutputPath, result.Package.Target.Arch, result.Size, result.SHA256, result.PackageJSONSHA256)
+	return err
+}
+
 func usageError() error {
-	return fmt.Errorf("usage: mesh-package inspect-linux --artifact <absolute-bundle.tar> --output-dir <empty-0700-directory> | mesh-package inspect-windows --artifact <absolute-bundle.tar> --output-dir <empty-0700-directory> | mesh-package inspect-darwin --artifact <absolute-bundle.tar> --output-dir <empty-0700-directory> | mesh-package build-linux --version <semver> --commit <40-lowerhex> --source-date-epoch <seconds> --security-floor <positive> --arch <amd64|arm64> --mesh-install <path> --meshctl <path> --nebula-dir <path> --output <new.tar> | mesh-package build-windows --version <semver> --commit <40-lowerhex> --source-date-epoch <seconds> --security-floor <positive> --arch <amd64|arm64> --meshctl <path> --nebula-dir <path> --nebula-runtime-dir <path> --output <new.tar> | mesh-package build-windows-signed --unsigned-bundle <v2.tar> --meshctl <signed.exe> --nebula <signed.exe> --nebula-cert <signed.exe> --authenticode-receipt <receipt.json> --expected-authenticode-policy-sha256 <sha256> --output <new-v3.tar> | mesh-package build-darwin --version <semver> --commit <40-lowerhex> --source-date-epoch <seconds> --security-floor <positive> --arch <amd64|arm64> --meshctl <path> --nebula-runtime-dir <path> --output <new.tar> | mesh-package build-bootstrap-verifier --version <semver> --commit <40-lowerhex> --source-date-epoch <seconds> --security-floor <positive> --os <linux|windows> --arch <amd64|arm64> --verifier <path> --output <new.tar>")
+	return fmt.Errorf("usage: mesh-package inspect-linux --artifact <absolute-bundle.tar> --output-dir <empty-0700-directory> | mesh-package inspect-windows --artifact <absolute-bundle.tar> --output-dir <empty-0700-directory> | mesh-package inspect-darwin --artifact <absolute-bundle.tar> --output-dir <empty-0700-directory> | mesh-package build-linux --version <semver> --commit <40-lowerhex> --source-date-epoch <seconds> --security-floor <positive> --arch <amd64|arm64> --mesh-install <path> --meshctl <path> --nebula-dir <path> --output <new.tar> | mesh-package build-windows --version <semver> --commit <40-lowerhex> --source-date-epoch <seconds> --security-floor <positive> --arch <amd64|arm64> --meshctl <path> --nebula-dir <path> --nebula-runtime-dir <path> --output <new.tar> | mesh-package build-windows-signed --unsigned-bundle <v2.tar> --meshctl <signed.exe> --nebula <signed.exe> --nebula-cert <signed.exe> --authenticode-receipt <receipt.json> --expected-authenticode-policy-sha256 <sha256> --output <new-v3.tar> | mesh-package build-darwin --version <semver> --commit <40-lowerhex> --source-date-epoch <seconds> --security-floor <positive> --arch <amd64|arm64> --meshctl <path> --nebula-runtime-dir <path> --output <new.tar> | mesh-package build-darwin-signed --unsigned-bundle <v1.tar> --meshctl <signed> --nebula <signed> --nebula-cert <signed> --codesign-receipt <receipt.json> --expected-codesign-policy-sha256 <sha256> --output <new-v2.tar> | mesh-package build-bootstrap-verifier --version <semver> --commit <40-lowerhex> --source-date-epoch <seconds> --security-floor <positive> --os <linux|windows> --arch <amd64|arm64> --verifier <path> --output <new.tar>")
 }
 
 func parseCanonicalInt64(value string, allowZero bool) (int64, error) {

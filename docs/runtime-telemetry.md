@@ -40,7 +40,7 @@ allowlist against the verified overlay prefix and exact configured lighthouse
 set, and on Linux uses only the fixed root-private Unix socket with bounded
 deadlines and filesystem/peer-credential checks.
 
-The separately versioned `mesh-runtime-telemetry-state-v7` persistence plane is
+The separately versioned `mesh-runtime-telemetry-state-v8` persistence plane is
 also implemented. Every record contains independent passive `observation` and
 fixed-shape `active_probe`, `route_overlap`, and `endpoint_dns` values, plus the
 heartbeat-authenticated applied-config digest and its server-derived probe
@@ -60,10 +60,10 @@ digest, and the same attempted count; a gap or config change is `unclassified`,
 and attempted-count ambiguity is rejected. An exact same-heartbeat retry must
 match all four sibling values and the private digest, while equivocation, same-process replay,
 version rollback, uptime rollback, or cumulative-counter rollback leaves the
-previous record intact. Canonical v1 through v6 documents migrate strictly
-to v7, assigning `unsupported` missing sibling evidence and a current-only
-probe transition without inventing retained age, configuration identity, or
-transition history. JSON mode uses a private crash-durable
+previous record intact. Canonical v1 through v7 documents migrate strictly
+to v8, assigning `unsupported` missing desktop sibling evidence and a
+current-only probe transition without inventing retained age, configuration
+identity, transition history, or mobile observations. JSON mode uses a private crash-durable
 file store;
 PostgreSQL migration 002 permits one bounded `runtime_telemetry` exact document
 that remains outside `ReadPair` and the authenticated two-document backup
@@ -86,6 +86,28 @@ fails with a generic server error for unreadable or invalid repository state.
 The fleet-v5 projection deliberately continues to omit the route and DNS
 siblings; they are consumed only by the stricter per-network readiness
 correlation.
+
+Schema v8 also carries a separate latest-record mobile plane. An authenticated
+Packet Tunnel report is bounded to 16 KiB, rejects duplicate or unknown JSON
+members and inexact numeric values, and is bound to the current agent
+credential, signed configuration revision and digest, certificate fingerprint
+and generation, extension instance generation, engine identity, and monotonic
+sequence. Same-instance uptime and packet counters cannot move backward; an
+exact same-sequence retry is a no-op and equivocation or replay leaves the
+prior record intact. This path deliberately does not create a desktop
+heartbeat or make the client-declared state authoritative.
+
+`POST /api/v1/agent/mobile-runtime` accepts that extension-authored evidence.
+An authenticated reader with network-read permission can retrieve the latest
+record for one exact node from
+`GET /api/v1/nodes/{nodeID}/mobile-runtime`. The query-free, no-store
+projection omits the private configuration digest and certificate fingerprint;
+server-derived `stale` or `revoked` state dominates the historical client
+state. Ordinary observations become stale after two minutes, while an explicit
+`suspended` observation has a fifteen-minute bound. Network retirement and
+node archival remove matching mobile observations. These records remain
+reconstructible evidence: they are absent from authenticated authority backups
+and restart empty after PostgreSQL import.
 
 The separate network-readiness v5 projection may consume these aggregate
 siblings under narrower correlation rules without changing that fleet-API

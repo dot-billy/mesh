@@ -181,6 +181,11 @@ func (s *Service) updateNodeGroups(ctx context.Context, actor *Actor, nodeID str
 			return ErrNotFound
 		}
 		network := &state.Networks[networkIndex]
+		if state.Version >= ControlStateVersionSecurityGroups {
+			if err := ensureSecurityGroupDefinitions(network, groups, operationAt); err != nil {
+				return err
+			}
+		}
 		latestSigningCertificate, latestSigningKey := networkSigningAuthority(*network)
 		if network.ConfigRevision != input.ExpectedConfigRevision || network.CARotation.Phase != "" || network.FirewallRollout.Phase != "" || routeTransferIncludesNode(network.RouteTransfer, node.ID) || routeProfileEditIncludesNode(network.RouteProfileEdit, node.ID) || latestSigningCertificate != signingCACertificate || latestSigningKey != signingCAKey || network.ConfigSigningPublicKey != snapshotNetwork.ConfigSigningPublicKey || network.EncryptedConfigSigningKey != snapshotNetwork.EncryptedConfigSigningKey {
 			return fmt.Errorf("%w: network lifecycle changed during group update", ErrConflict)

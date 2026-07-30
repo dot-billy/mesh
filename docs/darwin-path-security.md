@@ -14,7 +14,9 @@ xattr, symlink component, or ignored-ownership mount. Closed or malformed gates
 fail before polling. The cross-built process adapter now starts the resolved
 release executable directly, owns and reaps that one child, and rechecks the
 persistent gate before every agent cycle, reload, and observation. This code
-has not executed on a Mac and is not native-host proof.
+has now executed in the bounded native harness on Apple Silicon. That partial
+proof is not a signed-bundle, system-launchd, Intel, installed-service, or
+release result.
 
 Run the Linux-verifiable regression with:
 
@@ -47,6 +49,12 @@ sudo MESH_DARWIN_SYSTEM_LAUNCHCTL_TEST=1 \
   make darwin-native-runtime-smoke
 ```
 
+For test-only native lifecycle evidence, the Linux-verifiable bundle smoke can
+retain its exact rebuilt and inspected outputs in one pre-created empty
+directory by setting `MESH_DARWIN_BUNDLE_SMOKE_OUTPUT_DIR`. The exported files
+remain unsigned staging bundles and do not replace the protected signed-bundle,
+package-security, code-signing, notarization, or release-authoring gates.
+
 The additional gate refuses to run without the bundle, refuses any pre-existing
 `/Library/LaunchDaemons/io.mesh.node-agent.native-proof.plist`, creates that one
 exact root:wheel mode-0644 fixture, and uses the production authenticated
@@ -72,8 +80,16 @@ absolute `MESH_DARWIN_NATIVE_EVIDENCE_DIR`). Run it independently on amd64 and
 arm64. With an exact `MESH_DARWIN_NATIVE_BUNDLE`, it also exercises release
 publication, offline snapshot intake, journal recovery, expected-prior
 selection, and exact plist replacement in a disposable directory through a
-fake service controller. Unless the separate system-launchctl gate is exactly
-`1`, it never writes `/Library/LaunchDaemons` or invokes `launchctl`. The v3
+fake service controller. The same fixture now proves that installed-runtime
+validation accepts only the physical active release while the journal is
+quiescent and the gate is closed, and rejects the `current` selector, an open
+gate, accepted intake, and an active rollback journal. It then deactivates the
+rolled-back runtime and proves the gate, fake service, exact plist, selector,
+and active/previous state are absent while both published releases and
+high-water authority remain intact. Unless the separate system-launchctl gate
+is exactly `1`, it never writes
+`/Library/LaunchDaemons` or invokes
+`launchctl`. The v3
 receipt records normalized architecture, that gate, the proof label, bundle
 SHA-256, host-facts hash, test-transcript hash, exact producer/source inventory,
 and bounded start/completion times. Partial gate-disabled runs remain useful
@@ -102,7 +118,9 @@ For each sensitive state or managed-output path, the Darwin adapter:
 
 1. requires one absolute, lexically canonical path;
 2. opens `/` and then every existing component by descriptor with
-   `O_NOFOLLOW`, `O_NOFOLLOW_ANY`, and `O_CLOEXEC`;
+   `O_NOFOLLOW_ANY` and `O_CLOEXEC` on current Darwin, using `O_NOFOLLOW` only
+   where the operation does not use `O_NOFOLLOW_ANY`; macOS 26.5 rejects the
+   redundant combined flag pair with `EINVAL`;
 3. requires every ancestor to be a real directory owned by root or the
    effective agent user with no group/world write bits;
 4. rejects a mount carrying `MNT_UNKNOWNPERMISSIONS`, because ownership and
@@ -192,8 +210,11 @@ cross-compile the native intake and layout adapter.
 
 Current-release selection is also implemented as a separate
 descriptor-relative transaction. It creates one exact root:wheel relative
-symlink, syncs the layout, rechecks that `current` still equals the journal's
-expected prior release, then atomically replaces it and syncs again. A stale
+symlink, normalizes the link itself to mode `0777` with descriptor-relative
+`fchmodat(..., AT_SYMLINK_NOFOLLOW)`, syncs the layout, rechecks that `current`
+still equals the journal's expected prior release, then atomically replaces it
+and syncs again. The explicit normalization is required because macOS 26.5
+applies the process umask to newly created symlink mode bits. A stale
 transaction cannot overwrite a newer selection. A journal-recorded temporary
 can resume before replacement, after replacement but before sync, or with a
 recognized leftover; final proof requires the selected release to rehash
@@ -239,9 +260,117 @@ private mode-0600 exact-content pending file, syncs it, finalizes mode 0644,
 atomically replaces the live file, syncs the directory, and reads the exact
 bytes and metadata back. Unexpected pending content fails without deletion.
 
-This is still not a complete supported installation transaction. Journal v4 activation begins only
-after an exact bundle has been authenticated and finalized in its named stage. Darwin
-metadata intake loads the compiled bootstrap root and production build identity,
+Darwin executable admission now has a separate immutable code-signing policy.
+`mesh-release darwin-codesign-policy` encodes one approved 10-character Team
+ID and four distinct exact code identifiers for `mesh-install`, `meshctl`,
+`nebula`, and `nebula-cert`; production `mesh-install` and `meshctl` builds
+receive that canonical frame through
+`-X mesh/internal/darwincodesign.Identity=FRAME`. The development sentinel is
+not a policy and always fails production admission. For each executable, the
+native adapter authenticates the exact root:wheel mode-0555 single-link path,
+then runs fixed `/usr/bin/codesign` arguments equivalent to strict
+verification against:
+
+```text
+anchor apple generic
+and identifier "APPROVED_IDENTIFIER"
+and certificate 1[field.1.2.840.113635.100.6.2.6] exists
+and certificate leaf[field.1.2.840.113635.100.6.1.13] exists
+and certificate leaf[subject.OU] = "APPROVED_TEAM_ID"
+```
+
+The identifier and Team ID come only from the compiled policy, not package
+metadata or installer input. The runner uses an empty environment, `/` working
+directory, empty stdin, bounded output and deadline, and pre/post identities
+for both the target and `/usr/bin/codesign`. It first verifies codesign's
+Apple designated requirement. The launchctl controller likewise verifies the
+fixed `/bin/launchctl` Apple identifier before privileged use. The production
+package bootstrap applies the fourth role to its installed `mesh-install`;
+all three release executables are checked before an accepted stage can create its
+activation journal, again before launchd bootstrap or kickstart, and again at
+the installed-runtime enrollment boundary.
+
+No approved Team ID or final code identifiers are compiled into development
+builds, so development artifacts cannot pass this admission path. The
+protected assembly boundary is implemented: native macOS verification emits a
+fresh receipt for the package bootstrap plus the three final executables; Linux
+`mesh-package build-darwin-signed` proves each entitlement-free CMS-backed
+hardened-runtime Mach-O differs from its authenticated unsigned bundle-v1
+member only in the pre-existing signature region and exact describing size
+fields, matches the receipt and independently authenticated compiled policy
+digest, and emits deterministic signed bundle v2. Release preflight re-expands that v2 artifact,
+derives the executable identities from its exact bytes, and requires both its
+package-security receipt and native code-signing receipt. Approved
+identifiers, real Developer ID execution, application/package entitlement
+review, certificate rotation/revocation procedure, and notarization remain
+release work rather than inferred defaults.
+
+The production command orchestration is now implemented in the Darwin build of
+the narrow `mesh-install` executable, but distribution and use remain
+release-gated until the native proof below, signing, notarization, packaging,
+native installed-runtime proof, and enrollment gates pass. It accepts only
+these fixed command shapes:
+
+```text
+mesh-install install-online EXACT_CANONICAL_BUNDLE_URL
+mesh-install install ABSOLUTE_ROOT_PRIVATE_SNAPSHOT_DIR
+mesh-install recover
+mesh-install activate
+mesh-install uninstall-runtime
+mesh-install rollback EXACT_PREVIOUS_INSTALLED_ID
+```
+
+There are no key, root, floor, architecture, clock, executable, environment,
+script, plist, or service-name overrides. `install-online` requires its input
+to already equal the canonical HTTPS URL and uses the bounded no-redirect
+client. `install` admits only the exact offline tree below. `recover` resumes a
+durable journal or a fully captured accepted intake; it does not silently turn
+an interrupted offline copy into an online download. `rollback` repeats the
+requested installed ID under the transaction lock and accepts only the
+persisted previous authority, so a concurrent activation cannot redirect it.
+`activate` accepts no path: while holding the installer lock it proves the
+selected immutable release, live plist, exact root-private agent state,
+completed signed current bundle, matching immutable recovery keypair, active
+release schema compatibility, and unexpired certificate and agent credential.
+It validates the bundle only with the authenticated release's physical Nebula
+executables under an empty environment, `/` working directory, exact argument
+allowlist, bounded time/output, and pre/post executable identity check. Only
+then does it open the fixed persistent gate and issue
+`launchctl kickstart system/io.mesh.node-agent` without the restart flag. A
+failed kickstart closes the gate and proves the service absent.
+
+`uninstall-runtime` is a deactivation boundary, not a broad recursive
+uninstaller. Under the installer transaction lock it rejects an accepted
+intake or activation/rollback journal, retains the authenticated active state
+as recovery authority, refuses any unjournaled `.current-*` residue, closes
+and proves the persistent gate, uses the fixed
+launchctl controller to prove the job absent, removes only the exact
+authenticated live plist, removes only the exact active `current` selector,
+and clears active/previous selections as the final durable state change. A
+retry after interruption repeats those exact idempotent steps; normal install,
+rollback, and recovery paths reject a partially removed activation surface and
+direct the operator back to `uninstall-runtime`. The result explicitly records
+that immutable release trees, trusted-root history, anti-rollback high water,
+installer files, and root-private agent enrollment state were not removed.
+Deleting retained enrollment or trust state requires a separate future
+reviewed command and custody decision.
+
+The Darwin production-enrollment boundary now has a source-level installed
+runtime validator. Before executing `nebula` or `nebula-cert`, and before
+reading an enrollment bearer, it resolves `meshctl` and both runtime
+executables to one physical directory. Under the installer transaction lock it
+then requires that directory to be the exact persisted active release below
+`/opt/mesh/releases`, reconstructs and authenticates the complete immutable
+release, proves the exact `current` selection and live launchd plist, rejects
+an active journal or accepted intake, and requires the persistent runtime gate
+to remain closed. After those checks, `meshctl` still returns an explicit
+release-gate error without executing the runtime or starting enrollment.
+Removing that rejection requires the clean-host native lifecycle, signing,
+notarization, and installed-host evidence defined below.
+
+Journal v4 activation begins only after an exact bundle has been authenticated
+and finalized in its named stage. Darwin metadata intake loads the compiled
+bootstrap root and production build identity,
 canonically reparses the signed release bundle, persists a contiguous create-only mode-0400
 root-update history under the transaction lock, threshold-verifies the selected Darwin
 artifact, durably records that decision before download, and binds outer authority to exact
@@ -289,15 +418,21 @@ closed, controller recovery accepts absence only after one successful
 `bootout`; when the service was absent it first bootstraps the exact immutable
 release plist and then requires bootout to succeed. Loading is accepted only
 after the preceding proven absence and one successful bootstrap of the exact
-published `/Library/LaunchDaemons` plist. Commands use fixed arguments, an
-empty environment, a bounded timeout/output sink, stable authentication of
-`/bin/launchctl`, and reject output even on zero exit. An activated-phase
-restart repeats that idempotent sequence instead of parsing status text.
-Native execution is opt-in through the existing
-root-only harness; setting `MESH_DARWIN_NATIVE_BUNDLE` adds journal-driven
-offline snapshot admission, publication/current/plist recovery, and explicit active/previous rollback to exact bundle staging, stale-switch
-rejection, and upgrade checks. The harness uses a fake service controller and a
-disposable plist directory, not the system launchd domain.
+published `/Library/LaunchDaemons` plist. Post-enrollment runtime activation
+adds only the exact non-restarting system-target kickstart. Commands use fixed
+arguments, an empty environment, a bounded timeout/output sink, stable
+authentication of `/bin/launchctl`, and reject output even on zero exit. An
+activated-phase restart repeats that idempotent sequence instead of parsing
+status text.
+
+The source-level production command now invokes this controller. Native
+execution evidence remains opt-in through the existing root-only harness;
+setting `MESH_DARWIN_NATIVE_BUNDLE` adds journal-driven offline snapshot
+admission, publication/current/plist recovery, and explicit active/previous
+rollback to exact bundle staging, stale-switch rejection, and upgrade checks.
+That transaction fixture still uses a fake service controller and disposable
+plist directory. The separate system-launchctl fixture proves only its unique
+proof label, not a production Mesh installation.
 
 The packed formats and constants are grounded in Apple's
 [`attr.h`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/attr.h),
@@ -333,7 +468,10 @@ arm64 Macs must run a fault-injection harness that proves:
 - directory `Sync` behavior, immutable release publication and collision
   recovery, and installed-agent packet recovery pass on both architectures.
 
-Codesigning, notarization, package receipts, native execution on both
-architectures, native proof of the mutation-only launchctl controller, real `/Library/LaunchDaemons` activation,
+The compiled code-signing policy, strict native verifier, signed-bundle
+assembly, dual-receipt release preflight, and activation/enrollment composition
+exist as source controls, but no approved identity or real passing signed
+artifact exists. Protected signing execution, notarization, native execution on both architectures,
+native proof of the mutation-only launchctl controller, real `/Library/LaunchDaemons` activation,
 and an installed-host packet proof are separate gates. Until those exist, the
-Darwin release remains a reviewed, scanned, non-installing staging bundle.
+Darwin path remains unshipped and unsupported.

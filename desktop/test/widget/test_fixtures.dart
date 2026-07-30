@@ -8,12 +8,15 @@ class RecordingCallbacks extends NoopMeshPresentationCallbacks
   int secretAcknowledgedCount = 0;
   int secretScrubbedCount = 0;
   int recoveryAccessCreatedCount = 0;
+  int authenticationCancelledCount = 0;
+  int localDataEraseCount = 0;
   final List<ConnectionRequest> addedConnections = [];
   final List<String> selectedNetworks = [];
   final List<String> revokedSessions = [];
   final List<CreateNetworkRequest> createdNetworks = [];
   final List<CreateNodeEnrollmentRequest> createdEnrollments = [];
   final List<ReissueEnrollmentRequest> reissuedEnrollments = [];
+  final List<CancelPendingEnrollmentRequest> cancelledEnrollments = [];
   final List<RevokeSessionRequest> revokedAccessSessions = [];
   final List<RotateNodeCertificateRequest> rotatedCertificates = [];
   final List<RevokeNodeRequest> revokedNodes = [];
@@ -22,6 +25,12 @@ class RecordingCallbacks extends NoopMeshPresentationCallbacks
   @override
   void addConnection(ConnectionRequest request) =>
       addedConnections.add(request);
+
+  @override
+  void cancelAuthentication() => authenticationCancelledCount++;
+
+  @override
+  void eraseLocalData() => localDataEraseCount++;
 
   @override
   Future<MutationSubmissionResult> createNetwork(
@@ -36,6 +45,14 @@ class RecordingCallbacks extends NoopMeshPresentationCallbacks
     CreateNodeEnrollmentRequest request,
   ) async {
     createdEnrollments.add(request);
+    return const MutationSubmissionResult.succeeded();
+  }
+
+  @override
+  Future<MutationSubmissionResult> cancelPendingEnrollment(
+    CancelPendingEnrollmentRequest request,
+  ) async {
+    cancelledEnrollments.add(request);
     return const MutationSubmissionResult.succeeded();
   }
 
@@ -99,6 +116,7 @@ class RecordingCallbacks extends NoopMeshPresentationCallbacks
 
 MeshDesktopViewModel authenticatedModel({
   MeshRole role = MeshRole.admin,
+  Set<MeshPermission>? permissions,
   LoadableViewModel<FleetViewModel>? fleet,
   LoadableViewModel<NetworkOverviewViewModel>? selectedNetwork,
   LoadableViewModel<List<ActivityEventViewModel>>? activity,
@@ -111,6 +129,7 @@ MeshDesktopViewModel authenticatedModel({
     accessContext: AccessContextViewModel(
       displayName: 'Casey Operator',
       role: role,
+      permissions: permissions ?? role.permissions,
       controlPlaneName: 'Test control plane',
       origin: Uri.parse('https://mesh.example.test'),
     ),

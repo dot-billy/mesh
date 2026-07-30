@@ -227,7 +227,7 @@ func (s *Service) NetworkRoutePolicies(networkID string) (NetworkRoutePoliciesDo
 	}
 	var result NetworkRoutePoliciesDocument
 	err := s.viewState(func(state State) error {
-		if state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes {
+		if state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes && state.Version != ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: route-policy schema is not current", ErrConflict)
 		}
 		network, ok := findNetwork(state, networkID)
@@ -266,7 +266,7 @@ func (s *Service) updateNetworkRoutePolicy(actor *Actor, networkID string, input
 	}
 	var result NetworkRoutePoliciesDocument
 	err := s.updateState(func(state *State) error {
-		if state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes {
+		if state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes && state.Version != ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: route-policy schema is not current", ErrConflict)
 		}
 		for networkIndex := range state.Networks {

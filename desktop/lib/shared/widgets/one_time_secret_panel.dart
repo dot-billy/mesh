@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../../core/platform/mobile_security.dart';
 import '../models/presentation_models.dart';
 
 class OneTimeSecretPanel extends StatefulWidget {
@@ -8,12 +8,14 @@ class OneTimeSecretPanel extends StatefulWidget {
     required this.model,
     required this.onAcknowledged,
     required this.onScrubbed,
+    this.clipboard = const ExpiringSecretClipboard(),
     super.key,
   });
 
   final OneTimeSecretViewModel model;
   final VoidCallback onAcknowledged;
   final VoidCallback onScrubbed;
+  final SecretClipboard clipboard;
 
   @override
   State<OneTimeSecretPanel> createState() => _OneTimeSecretPanelState();
@@ -83,7 +85,7 @@ class _OneTimeSecretPanelState extends State<OneTimeSecretPanel>
   Future<void> _copy(int index) async {
     if (_scrubbed) return;
     final item = widget.model.items[index];
-    await Clipboard.setData(ClipboardData(text: _values[index]));
+    await widget.clipboard.copy(_values[index]);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

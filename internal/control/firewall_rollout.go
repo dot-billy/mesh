@@ -384,7 +384,7 @@ func (s *Service) updateNetworkFirewallRollout(actor *Actor, networkID string, i
 	}
 	var result NetworkFirewallRolloutDocument
 	err := s.updateState(func(state *State) error {
-		if state.Version != ControlStateVersionFirewallPause && state.Version != ControlStateVersionRouteTransfer && state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes {
+		if state.Version != ControlStateVersionFirewallPause && state.Version != ControlStateVersionRouteTransfer && state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes && state.Version != ControlStateVersionSecurityGroups {
 			return fmt.Errorf("%w: firewall rollout schema is not current", ErrConflict)
 		}
 		for index := range state.Networks {
@@ -415,6 +415,11 @@ func (s *Service) updateNetworkFirewallRollout(actor *Actor, networkID string, i
 				}
 				if firewallPolicyUsesNodeScopes(target) && state.Version < ControlStateVersionFirewallScopes {
 					return fmt.Errorf("%w: firewall scope schema is not current", ErrConflict)
+				}
+				if state.Version >= ControlStateVersionSecurityGroups {
+					if err := ensureSecurityGroupDefinitions(network, managedSecurityGroupNamesFromPolicy(target), now); err != nil {
+						return err
+					}
 				}
 				if sameEffectiveFirewallPolicy(network.FirewallPolicy, target) {
 					return fmt.Errorf("%w: firewall rollout target must differ from the active policy", ErrConflict)

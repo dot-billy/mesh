@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"mesh/internal/darwinbundle"
+	"mesh/internal/darwincodesign"
 	"mesh/internal/nodeagent"
 
 	"golang.org/x/sys/unix"
@@ -122,7 +123,43 @@ func (controller *ProductionLaunchctlServiceController) Bootstrap() error {
 	if err := errors.Join(inspectErr, closeErr); err != nil {
 		return fmt.Errorf("authenticate live launchctl plist: %w", err)
 	}
+	if err := verifyDarwinReleaseSignatures(
+		filepath.Join(controller.layout.releasesPath, controller.installedID),
+		controller.inspection,
+	); err != nil {
+		return fmt.Errorf("admit launchctl bootstrap release code signatures: %w", err)
+	}
 	return controller.operations.Bootstrap(controller.livePlist)
+}
+
+// Kickstart reauthenticates the selected release and live plist before asking
+// launchd to start the already-loaded fixed service. It accepts no caller
+// arguments and never uses launchctl's diagnostic output as state authority.
+func (controller *ProductionLaunchctlServiceController) Kickstart() error {
+	if controller == nil {
+		return errors.New("production launchctl controller is required")
+	}
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	if _, err := readAuthenticatedLaunchdPlist(controller.layout, controller.installedID, controller.inspection); err != nil {
+		return fmt.Errorf("authenticate launchctl kickstart release plist: %w", err)
+	}
+	publisher, err := NewProductionLaunchdPlistPublisher(controller.layout, controller.installedID, controller.inspection)
+	if err != nil {
+		return err
+	}
+	inspectErr := publisher.Inspect()
+	closeErr := publisher.Close()
+	if err := errors.Join(inspectErr, closeErr); err != nil {
+		return fmt.Errorf("authenticate live launchctl plist before kickstart: %w", err)
+	}
+	if err := verifyDarwinReleaseSignatures(
+		filepath.Join(controller.layout.releasesPath, controller.installedID),
+		controller.inspection,
+	); err != nil {
+		return fmt.Errorf("admit launchctl kickstart release code signatures: %w", err)
+	}
+	return controller.operations.Kickstart()
 }
 
 type productionLaunchctlCommandRunner struct {
@@ -192,6 +229,9 @@ func launchctlOutputIdentity(content []byte) string {
 }
 
 func authenticateProductionLaunchctl() (darwinInstallStatSnapshot, error) {
+	if err := darwincodesign.VerifyLaunchctl(); err != nil {
+		return darwinInstallStatSnapshot{}, err
+	}
 	if err := nodeagent.InspectDarwinSensitivePath(productionLaunchctlPath); err != nil {
 		return darwinInstallStatSnapshot{}, fmt.Errorf("authenticate /bin/launchctl path: %w", err)
 	}
@@ -199,7 +239,7 @@ func authenticateProductionLaunchctl() (darwinInstallStatSnapshot, error) {
 	if err := unix.Lstat(productionLaunchctlPath, &before); err != nil {
 		return darwinInstallStatSnapshot{}, err
 	}
-	fd, err := unix.Open(productionLaunchctlPath, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Open(productionLaunchctlPath, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return darwinInstallStatSnapshot{}, err
 	}

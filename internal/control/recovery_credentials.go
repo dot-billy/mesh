@@ -18,7 +18,7 @@ func ValidateRecoverySnapshotCredentials(raw, masterKey, adminToken []byte) erro
 	if err != nil {
 		return err
 	}
-	if (state.Version != ControlStateVersionCredentialBinding && state.Version != ControlStateVersionTopology && state.Version != ControlStateVersionNetworkDNS && state.Version != ControlStateVersionNetworkRelays && state.Version != ControlStateVersionCARotation && state.Version != ControlStateVersionFirewallRollout && state.Version != ControlStateVersionFirewallPause && state.Version != ControlStateVersionRouteTransfer && state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes) || state.AdminCredentialVerifier == "" {
+	if (state.Version != ControlStateVersionCredentialBinding && state.Version != ControlStateVersionTopology && state.Version != ControlStateVersionNetworkDNS && state.Version != ControlStateVersionNetworkRelays && state.Version != ControlStateVersionCARotation && state.Version != ControlStateVersionFirewallRollout && state.Version != ControlStateVersionFirewallPause && state.Version != ControlStateVersionRouteTransfer && state.Version != ControlStateVersionRouteProfileEdit && state.Version != ControlStateVersionRoutePolicies && state.Version != ControlStateVersionNativeDNS && state.Version != ControlStateVersionFirewallScopes && state.Version != ControlStateVersionSecurityGroups) || state.AdminCredentialVerifier == "" {
 		return errors.New("recovery snapshot is not bound to an administrator credential; start mesh-server successfully before creating a backup")
 	}
 	masterVerifier, err := DeriveMasterKeyVerifier(masterKey)

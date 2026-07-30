@@ -90,7 +90,7 @@ func writeNativeLaunchctlProofPlist(path string) (returnErr error) {
 	if err := nodeagent.InspectDarwinSensitivePath(ProductionLaunchdDirectory); err != nil {
 		return err
 	}
-	fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0o644)
+	fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY, 0o644)
 	if err != nil {
 		return err
 	}

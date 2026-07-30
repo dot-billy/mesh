@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"mesh/internal/darwincodesign"
 	"mesh/internal/windowsauthenticode"
 )
 
@@ -115,6 +116,39 @@ func VerifyDarwinBinary(content []byte, arch, name string) error {
 		return verifyBinary(content, entry, Target{OS: "darwin", Arch: arch}, policy)
 	}
 	return fmt.Errorf("Darwin runtime executable %q is not selected for darwin/%s", name, arch)
+}
+
+// VerifySignedDarwinBinary validates the locked Go/runtime identity plus the
+// exact structural shape required of a final CMS-backed hardened-runtime
+// signature. Signed-bundle assembly separately proves that only the existing
+// linker signature and its size fields changed from the exact output lock;
+// native macOS verification remains responsible for trusting signer and chain.
+func VerifySignedDarwinBinary(content []byte, arch, name string) (darwincodesign.MachOSignatureEnvelope, error) {
+	target, _, err := selectDarwinTarget(arch)
+	if err != nil {
+		return darwincodesign.MachOSignatureEnvelope{}, err
+	}
+	policy, _, err := EmbeddedPolicy()
+	if err != nil {
+		return darwincodesign.MachOSignatureEnvelope{}, err
+	}
+	for _, entry := range target.Entries {
+		if entry.Name != name {
+			continue
+		}
+		envelope, err := darwincodesign.InspectMachOSignature(content)
+		if err != nil || !envelope.HasCMS || !envelope.HardenedRuntime ||
+			envelope.AdHoc || envelope.LinkerSigned || envelope.HasEntitlements {
+			return darwincodesign.MachOSignatureEnvelope{}, errors.Join(
+				err, fmt.Errorf("signed Darwin runtime executable %q lacks one entitlement-free CMS-backed hardened-runtime signature", name),
+			)
+		}
+		if err := verifyBinary(content, entry, Target{OS: "darwin", Arch: arch}, policy); err != nil {
+			return darwincodesign.MachOSignatureEnvelope{}, err
+		}
+		return envelope, nil
+	}
+	return darwincodesign.MachOSignatureEnvelope{}, fmt.Errorf("Darwin runtime executable %q is not selected for darwin/%s", name, arch)
 }
 
 func verifyBinary(content []byte, entry EntryLock, target Target, policy Policy) error {

@@ -24,6 +24,12 @@ const (
 	FleetHealthCritical = "critical"
 )
 
+const (
+	FleetRuntimeUnknown = "unknown"
+	FleetRuntimeRunning = "running"
+	FleetRuntimeStopped = "stopped"
+)
+
 // FleetHealthReport is a read-only projection of the authenticated lifecycle
 // evidence already held by the control plane. It intentionally contains no
 // credential material, certificate fingerprints, config digests, or agent
@@ -158,10 +164,14 @@ type FleetNodeHealth struct {
 	Severity          string   `json:"severity"`
 	// Operational means the authenticated lifecycle agent recently proved the
 	// local runtime/config state. It is not a Nebula handshake or UDP probe.
-	Operational                  bool               `json:"operational"`
-	RolloutCurrent               bool               `json:"rollout_current"`
-	LastSeenAt                   *time.Time         `json:"last_seen_at,omitempty"`
-	AgentStatus                  string             `json:"agent_status,omitempty"`
+	Operational    bool       `json:"operational"`
+	RolloutCurrent bool       `json:"rollout_current"`
+	LastSeenAt     *time.Time `json:"last_seen_at,omitempty"`
+	AgentStatus    string     `json:"agent_status,omitempty"`
+	// RuntimeState is a freshness-qualified current-state projection.
+	// NebulaRunning remains the last authenticated reported value and may be
+	// historical when RuntimeState is unknown.
+	RuntimeState                 string             `json:"runtime_state"`
 	NebulaRunning                bool               `json:"nebula_running"`
 	DesiredConfigRevision        int64              `json:"desired_config_revision"`
 	AppliedConfigRevision        int64              `json:"applied_config_revision"`
@@ -435,6 +445,15 @@ func aggregateFleetHealth(collection *FleetHealthCollection) {
 func projectFleetNode(node Node, network Network, now time.Time, latestRevocationAt *time.Time, activeRevocations int, desiredConfigDigest string) FleetNodeHealth {
 	agentStatus, validAgentStatus := fleetAgentStatus(node)
 	validAppliedConfigRevision := node.AppliedConfigRevision >= 0 && node.AppliedConfigRevision <= network.ConfigRevision
+	heartbeatCurrent := node.Status == "active" && node.LastSeenAt != nil && !node.LastSeenAt.After(now) && now.Sub(*node.LastSeenAt) < fleetHeartbeatOfflineAfter
+	runtimeState := FleetRuntimeUnknown
+	if heartbeatCurrent {
+		if node.NebulaRunning {
+			runtimeState = FleetRuntimeRunning
+		} else {
+			runtimeState = FleetRuntimeStopped
+		}
+	}
 	appliedConfigRevision := node.AppliedConfigRevision
 	if !validAppliedConfigRevision {
 		// Keep the collection consumable by strict clients while retaining a
@@ -445,7 +464,7 @@ func projectFleetNode(node Node, network Network, now time.Time, latestRevocatio
 	projected := FleetNodeHealth{
 		ID: node.ID, Name: node.Name, IP: node.IP, RoutedSubnets: append([]string{}, node.RoutedSubnets...), Site: readinessTopologyLabel(node.Site), FailureDomain: readinessTopologyLabel(node.FailureDomain), Role: node.Role, LifecycleStatus: node.Status,
 		HeartbeatSequence: node.HeartbeatSequence, Phase: node.Status, Severity: FleetHealthHealthy,
-		LastSeenAt: timeEvidence(node.LastSeenAt), AgentStatus: agentStatus, NebulaRunning: node.NebulaRunning,
+		LastSeenAt: timeEvidence(node.LastSeenAt), AgentStatus: agentStatus, RuntimeState: runtimeState, NebulaRunning: node.NebulaRunning,
 		DesiredConfigRevision: network.ConfigRevision, AppliedConfigRevision: appliedConfigRevision,
 		DesiredCertificateGeneration: node.CertificateGeneration, AppliedCertificateGeneration: node.AppliedCertificateGeneration,
 		CertificateExpiresAt:     timeEvidence(node.CertificateExpiresAt),
@@ -536,7 +555,6 @@ func projectFleetNode(node Node, network Network, now time.Time, latestRevocatio
 
 	sortFleetAlerts(projected.Alerts)
 	projected.Severity = severityForAlerts(projected.Alerts)
-	heartbeatCurrent := node.LastSeenAt != nil && !node.LastSeenAt.After(now) && now.Sub(*node.LastSeenAt) < fleetHeartbeatOfflineAfter
 	certificateCurrent := validCertificateLifecycle && now.Before(*node.CertificateExpiresAt)
 	credentialCurrent := node.AgentCredentialExpiresAt != nil && now.Before(*node.AgentCredentialExpiresAt)
 	projected.RolloutCurrent = heartbeatCurrent && validAgentStatus && agentStatus != "" && node.NebulaRunning &&

@@ -16,6 +16,8 @@ const (
 	migration001ChecksumHex        = "c31340602b7566bc4de02fbb3dfa076f71dcf57c9642725a1f44b1c4c432bb90"
 	migration002ChecksumHex        = "dbc51007c4078267cceb9702f2fd4dcc2eb779722106d7d6136b014ed2ce2acd"
 	migration003ChecksumHex        = "cecde7569e13ee7e316fcbde69c9f7cc584b8f40e05c46b90a41733b98ecea6d"
+	migration004ChecksumHex        = "858319c3638101eec13b035a724b4fd11915f24938841aa4910bdf2b2323f9cb"
+	migration005ChecksumHex        = "14f3aaa958fda18efb926086b22271488f7580e2b2d85a12394a07f74eae79e1"
 )
 
 const migrationLedgerDDL = `
@@ -37,6 +39,12 @@ var migration002SQL string
 //go:embed migrations/003_control_topology_import.sql
 var migration003SQL string
 
+//go:embed migrations/004_control_import_range.sql
+var migration004SQL string
+
+//go:embed migrations/005_control_security_groups_import.sql
+var migration005SQL string
+
 type migration struct {
 	version  int
 	SQL      string
@@ -52,6 +60,8 @@ func supportedMigrations() ([]migration, error) {
 		{1, migration001SQL, migration001ChecksumHex},
 		{2, migration002SQL, migration002ChecksumHex},
 		{3, migration003SQL, migration003ChecksumHex},
+		{4, migration004SQL, migration004ChecksumHex},
+		{5, migration005SQL, migration005ChecksumHex},
 	}
 	migrations := make([]migration, 0, len(definitions))
 	for _, definition := range definitions {

@@ -24,8 +24,8 @@ var (
 )
 
 func TestCurrentControlImportVersionMatchesServerSchema(t *testing.T) {
-	if postgresstore.ImportControlVersion != control.ControlStateVersionNativeDNS {
-		t.Fatalf("PostgreSQL import version=%d, current control schema=%d", postgresstore.ImportControlVersion, control.ControlStateVersionNativeDNS)
+	if postgresstore.ImportControlVersion != control.ControlStateVersionSecurityGroups {
+		t.Fatalf("PostgreSQL import version=%d, current control schema=%d", postgresstore.ImportControlVersion, control.ControlStateVersionSecurityGroups)
 	}
 }
 
@@ -297,7 +297,9 @@ func TestImportBackupValidatesFirstNeverMigratesAndRereads(t *testing.T) {
 	if !exists {
 		t.Fatal("import did not initialize the reconstructible runtime telemetry document")
 	}
-	if state, err := runtimetelemetry.DecodeState(telemetry.Bytes); err != nil || len(state.Records) != 0 {
+	if state, err := runtimetelemetry.DecodeState(telemetry.Bytes); err != nil ||
+		len(state.Records) != 0 ||
+		len(state.MobileRecords) != 0 {
 		t.Fatalf("initialized telemetry state=%#v err=%v", state, err)
 	}
 	result := decodeResult(t, &output)
@@ -338,7 +340,9 @@ func TestInitializeRuntimeTelemetryRequiresImportedPairAndIsIdempotent(t *testin
 	if err := run(context.Background(), args, &output, deps); err != nil {
 		t.Fatalf("idempotent rerun: %v", err)
 	}
-	if state, err := runtimetelemetry.DecodeState(store.documents[postgresstore.DomainRuntimeTelemetry].Bytes); err != nil || len(state.Records) != 0 {
+	if state, err := runtimetelemetry.DecodeState(store.documents[postgresstore.DomainRuntimeTelemetry].Bytes); err != nil ||
+		len(state.Records) != 0 ||
+		len(state.MobileRecords) != 0 {
 		t.Fatalf("rerun telemetry state=%#v err=%v", state, err)
 	}
 

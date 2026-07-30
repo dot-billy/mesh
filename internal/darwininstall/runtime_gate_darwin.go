@@ -111,7 +111,7 @@ func EnsureStateDirectory(path string) (returnErr error) {
 	if err := unix.Lstat(parentPath, &parentVisibleBefore); err != nil {
 		return fmt.Errorf("stat Darwin installer state parent before open: %w", err)
 	}
-	parentFD, err := unix.Open(parentPath, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	parentFD, err := unix.Open(parentPath, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return fmt.Errorf("open Darwin installer state parent: %w", err)
 	}
@@ -151,7 +151,7 @@ func EnsureStateDirectory(path string) (returnErr error) {
 		return errors.Join(cause, removeErr, syncErr)
 	}
 
-	directoryFD, err := unix.Openat(parentFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	directoryFD, err := unix.Openat(parentFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return cleanupCreated(fmt.Errorf("open Darwin installer state directory: %w", err))
 	}
@@ -217,7 +217,7 @@ func openFilesystemRuntimeGateOperations(directoryPath string) (*filesystemRunti
 	if err := unix.Lstat(directoryPath, &visibleBefore); err != nil {
 		return nil, err
 	}
-	fd, err := unix.Open(directoryPath, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Open(directoryPath, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +283,7 @@ func (operations *filesystemRuntimeGateOperations) inspectFile(name string, allo
 	if err := nodeagent.InspectDarwinSensitivePath(path); err != nil {
 		return runtimeGateAbsent, err
 	}
-	fd, err := unix.Openat(operations.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(operations.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return runtimeGateAbsent, err
 	}
@@ -329,7 +329,7 @@ func (operations *filesystemRuntimeGateOperations) inspectFile(name string, allo
 }
 
 func (operations *filesystemRuntimeGateOperations) CreatePending() error {
-	fd, err := unix.Openat(operations.fd, runtimeGateRecoveryName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, uint32(darwinRuntimeGateMode))
+	fd, err := unix.Openat(operations.fd, runtimeGateRecoveryName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY, uint32(darwinRuntimeGateMode))
 	if err != nil {
 		return err
 	}
@@ -370,7 +370,7 @@ func (operations *filesystemRuntimeGateOperations) SyncPending() error {
 	if state != runtimeGateComplete {
 		return errors.New("Darwin runtime-gate recovery file is not complete before sync")
 	}
-	fd, err := unix.Openat(operations.fd, runtimeGateRecoveryName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Openat(operations.fd, runtimeGateRecoveryName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return err
 	}

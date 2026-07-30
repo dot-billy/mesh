@@ -112,7 +112,7 @@ func (layout *ReleaseLayout) resetAndCreateAcceptedStage(installedID, stageName 
 		}
 		return errors.Join(cause, closeErr, unix.Unlinkat(layout.releasesFD, stageName, unix.AT_REMOVEDIR), layout.releases.Sync())
 	}
-	fd, err := unix.Openat(layout.releasesFD, stageName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Openat(layout.releasesFD, stageName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return nil, cleanup(err, nil)
 	}
@@ -164,7 +164,7 @@ func (layout *ReleaseLayout) removeAcceptedStageLocked(stageName string) (return
 	if err := nodeagent.InspectDarwinSensitivePath(path); err != nil {
 		return err
 	}
-	fd, err := unix.Openat(layout.releasesFD, stageName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Openat(layout.releasesFD, stageName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return err
 	}

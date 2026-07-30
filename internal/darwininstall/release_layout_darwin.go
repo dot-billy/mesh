@@ -150,7 +150,7 @@ func ensureDarwinReleaseDirectory(path string) (returnErr error) {
 	if err := unix.Lstat(parentPath, &visibleBefore); err != nil {
 		return err
 	}
-	parentFD, err := unix.Open(parentPath, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	parentFD, err := unix.Open(parentPath, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func ensureDarwinReleaseDirectory(path string) (returnErr error) {
 		}
 		return errors.Join(cause, unix.Unlinkat(parentFD, name, unix.AT_REMOVEDIR), parent.Sync())
 	}
-	fd, err := unix.Openat(parentFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Openat(parentFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return cleanup(err)
 	}
@@ -236,7 +236,7 @@ func openDarwinManagedReleaseDirectory(path string) (*os.File, int, unix.Stat_t,
 	if err := unix.Lstat(path, &visibleBefore); err != nil {
 		return nil, -1, unix.Stat_t{}, err
 	}
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return nil, -1, unix.Stat_t{}, err
 	}
@@ -334,7 +334,7 @@ func (layout *ReleaseLayout) CreateStage(installedID string) (*ReleaseStage, err
 			syncErr := layout.releases.Sync()
 			return errors.Join(cause, closeErr, removeErr, syncErr)
 		}
-		fd, err := unix.Openat(layout.releasesFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+		fd, err := unix.Openat(layout.releasesFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 		if err != nil {
 			return nil, cleanup(err, nil)
 		}
@@ -402,7 +402,7 @@ func (layout *ReleaseLayout) ResumeStage(installedID string, stageName string, i
 		published = true
 	}
 	path := filepath.Join(layout.releasesPath, visibleName)
-	fd, err := unix.Openat(layout.releasesFD, visibleName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, 0)
+	fd, err := unix.Openat(layout.releasesFD, visibleName, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_DIRECTORY|unix.O_NOFOLLOW_ANY, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -678,7 +678,7 @@ func inspectDarwinReleaseFile(rootFD int, basePath string, name string, expectat
 	if err := validateDarwinReleaseFileStat(visibleBefore, expectation); err != nil {
 		return nil, fmt.Errorf("Darwin release file %q: %w", name, err)
 	}
-	fd, err := unix.Openat(rootFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(rootFD, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-.PHONY: build test docs api-docs pages pages-check docs-check api-docs-check docs-change-gate desktop-check desktop-linux-build desktop-linux-package vet security-baseline image-security-baseline observer-security-baseline origin-image-security-baseline linux-package-security-baseline windows-package-security-baseline darwin-package-security-baseline smoke oidc-breakglass-smoke packet-smoke ui-guided-packet-smoke network-dns-smoke native-dns-smoke network-relay-smoke network-ca-rotation-smoke network-firewall-rollout-smoke routed-subnet-smoke route-transfer-smoke route-profile-smoke route-ecmp-smoke ui-guided-linux-package-smoke backup-restore-smoke nebula-observer-smoke nebula-observer-overlay-smoke nebula-public-endpoint-smoke postgres-multi-replica-smoke postgres-load-soak-smoke postgres-max-document-smoke postgres-sync-failover-smoke postgres-ambiguous-commit-smoke postgres-pitr-smoke postgres-roles-tls-smoke linux-install-smoke bootstrap-verifier-smoke windows-bundle-smoke darwin-bundle-smoke darwin-path-security-smoke darwin-native-runtime-smoke helm-chart-smoke release-origin-helm-smoke helm-runtime-smoke helm-kubernetes-smoke compose-smoke release-origin-smoke dev
+.PHONY: build test docs api-docs pages pages-check docs-check api-docs-check docs-change-gate desktop-check desktop-linux-build desktop-linux-package apple-preflight-test apple-testflight-client-test ios-tunnel-testflight apple-source-check vet security-baseline image-security-baseline observer-security-baseline origin-image-security-baseline linux-package-security-baseline windows-package-security-baseline darwin-package-security-baseline smoke oidc-breakglass-smoke packet-smoke ui-guided-packet-smoke network-dns-smoke native-dns-smoke network-relay-smoke network-ca-rotation-smoke network-firewall-rollout-smoke routed-subnet-smoke route-transfer-smoke route-profile-smoke route-ecmp-smoke ui-guided-linux-package-smoke backup-restore-smoke nebula-observer-smoke nebula-observer-overlay-smoke nebula-public-endpoint-smoke postgres-mobile-runtime-smoke postgres-multi-replica-smoke postgres-load-soak-smoke postgres-max-document-smoke postgres-sync-failover-smoke postgres-ambiguous-commit-smoke postgres-pitr-smoke postgres-roles-tls-smoke linux-install-smoke bootstrap-verifier-smoke windows-bundle-smoke darwin-bundle-smoke darwin-path-security-smoke darwin-native-runtime-smoke helm-chart-smoke release-origin-helm-smoke helm-runtime-smoke helm-kubernetes-smoke compose-smoke release-origin-smoke dev
 
 build:
 	mkdir -p bin
@@ -62,6 +62,44 @@ desktop-linux-build: desktop-check
 
 desktop-linux-package: desktop-linux-build
 	./packaging/desktop/linux/build-deb.sh desktop/build/linux/x64/release/bundle
+
+apple-preflight-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/app_store_connect_test.py
+	python3 scripts/apple_build_preflight_test.py
+	python3 scripts/apple_project_test.py
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 scripts/apple_distribution_verify_test.py
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 scripts/apple_local_developer_id_verify_test.py
+	python3 scripts/apple_mobile_framework_receipt_test.py
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 scripts/apple_mobile_framework_security_verify_test.py
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 scripts/apple_ios_admin_security_verify_test.py
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 scripts/apple_ios_tunnel_security_verify_test.py
+	python3 scripts/apple_native_app_verify_test.py
+	python3 scripts/apple_native_test_summary_test.py
+	python3 scripts/apple_protected_app_release_test.py
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/apple_protected_node_package_release_test.py
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/apple_node_package_verify_test.py
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/apple_admin_security_verify_test.py
+	python3 scripts/apple_source_artifact_receipt_test.py
+	python3 scripts/apple_source_matrix_receipt_test.py
+	PYTHONPATH=scripts python3 -m unittest scripts/apple_managed_configuration_verify_test.py
+	python3 scripts/apple_managed_configuration_verify.py
+	python3 scripts/apple_release_matrix_verify_test.py
+	python3 scripts/apple_release_matrix_verify.py
+
+apple-testflight-client-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/app_store_connect_test.py
+
+ios-tunnel-testflight:
+	./scripts/publish-ios-tunnel-testflight.sh publish
+
+apple-source-check: apple-preflight-test
+	umask 077; TMPDIR=/private/var/tmp go test ./cmd/mesh-darwin-codesign-verify ./cmd/mesh-install ./internal/appleapprelease ./internal/darwinbundle ./internal/darwincodesign ./internal/darwininstall ./internal/darwinnativeevidence ./internal/darwinnodepackage ./internal/darwinpackagesecurity ./internal/httpapi/cmd/desktop-e2e-fixture ./internal/nebulaartifact ./packaging/launchd
+	umask 077; TMPDIR=/private/var/tmp go test ./internal/postgresconfig -run '^$$' -count=1
+	umask 077; TMPDIR=/private/var/tmp go test ./cmd/mesh-release -run '^(TestVerifyAppleAppReleaseBindsFinalArchive|TestVerifyPublishedAppleAppAuthenticatesArchiveAndReceipt|TestVerifyDarwinNodePackageReleaseBindsFinalBytesAndPolicies)$$' -count=1
+	umask 077; TMPDIR=/private/var/tmp go test ./cmd/meshctl -run '^(TestInspectEnrollmentRuntime|TestEnrollmentChecksRuntime|TestDarwinNativeChildIdentityAndDetachedCycleContext|TestDarwinNativeChildForcedGroupKillAndReap)$$' -count=1
+	umask 077; TMPDIR=/private/var/tmp go test ./internal/nodeagent -run 'Darwin|Apple' -count=1
+	cd ios-tunnel/engine && go test ./...
+	cd ios-tunnel/engine && go test -run '^TestPinnedNebulaEngineUsesCallbackPacketsOverRealUDP$$' -count=20
 
 vet:
 	go vet ./...
@@ -137,6 +175,11 @@ nebula-observer-overlay-smoke:
 
 nebula-public-endpoint-smoke:
 	./scripts/nebula-public-endpoint-smoke.sh
+
+# Uses one exact loopback-only PostgreSQL 17 container to prove current backup
+# import plus non-empty mobile runtime state across two application pools.
+postgres-mobile-runtime-smoke:
+	./scripts/postgres-mobile-runtime-smoke.sh
 
 # Builds its own clean-room binaries and uses one exact disposable PostgreSQL
 # container; exit 77 means a local prerequisite is unavailable.

@@ -11,6 +11,21 @@ import (
 // reauthenticates the published target and current selection before recording
 // any desired state, and performs no service or symlink mutation itself.
 func (store *InstallerJournalStore) BeginRollback(layout *ReleaseLayout) (returnErr error) {
+	return store.beginRollback(layout, "")
+}
+
+// BeginRollbackTo is the production command boundary for explicit rollback.
+// It repeats the caller's exact previous-release choice while holding the
+// journal lock, preventing a concurrent activation from redirecting rollback
+// to a different persisted previous release.
+func (store *InstallerJournalStore) BeginRollbackTo(layout *ReleaseLayout, expectedInstalledID string) (returnErr error) {
+	if !darwinInstalledIDPattern.MatchString(expectedInstalledID) {
+		return errors.New("Darwin rollback target must be one canonical installed ID")
+	}
+	return store.beginRollback(layout, expectedInstalledID)
+}
+
+func (store *InstallerJournalStore) beginRollback(layout *ReleaseLayout, expectedInstalledID string) (returnErr error) {
 	if store == nil || layout == nil {
 		return errors.New("Darwin rollback requires an installer store and release layout")
 	}
@@ -25,6 +40,9 @@ func (store *InstallerJournalStore) BeginRollback(layout *ReleaseLayout) (return
 	}
 	if found {
 		if journal.Operation == JournalOperationRollback {
+			if expectedInstalledID != "" && journal.InstalledID != expectedInstalledID {
+				return errors.New("active Darwin rollback journal targets a different installed ID")
+			}
 			return nil
 		}
 		return errors.New("an unfinished Darwin activation must be resumed before rollback")
@@ -40,6 +58,9 @@ func (store *InstallerJournalStore) BeginRollback(layout *ReleaseLayout) (return
 	}
 	if !stateFound || state.Active == nil || state.Previous == nil {
 		return errors.New("Darwin rollback requires persisted active and previous releases")
+	}
+	if expectedInstalledID != "" && state.Previous.InstalledID != expectedInstalledID {
+		return errors.New("Darwin rollback target changed before the journal lock was acquired")
 	}
 	if _, err := state.RollbackPrevious(); err != nil {
 		return err

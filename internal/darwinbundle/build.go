@@ -77,6 +77,13 @@ func requireBuildHost(goos string) error {
 }
 
 func buildWithPolicy(options BuildOptions, policy bundlePolicy, contents map[string][]byte) (BuildResult, error) {
+	return buildWithSchema(options, policy, contents, Schema)
+}
+
+func buildWithSchema(options BuildOptions, policy bundlePolicy, contents map[string][]byte, schema string) (BuildResult, error) {
+	if schema != Schema && schema != SignedSchema {
+		return BuildResult{}, errors.New("Darwin bundle build schema is unsupported")
+	}
 	options.Version = strings.TrimSpace(options.Version)
 	options.Commit = strings.TrimSpace(options.Commit)
 	options.Arch = strings.TrimSpace(options.Arch)
@@ -122,7 +129,7 @@ func buildWithPolicy(options BuildOptions, policy bundlePolicy, contents map[str
 		return BuildResult{}, fmt.Errorf("validate bin/meshctl: %w", err)
 	}
 	metadata := Package{
-		Schema: Schema, Version: options.Version, Commit: options.Commit,
+		Schema: schema, Version: options.Version, Commit: options.Commit,
 		BuildTime: buildTimeText, SecurityFloor: options.SecurityFloor,
 		AgentStateReadMin: expectedIdentity.AgentStateReadMin, AgentStateReadMax: expectedIdentity.AgentStateReadMax,
 		AgentStateWriteVersion: expectedIdentity.AgentStateWriteVersion,

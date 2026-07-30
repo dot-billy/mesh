@@ -1,6 +1,9 @@
-// mesh-install is the minimal, release-rooted Linux installation boundary.
-// Keeping it separate from meshctl prevents privileged package operations from
-// inheriting the control-plane and node-lifecycle command surface.
+//go:build linux || darwin
+
+// mesh-install is the minimal, release-rooted native installation boundary for
+// Linux and macOS. Keeping it separate from meshctl prevents privileged package
+// operations from inheriting the control-plane and node-lifecycle command
+// surface.
 package main
 
 import (
@@ -10,20 +13,24 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"mesh/internal/buildinfo"
 	"mesh/internal/installtrust"
-	"mesh/internal/linuxinstall"
 )
-
-var applyOnline = linuxinstall.ApplyOnline
 
 func main() {
 	syscall.Umask(0o077)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := runContext(ctx, os.Args[1:], os.Stdout); err != nil {
+	var err error
+	if filepath.Base(os.Args[0]) == "postinstall" {
+		err = runPlatformPackagePostinstallContext(ctx, os.Args[1:], os.Stdout)
+	} else {
+		err = runContext(ctx, os.Args[1:], os.Stdout)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "mesh-install:", err)
 		os.Exit(1)
 	}
@@ -34,67 +41,20 @@ func run(args []string, output io.Writer) error {
 }
 
 func runContext(ctx context.Context, args []string, output io.Writer) error {
-	if len(args) == 0 {
+	if ctx == nil || output == nil || len(args) == 0 {
 		return usageError()
 	}
-	switch args[0] {
-	case "version":
-		if len(args) != 1 {
-			return usageError()
+	if args[0] == "version" {
+		if len(args) == 1 {
+			return writeVersion(output)
 		}
-		return writeVersion(output)
-	case "install-online":
-		if len(args) != 2 {
-			return usageError()
-		}
-		result, err := applyOnline(ctx, args[1])
-		if err != nil {
-			return err
-		}
-		return writeInstallResult(output, result)
-	case "install":
-		if len(args) != 2 {
-			return usageError()
-		}
-		result, err := linuxinstall.ApplySnapshot(ctx, args[1])
-		if err != nil {
-			return err
-		}
-		return writeInstallResult(output, result)
-	case "recover":
-		if len(args) != 1 {
-			return usageError()
-		}
-		result, err := linuxinstall.RecoverInstallation(ctx)
-		if err != nil {
-			return err
-		}
-		return writeInstallResult(output, result)
-	case "activate":
-		if len(args) != 1 {
-			return usageError()
-		}
-		result, err := linuxinstall.ActivateInstallation(ctx)
-		if err != nil {
-			return err
-		}
-		return writeInstallResult(output, result)
-	case "rollback":
-		if len(args) != 2 {
-			return usageError()
-		}
-		result, err := linuxinstall.RollbackInstallation(ctx, args[1])
-		if err != nil {
-			return err
-		}
-		return writeInstallResult(output, result)
-	default:
 		return usageError()
 	}
+	return runPlatformContext(ctx, args, output)
 }
 
 func usageError() error {
-	return fmt.Errorf("usage: mesh-install version | install-online EXACT_BUNDLE_URL | install ABSOLUTE_SNAPSHOT_DIR | recover | activate | rollback INSTALLED_ID")
+	return fmt.Errorf("usage: %s", platformUsage())
 }
 
 func writeVersion(output io.Writer) error {
@@ -114,6 +74,14 @@ func writeVersion(output io.Writer) error {
 		initialRootSHA = bootstrap.InitialRootSHA256
 		legacyPolicySHA = bootstrap.LegacyPolicySHA256
 	}
+	darwinCodesignPolicySHA, err := platformCodeSigningPolicySHA256()
+	if err != nil {
+		return err
+	}
+	darwinNodePackagePolicySHA, err := platformNodePackagePolicySHA256()
+	if err != nil {
+		return err
+	}
 	encoder := json.NewEncoder(output)
 	encoder.SetEscapeHTML(false)
 	return encoder.Encode(struct {
@@ -121,14 +89,12 @@ func writeVersion(output io.Writer) error {
 		InstallerTrustBootstrapSHA256 string `json:"installer_trust_bootstrap_sha256"`
 		InstallerInitialRootSHA256    string `json:"installer_initial_root_sha256"`
 		InstallerLegacyPolicySHA256   string `json:"installer_legacy_policy_sha256"`
+		DarwinCodeSigningPolicySHA256 string `json:"darwin_code_signing_policy_sha256"`
+		DarwinNodePackagePolicySHA256 string `json:"darwin_node_package_policy_sha256"`
 	}{
 		Info: info, InstallerTrustBootstrapSHA256: bootstrapSHA,
 		InstallerInitialRootSHA256: initialRootSHA, InstallerLegacyPolicySHA256: legacyPolicySHA,
+		DarwinCodeSigningPolicySHA256: darwinCodesignPolicySHA,
+		DarwinNodePackagePolicySHA256: darwinNodePackagePolicySHA,
 	})
-}
-
-func writeInstallResult(output io.Writer, result linuxinstall.InstallResult) error {
-	encoder := json.NewEncoder(output)
-	encoder.SetEscapeHTML(false)
-	return encoder.Encode(result)
 }

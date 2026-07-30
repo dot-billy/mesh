@@ -50,9 +50,9 @@ class AccessScreen extends StatelessWidget {
             ? 'Sign out this session?'
             : 'Revoke session for ${session.principal}?',
         detail: session.current
-            ? 'This web or desktop session will end immediately. You will '
+            ? 'This web or Mesh Admin session will end immediately. You will '
                   'need to authenticate again.'
-            : 'The selected web or desktop session will lose access '
+            : 'The selected web or Mesh Admin session will lose access '
                   'immediately.',
         confirmLabel: session.current ? 'Sign out' : 'Revoke session',
         destructive: true,
@@ -80,7 +80,7 @@ class AccessScreen extends StatelessWidget {
           Text('Access', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 6),
           const Text(
-            'Manage web and desktop sessions and one-use recovery access.',
+            'Manage web and Mesh Admin sessions and one-use recovery access.',
           ),
           if (model.recoveryInventory case final recovery?) ...[
             const SizedBox(height: 20),
@@ -142,7 +142,7 @@ class AccessScreen extends StatelessWidget {
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(20),
-                child: Text('No web or desktop sessions are listed.'),
+                child: Text('No web or Mesh Admin sessions are listed.'),
               ),
             )
           else

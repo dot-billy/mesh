@@ -129,7 +129,7 @@ This gate covers only the Linux amd64 control-plane image built from
 [Linux observer runtime](observer-security.md), and
 [final Linux node packages](linux-package-security.md), plus the non-installing
 [Windows staging bundles](windows-package-security.md) and
-[Darwin staging bundles](darwin-package-security.md), have separate exact
+[final signed Darwin bundles](darwin-package-security.md), have separate exact
 gates and do not inherit this result. Native macOS and Windows package
 and host state, other image architectures, registry objects, deployment stores,
 installed hosts, and running containers remain separate boundaries. Image signing, SBOM

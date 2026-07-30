@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>io.rw0.mesh.admin</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>MeshManagedSchema</key>
+								<string>mesh-apple-managed-configuration-v1</string>
+								<key>ControlPlaneOrigin</key>
+								<string>https://mesh.example.com</string>
+								<key>AllowOriginChanges</key>
+								<false/>
+								<key>ReleaseChannel</key>
+								<string>stable</string>
+								<key>UpdateRing</key>
+								<string>pilot</string>
+								<key>ShowLocalStatus</key>
+								<false/>
+								<key>NotificationsEnabled</key>
+								<true/>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadIdentifier</key>
+			<string>io.rw0.mesh.admin.managed-preferences</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>3CE9E6A4-2472-4C24-A93F-438F22BD0C82</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Unsigned Mesh Admin managed-configuration source example.</string>
+	<key>PayloadDisplayName</key>
+	<string>Mesh Admin managed settings (unsigned source example)</string>
+	<key>PayloadIdentifier</key>
+	<string>io.rw0.mesh.admin.configuration-source-example</string>
+	<key>PayloadOrganization</key>
+	<string>REPLACE WITH APPROVED ORGANIZATION</string>
+	<key>PayloadRemovalDisallowed</key>
+	<false/>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>5B6F29BD-E94D-4FB4-8F52-A1FD2FF60905</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

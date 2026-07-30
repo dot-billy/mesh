@@ -174,6 +174,9 @@ func BuildMaximumDocumentFixture(ctx context.Context, options MaximumDocumentFix
 	if err := service.EnsureFirewallScopeSchema(); err != nil {
 		return MaximumDocumentFixture{}, fmt.Errorf("migrate fixture firewall scope schema: %w", err)
 	}
+	if err := service.EnsureSecurityGroupSchema(); err != nil {
+		return MaximumDocumentFixture{}, fmt.Errorf("migrate fixture security group schema: %w", err)
+	}
 	network, err := service.CreateNetwork(ctx, CreateNetworkInput{
 		Name: maximumDocumentFixtureNetworkName, CIDR: maximumDocumentFixtureNetworkCIDR,
 		CertificateTTL: 8760,

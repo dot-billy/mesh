@@ -78,7 +78,7 @@ final class LifecyclePoller {
   bool get isRunning => _started && !_disposed;
   bool get isPolling => _polling;
 
-  void start() {
+  void start({bool pollImmediately = true}) {
     if (_disposed) {
       throw StateError('LifecyclePoller has been disposed.');
     }
@@ -88,7 +88,11 @@ final class LifecyclePoller {
     _started = true;
     _subscription = lifecycle.changes.listen(_lifecycleChanged);
     if (_isActive(lifecycle.currentState)) {
-      unawaited(_run());
+      if (pollImmediately) {
+        unawaited(_run());
+      } else {
+        _schedule();
+      }
     }
   }
 
@@ -139,6 +143,11 @@ final class LifecyclePoller {
       unawaited(_run());
       return;
     }
+    _timer?.cancel();
+    _schedule();
+  }
+
+  void _schedule() {
     _timer?.cancel();
     _timer = _timerFactory(interval, () {
       _timer = null;

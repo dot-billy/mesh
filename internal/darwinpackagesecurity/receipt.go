@@ -1,5 +1,5 @@
 // Package darwinpackagesecurity parses the canonical local security evidence
-// produced for one exact Darwin node staging-bundle candidate.
+// produced for one exact final signed Darwin node-bundle candidate.
 package darwinpackagesecurity
 
 import (
@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	Schema         = "mesh-darwin-package-security-receipt-v1"
+	Schema         = "mesh-darwin-package-security-receipt-v2"
 	MaxReceiptSize = 128 << 10
 	emptyReportSHA = "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
 	maxReceiptAge  = 24 * time.Hour
@@ -160,7 +160,7 @@ func (receipt Receipt) MatchArtifact(now time.Time, arch, version string, securi
 }
 
 func validateReceipt(receipt Receipt) error {
-	if receipt.Schema != Schema || receipt.Candidate.Schema != "mesh-darwin-node-staging-bundle-v1" {
+	if receipt.Schema != Schema || receipt.Candidate.Schema != "mesh-darwin-node-bundle-v2" {
 		return errors.New("unsupported Darwin package security receipt schema")
 	}
 	arch := receipt.Candidate.Architecture

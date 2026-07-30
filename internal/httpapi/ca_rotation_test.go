@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,9 +15,7 @@ import (
 )
 
 func TestNetworkCARotationEndpointsRequireExactAuthenticatedLifecycle(t *testing.T) {
-	if _, err := exec.LookPath("nebula-cert"); err != nil {
-		t.Skip("nebula-cert is not installed")
-	}
+	nebulaCert := pinnedNebulaCertForTest(t)
 	store, err := control.OpenStore(filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +26,7 @@ func TestNetworkCARotationEndpointsRequireExactAuthenticatedLifecycle(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := control.NewService(store, box, control.NebulaIssuer{})
+	service := control.NewService(store, box, control.NebulaIssuer{Binary: nebulaCert})
 	masterVerifier, err := control.DeriveMasterKeyVerifier(master)
 	if err != nil {
 		t.Fatal(err)

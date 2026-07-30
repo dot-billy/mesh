@@ -56,7 +56,7 @@ void main() {
     );
 
     test(
-      'creates and reissues pending enrollment without exposing its secret',
+      'creates, reissues, and cancels pending enrollment with strict receipts',
       () async {
         final transport = _RecordingTransport()
           ..respond(
@@ -69,6 +69,23 @@ void main() {
             (_) => JsonApiResponse(
               statusCode: 200,
               body: _enrollment(token: 'E' * 43),
+            ),
+          )
+          ..respond(
+            (_) => const JsonApiResponse(
+              statusCode: 200,
+              body: <String, Object?>{
+                'node_id': 'node_1',
+                'network_id': 'network_1',
+                'name': 'gateway-1',
+                'ip': '10.80.0.2',
+                'role': 'member',
+                'cancelled_at': '2026-07-23T12:05:00Z',
+                'enrollment_records_invalidated': 1,
+                'relay_assignment_removed': false,
+                'routed_subnet_reservations_released': 2,
+                'config_revision': 7,
+              },
             ),
           );
         final api = _api(transport);
@@ -101,6 +118,24 @@ void main() {
             method: 'POST',
             path: '/api/v1/nodes/node_1/enrollment/reissue',
             body: null,
+          ),
+        );
+
+        final cancelled = await api.cancelPendingEnrollment(
+          networkId: 'network_1',
+          nodeId: 'node_1',
+          expectedConfigRevision: 7,
+          confirmationName: 'gateway-1',
+        );
+        expect(cancelled.enrollmentRecordsInvalidated, 1);
+        expect(cancelled.routedSubnetReservationsReleased, 2);
+        expect(cancelled.configRevision, 7);
+        expect(
+          transport.calls.last,
+          _matchesCall(
+            method: 'POST',
+            path: '/api/v1/nodes/node_1/enrollment/cancel',
+            body: const <String, Object?>{'confirmation_name': 'gateway-1'},
           ),
         );
       },

@@ -15,12 +15,13 @@ staging path reuses the authenticated patched source and security-module floor
 but compiles the observer endpoint as a reviewed no-I/O stub, binds exact PE
 outputs through a separate layered Windows lock, and applies its own [final
 staging-bundle gate](windows-package-security.md). That is not Windows runtime
-telemetry or native package coverage. The non-installing Darwin staging path
-uses the same authenticated source and no-I/O observer boundary, binds exact
-thin Mach-O outputs through its own layered lock, and applies the separate
-[Darwin staging-bundle gate](darwin-package-security.md). That is not macOS
-runtime telemetry, installation, launchd activation, codesigning, or
-notarization coverage.
+telemetry or native package coverage. The Darwin staging path uses the same
+authenticated source and no-I/O observer boundary and binds exact thin Mach-O
+outputs through its own layered lock. Protected signing derives final bundle
+v2 from those exact members, and the separate [Darwin final signed-bundle
+gate](darwin-package-security.md) scans the result. That is not macOS runtime
+telemetry, installation, launchd activation, notarization, or installed-host
+coverage.
 
 ## Run the gate
 

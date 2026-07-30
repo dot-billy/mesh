@@ -23,6 +23,13 @@
     ],
     "role_bindings": [
       {
+        "role": "member",
+        "selector": {
+          "kind": "group",
+          "value": "mesh-members"
+        }
+      },
+      {
         "role": "operator",
         "selector": {
           "kind": "group",

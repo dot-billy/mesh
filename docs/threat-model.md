@@ -7,6 +7,14 @@ managed node agent, release and installer path, JSON and PostgreSQL persistence,
 runtime-observation plane, and recovery artifacts in this repository. It is a
 design and verification baseline, not an external assessment.
 
+The Apple product boundaries, platform-specific threats, trust chains, secret
+custody, bridge envelope, lifecycle vocabulary, and independent release gates
+are frozen separately in the
+[Apple platform security and lifecycle contract](apple-platform-security.md).
+That contract authorizes implementation work but does not claim any supported,
+signed, notarized, native-host, real-device, packet, or distributed Apple
+artifact.
+
 Mesh must prevent an unauthenticated party, ordinary Nebula member, compromised
 network path, stale client, or compromised release origin from silently gaining
 certificate authority, changing signed node policy, reviving a revoked identity,
@@ -90,7 +98,9 @@ account on a managed node. Those are explicit authority boundaries.
 | TM-13 | Parser or resource exhaustion | Closed JSON schemas, duplicate/unknown-field rejection, document and collection limits, bounded concurrency/deadlines, and pre-authentication budgets | Internet-facing HA still requires a trusted edge with distributed limits. Sustained load, receipt retention, and production observability remain unproved. |
 | TM-14 | Tenant or privilege-boundary confusion | Network-scoped cryptographic authorities and globally validated object references | Mesh is currently one administrative trust domain. Organizations, tenant isolation, scoped service accounts, and approval workflows are not implemented. |
 | TM-15 | Backup rollback, loss, or disclosure | Authenticated encrypted archives, separate backup key, create-only publication, restore fencing, and exact verification | Archive plus backup key grants full authority; self-consistent old recovery points require an independently protected monotonic catalog. |
-| TM-16 | Secret or vulnerable dependency enters a release | Patched minimum Go toolchain, module checksum verification, tests/vet, reachable-code `govulncheck`, redacted Gitleaks source scanning, bound Syft/SPDX/Grype/Gitleaks gates over the exact Linux amd64 control-plane and release-origin images, both locked Linux observer architectures, each final Linux bundle, and each exact non-installing Windows and Darwin staging bundle; release authoring requires one canonical receipt matching every Linux, Windows, and Darwin artifact, while the v2 origin runtime receipt requires the scanned local Docker identity | Scans are point-in-time. Native macOS installation, launchd activation, extended ACLs, codesigning/notarization, and installed-host state; Windows installer, DACL, service, Authenticode, and installed-host state; other installed hosts; Git history; registry/deployment/runtime stores; external assessment; continuous admission/attestation; and rapid patch operations remain separate obligations. |
+| TM-16 | Secret or vulnerable dependency enters a release | Patched minimum Go toolchain, module checksum verification, tests/vet, reachable-code `govulncheck`, redacted Gitleaks source scanning, bound Syft/SPDX/Grype/Gitleaks gates over the exact Linux amd64 control-plane and release-origin images, both locked Linux observer architectures, each final Linux bundle, each final signed Windows bundle, and each final signed Darwin bundle; release authoring requires one canonical package receipt per artifact plus the native Authenticode or code-signing receipt for each Windows or Darwin artifact, while the v2 origin runtime receipt requires the scanned local Docker identity | Scans are point-in-time. Native macOS installation, launchd activation, extended ACLs, protected signing/notarization, and installed-host state; Windows installer, DACL, service, Authenticode, and installed-host state; other installed hosts; Git history; registry/deployment/runtime stores; external assessment; continuous admission/attestation; and rapid patch operations remain separate obligations. |
+| TM-17 | Apple operator, node, and tunnel authority becomes confused | Four separately gated products; operator/node installation separation; sandboxed clients; root-managed macOS node; Packet Tunnel extension boundary; explicit evidence vocabulary | Every Apple support claim remains closed until its matching clean-host, device, packet, signing, notarization, distribution, and lifecycle evidence passes. |
+| TM-18 | Apple lifecycle or secret leakage becomes false authority | Exact-origin Keychain custody; extension-only current/pending agent credentials and tunnel key; token-scoped preflight before local credential creation or token consumption; same-key certificate renewal; crash-recoverable hash-only credential rotation; bounded config/certificate/engine-bound mobile evidence; exact-node deletion-only local removal; no node credential in Flutter, VPN preferences, App Group, logs, or diagnostics; explicit suspended/stale/error/quarantine states | Host root or an entitled compromised process can deny service or spoof bounded local observations; Mesh does not claim remote attestation or guaranteed iOS scheduling. Generic credential rejection cannot prove revocation. Source lifecycle and removal still require security approval plus physical Keychain, Network Extension, convergence, cutoff, and deletion proof. |
 
 ## Security invariants
 
@@ -120,7 +130,10 @@ module, authentication, cryptography, parser, storage, release, or secret-flow
 change. Run the relevant real lifecycle and platform smoke gates listed in the
 [roadmap](roadmap.md) for changes to their boundaries.
 
-Re-review this model when adding a platform, tenant, administrator role,
+Re-review this model and the Apple contract when adding an Apple target,
+entitlement, bridge operation, App Group field, Keychain access group,
+distribution channel, mobile evidence field, or diagnostic field. Re-review
+this model when adding any other platform, tenant, administrator role,
 external signer, HSM/KMS, recursive resolver, automatic telemetry action,
 database authority, ingress, release channel, backup authority, or new data in
 an API projection. Any new `gitleaks:allow` exception requires line-level human

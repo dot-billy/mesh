@@ -94,10 +94,13 @@ func TestFleetHealthDerivesDeterministicSecretFreeSnapshotWithoutWrites(t *testi
 		t.Fatalf("node order = %v, want %v", gotOrder, wantOrder)
 	}
 	awaitingHealth := fleetProjectedNode(t, report, awaiting.ID)
-	if awaitingHealth.Phase != "setup" || awaitingHealth.Severity != FleetHealthHealthy || len(awaitingHealth.Alerts) != 0 {
+	if awaitingHealth.Phase != "setup" || awaitingHealth.Severity != FleetHealthHealthy || awaitingHealth.RuntimeState != FleetRuntimeUnknown || len(awaitingHealth.Alerts) != 0 {
 		t.Fatalf("fresh enrolled node was not setup grace: %#v", awaitingHealth)
 	}
 	offlineHealth := fleetProjectedNode(t, report, offline.ID)
+	if offlineHealth.RuntimeState != FleetRuntimeUnknown {
+		t.Fatalf("offline heartbeat exposed historical runtime telemetry as current: %#v", offlineHealth)
+	}
 	wantCodes := []string{
 		"agent_degraded", "certificate_expired", "certificate_fingerprint_drift", "heartbeat_offline", "nebula_stopped",
 		"agent_error", "certificate_generation_drift", "config_drift", "credential_expiring",
@@ -108,6 +111,10 @@ func TestFleetHealthDerivesDeterministicSecretFreeSnapshotWithoutWrites(t *testi
 	nebulaStopped, ok := fleetFindAlert(offlineHealth.Alerts, "nebula_stopped")
 	if !ok || nebulaStopped.Evidence.NebulaRunning == nil || *nebulaStopped.Evidence.NebulaRunning {
 		t.Fatalf("nebula stopped evidence did not preserve an explicit false value: %#v", nebulaStopped)
+	}
+	healthyHealth := fleetProjectedNode(t, report, firstLighthouse.ID)
+	if healthyHealth.RuntimeState != FleetRuntimeRunning {
+		t.Fatalf("fresh running runtime state = %q, want %q", healthyHealth.RuntimeState, FleetRuntimeRunning)
 	}
 
 	encoded, err := json.Marshal(report)
@@ -133,6 +140,38 @@ func TestFleetHealthDerivesDeterministicSecretFreeSnapshotWithoutWrites(t *testi
 	}
 	if string(encoded) != string(repeatedJSON) || backend.viewCalls != 2 || backend.updateCalls != 0 {
 		t.Fatalf("projection was not deterministic/read-only: first=%s second=%s views=%d updates=%d", encoded, repeatedJSON, backend.viewCalls, backend.updateCalls)
+	}
+}
+
+func TestFleetHealthTreatsStaleRunningTelemetryAsHistorical(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 19, 20, 0, 0, 0, time.UTC)
+	network := Network{ID: "network-stale-runtime", Name: "stale-runtime", ConfigRevision: 3, ConfigUpdatedAt: now.Add(-time.Hour)}
+	node := fleetHealthyNode("node-stale-runtime", "stale-runtime-member", "member", network, now)
+	stale := now.Add(-fleetHeartbeatOfflineAfter)
+	node.LastSeenAt = &stale
+	node.NebulaRunning = true
+	backend := &fakeStateStore{state: State{Networks: []Network{network}, Nodes: []Node{node}}}
+	fleetFillDesiredDigests(&backend.state, now)
+	service, err := NewServiceWithStateStore(backend, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return now }
+
+	report, err := service.FleetHealth(network.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected := fleetProjectedNode(t, report, node.ID)
+	if projected.RuntimeState != FleetRuntimeUnknown || !projected.NebulaRunning {
+		t.Fatalf("stale running telemetry was presented as current: %#v", projected)
+	}
+	if projected.Operational || projected.RolloutCurrent {
+		t.Fatalf("stale running telemetry passed health or rollout gates: %#v", projected)
+	}
+	if _, ok := fleetFindAlert(projected.Alerts, "heartbeat_offline"); !ok {
+		t.Fatalf("stale running telemetry omitted heartbeat_offline: %#v", projected.Alerts)
 	}
 }
 

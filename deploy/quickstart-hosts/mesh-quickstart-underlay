@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+
+CONFIG_PATH=/etc/mesh-quickstart-underlay.conf
+
+if [ ! -r "${CONFIG_PATH}" ]; then
+	echo "missing ${CONFIG_PATH}" >&2
+	exit 1
+fi
+
+# shellcheck disable=SC1091
+. "${CONFIG_PATH}"
+
+case "${MESH_UNDERLAY_ROLE:-}" in
+	lighthouse)
+		exec /usr/sbin/ip address replace 192.0.2.1/32 dev lo
+		;;
+	member)
+		# The lighthouse owns 192.0.2.1/32 on its loopback interface and
+		# answers ARP for it on this pair's isolated bridge. Keeping the route
+		# on-link preserves the member's real source address for Nebula's
+		# return handshake.
+		exec /usr/sbin/ip route replace 192.0.2.1/32 dev eth0
+		;;
+	*)
+		echo "invalid underlay role" >&2
+		exit 1
+		;;
+esac

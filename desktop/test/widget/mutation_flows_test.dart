@@ -94,64 +94,92 @@ void main() {
     );
   });
 
-  testWidgets('node creation and reissue use typed confirmation flows', (
-    tester,
-  ) async {
-    final callbacks = RecordingCallbacks();
-    final network = networkModel();
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    await tester.pumpWidget(
-      _host(
-        NodesScreen(
-          networkId: network.network.id,
-          nodes: network.nodes,
-          role: MeshRole.admin,
-          mutationCallbacks: callbacks,
-          onSelectNode: (_) {},
+  testWidgets(
+    'node creation, reissue, and cancellation use typed confirmation flows',
+    (tester) async {
+      final callbacks = RecordingCallbacks();
+      final network = networkModel();
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      await tester.pumpWidget(
+        _host(
+          NodesScreen(
+            networkId: network.network.id,
+            nodes: network.nodes,
+            role: MeshRole.admin,
+            permissions: MeshRole.admin.permissions,
+            mutationCallbacks: callbacks,
+            onSelectNode: (_) {},
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.tap(find.byKey(const Key('new-node-button')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('create-node-name')),
-      'worker-02',
-    );
-    await tester.enterText(
-      find.byKey(const Key('create-node-site')),
-      'nyc-office',
-    );
-    await tester.enterText(
-      find.byKey(const Key('create-node-failure-domain')),
-      'nyc-rack-8',
-    );
-    await tester.enterText(
-      find.byKey(const Key('create-node-groups')),
-      'servers, production, servers',
-    );
-    await tester.tap(find.byKey(const Key('submit-create-node')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('new-node-button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('create-node-name')),
+        'worker-02',
+      );
+      await tester.enterText(
+        find.byKey(const Key('create-node-site')),
+        'nyc-office',
+      );
+      await tester.enterText(
+        find.byKey(const Key('create-node-failure-domain')),
+        'nyc-rack-8',
+      );
+      await tester.enterText(
+        find.byKey(const Key('create-node-groups')),
+        'servers, production, servers',
+      );
+      await tester.tap(find.byKey(const Key('submit-create-node')));
+      await tester.pumpAndSettle();
 
-    expect(callbacks.createdEnrollments, hasLength(1));
-    final enrollment = callbacks.createdEnrollments.single;
-    expect(enrollment.networkId, 'network_1');
-    expect(enrollment.name, 'worker-02');
-    expect(enrollment.role, MeshNodeRole.member);
-    expect(enrollment.groups, ['servers', 'production']);
-    expect(enrollment.publicEndpoint, isNull);
+      expect(callbacks.createdEnrollments, hasLength(1));
+      final enrollment = callbacks.createdEnrollments.single;
+      expect(enrollment.networkId, 'network_1');
+      expect(enrollment.name, 'worker-02');
+      expect(enrollment.role, MeshNodeRole.member);
+      expect(enrollment.groups, ['servers', 'production']);
+      expect(enrollment.publicEndpoint, isNull);
 
-    await tester.tap(find.text('app-server-01'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('reissue-enrollment-button')));
-    await tester.pumpAndSettle();
-    expect(find.text('Reissue enrollment for app-server-01?'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('confirm-mutation')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('app-server-01'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('reissue-enrollment-button')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Reissue enrollment for app-server-01?'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('confirm-mutation')));
+      await tester.pumpAndSettle();
 
-    expect(callbacks.reissuedEnrollments, hasLength(1));
-    expect(callbacks.reissuedEnrollments.single.nodeId, 'node_2');
-  });
+      expect(callbacks.reissuedEnrollments, hasLength(1));
+      expect(callbacks.reissuedEnrollments.single.nodeId, 'node_2');
+
+      await tester.tap(
+        find.byKey(const Key('cancel-pending-enrollment-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Cancel enrollment for app-server-01?'), findsOneWidget);
+      final cancel = find.byKey(const Key('confirm-exact-name-mutation'));
+      expect(tester.widget<FilledButton>(cancel).onPressed, isNull);
+      await tester.enterText(
+        find.byKey(const Key('exact-name-confirmation')),
+        'app-server-01',
+      );
+      await tester.pump();
+      expect(tester.widget<FilledButton>(cancel).onPressed, isNotNull);
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+
+      expect(callbacks.cancelledEnrollments, hasLength(1));
+      expect(callbacks.cancelledEnrollments.single.nodeId, 'node_2');
+      expect(
+        callbacks.cancelledEnrollments.single.confirmedName,
+        'app-server-01',
+      );
+    },
+  );
 
   testWidgets('lighthouse enrollment requires and submits a public endpoint', (
     tester,
@@ -165,6 +193,7 @@ void main() {
           networkId: network.network.id,
           nodes: network.nodes,
           role: MeshRole.admin,
+          permissions: MeshRole.admin.permissions,
           mutationCallbacks: callbacks,
           onSelectNode: (_) {},
         ),
@@ -225,6 +254,7 @@ void main() {
             networkId: network.network.id,
             nodes: network.nodes,
             role: MeshRole.admin,
+            permissions: MeshRole.admin.permissions,
             mutationCallbacks: callbacks,
             onSelectNode: (_) {},
           ),
@@ -265,7 +295,7 @@ void main() {
     },
   );
 
-  testWidgets('session wording and revocation cover web and desktop', (
+  testWidgets('session wording and revocation cover web and Mesh Admin', (
     tester,
   ) async {
     final callbacks = RecordingCallbacks();
@@ -282,7 +312,9 @@ void main() {
     );
 
     expect(
-      find.text('Manage web and desktop sessions and one-use recovery access.'),
+      find.text(
+        'Manage web and Mesh Admin sessions and one-use recovery access.',
+      ),
       findsOneWidget,
     );
     expect(find.text('Authenticated sessions'), findsOneWidget);

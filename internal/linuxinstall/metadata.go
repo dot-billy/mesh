@@ -235,6 +235,19 @@ func openMetadataSnapshotAtRoot(root *os.Root, expectedUID uint32, hooks metadat
 		if err != nil || !matchesSourceIdentity(record.identity, current) {
 			return MetadataSnapshot{}, fmt.Errorf("install snapshot source %q changed while assembling metadata", record.name)
 		}
+		if record.raw != nil {
+			revalidated, err := readSnapshotFile(
+				root,
+				int(directory.Fd()),
+				record.name,
+				int64(len(record.raw)),
+				expectedUID,
+				metadataSnapshotHooks{},
+			)
+			if err != nil || revalidated.identity != record.identity || !bytes.Equal(revalidated.raw, record.raw) {
+				return MetadataSnapshot{}, fmt.Errorf("install snapshot source %q changed exact content while assembling metadata", record.name)
+			}
+		}
 	}
 	rootAfter, statErr := root.Stat(".")
 	pathAfter, pathErr := os.Lstat(rootPath)
@@ -475,6 +488,23 @@ func openSnapshotFile(root *os.Root, directoryFD int, name string, maximum int64
 	pathAfter, pathErr := root.Lstat(name)
 	if statErr != nil || pathErr != nil || !matchesSourceIdentity(beforeIdentity, after) || !matchesSourceIdentity(beforeIdentity, pathAfter) {
 		return sourceSnapshot{}, errors.New("source identity, size, owner, mode, or timestamps changed while snapshotting")
+	}
+	if readContent {
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return sourceSnapshot{}, fmt.Errorf("seek source for independent content revalidation: %w", err)
+		}
+		revalidated, err := io.ReadAll(io.LimitReader(file, maximum+1))
+		if err != nil {
+			return sourceSnapshot{}, fmt.Errorf("independently re-read source: %w", err)
+		}
+		if !bytes.Equal(revalidated, raw) {
+			return sourceSnapshot{}, errors.New("source exact content changed while snapshotting")
+		}
+		after, statErr = file.Stat()
+		pathAfter, pathErr = root.Lstat(name)
+		if statErr != nil || pathErr != nil || !matchesSourceIdentity(beforeIdentity, after) || !matchesSourceIdentity(beforeIdentity, pathAfter) {
+			return sourceSnapshot{}, errors.New("source identity, size, owner, mode, or timestamps changed during independent content revalidation")
+		}
 	}
 	return sourceSnapshot{name: name, raw: raw, identity: beforeIdentity}, nil
 }

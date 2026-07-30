@@ -401,6 +401,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "mobile_runtime_record_removed": {
+            "type": "boolean"
+          },
           "name": {
             "type": "string"
           },
@@ -440,6 +443,7 @@
           "config_revision",
           "enrollment_records_removed",
           "ip",
+          "mobile_runtime_record_removed",
           "name",
           "network_id",
           "node_id",
@@ -772,6 +776,21 @@
         ],
         "type": "object"
       },
+      "CreateNetworkSecurityGroupInput": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "CreateNodeInput": {
         "additionalProperties": false,
         "properties": {
@@ -848,6 +867,18 @@
         "required": [
           "expires_at",
           "generation"
+        ],
+        "type": "object"
+      },
+      "DeleteNetworkSecurityGroupInput": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation_name"
         ],
         "type": "object"
       },
@@ -2092,6 +2123,9 @@
             },
             "type": "array"
           },
+          "runtime_state": {
+            "type": "string"
+          },
           "severity": {
             "type": "string"
           },
@@ -2117,6 +2151,7 @@
           "role",
           "rollout_current",
           "routed_subnets",
+          "runtime_state",
           "severity",
           "site"
         ],
@@ -2483,6 +2518,309 @@
         ],
         "type": "object"
       },
+      "MobileRuntimeProjection": {
+        "additionalProperties": false,
+        "properties": {
+          "age_seconds": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "certificate_generation": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "client_state": {
+            "enum": [
+              "tunnel-starting",
+              "tunnel-running",
+              "tunnel-stopping",
+              "stopped",
+              "suspended",
+              "quarantined",
+              "extension-error"
+            ],
+            "type": "string"
+          },
+          "config_revision": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "engine_identity": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "error_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "type": "string"
+          },
+          "fresh": {
+            "type": "boolean"
+          },
+          "instance_generation": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "packets_read": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "packets_written": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "received_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "runtime_uptime_ms": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "schema": {
+            "const": "mesh-mobile-runtime-projection-v1",
+            "type": "string"
+          },
+          "sequence": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "server_state": {
+            "enum": [
+              "tunnel-starting",
+              "tunnel-running",
+              "tunnel-stopping",
+              "stopped",
+              "suspended",
+              "quarantined",
+              "extension-error",
+              "stale",
+              "revoked"
+            ],
+            "type": "string"
+          },
+          "stale_after": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "age_seconds",
+          "certificate_generation",
+          "client_state",
+          "config_revision",
+          "engine_identity",
+          "fresh",
+          "instance_generation",
+          "node_id",
+          "received_at",
+          "runtime_uptime_ms",
+          "schema",
+          "sequence",
+          "server_state",
+          "stale_after"
+        ],
+        "type": "object"
+      },
+      "MobileruntimeReportInput": {
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "not": {
+              "required": [
+                "error_code"
+              ]
+            },
+            "properties": {
+              "state": {
+                "const": "tunnel-running"
+              }
+            },
+            "required": [
+              "packets_read",
+              "packets_written"
+            ]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "packets_read"
+                  ]
+                },
+                {
+                  "required": [
+                    "packets_written"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "state": {
+                "enum": [
+                  "quarantined",
+                  "extension-error"
+                ]
+              }
+            },
+            "required": [
+              "error_code"
+            ]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "packets_read"
+                  ]
+                },
+                {
+                  "required": [
+                    "packets_written"
+                  ]
+                },
+                {
+                  "required": [
+                    "error_code"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "state": {
+                "enum": [
+                  "tunnel-starting",
+                  "tunnel-stopping",
+                  "stopped",
+                  "suspended"
+                ]
+              }
+            }
+          }
+        ],
+        "properties": {
+          "certificate_fingerprint": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "certificate_generation": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "config_revision": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "config_sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "engine_identity": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "error_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "type": "string"
+          },
+          "instance_generation": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "packets_read": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "packets_written": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "runtime_uptime_ms": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "tunnel-starting",
+              "tunnel-running",
+              "tunnel-stopping",
+              "stopped",
+              "suspended",
+              "quarantined",
+              "extension-error"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "const": 1,
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "certificate_fingerprint",
+          "certificate_generation",
+          "config_revision",
+          "config_sha256",
+          "engine_identity",
+          "instance_generation",
+          "runtime_uptime_ms",
+          "sequence",
+          "state",
+          "version"
+        ],
+        "type": "object"
+      },
       "Network": {
         "additionalProperties": false,
         "properties": {
@@ -2547,6 +2885,12 @@
           },
           "route_transfer": {
             "$ref": "#/components/schemas/NetworkRouteTransfer"
+          },
+          "security_groups": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkSecurityGroup"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -3465,6 +3809,104 @@
         ],
         "type": "object"
       },
+      "NetworkSecurityGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "name",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "NetworkSecurityGroupSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "active_members": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "member_node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "peer_rule_references": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "pending_members": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "target_rule_references": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "active_members",
+          "builtin",
+          "member_node_ids",
+          "name",
+          "peer_rule_references",
+          "pending_members",
+          "target_rule_references"
+        ],
+        "type": "object"
+      },
+      "NetworkSecurityGroupsDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkSecurityGroupSummary"
+            },
+            "type": "array"
+          },
+          "network_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "groups",
+          "network_id"
+        ],
+        "type": "object"
+      },
       "NetworkSummary": {
         "additionalProperties": false,
         "properties": {
@@ -3537,6 +3979,12 @@
           },
           "route_transfer": {
             "$ref": "#/components/schemas/NetworkRouteTransfer"
+          },
+          "security_groups": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkSecurityGroup"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -4636,6 +5084,10 @@
           "encrypted_key_material_removed": {
             "type": "boolean"
           },
+          "mobile_runtime_records_removed": {
+            "format": "int32",
+            "type": "integer"
+          },
           "name": {
             "type": "string"
           },
@@ -4675,6 +5127,7 @@
           "config_revision",
           "credentials_invalidated",
           "encrypted_key_material_removed",
+          "mobile_runtime_records_removed",
           "name",
           "name_cidr_permanently_reserved",
           "network_id",
@@ -5386,6 +5839,15 @@
         ],
         "type": "object"
       },
+      "UpdateNetworkSecurityGroupInput": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "UpdateNodeGroupsInput": {
         "additionalProperties": false,
         "properties": {
@@ -5581,6 +6043,18 @@
         },
         "required": [
           "online_available"
+        ],
+        "type": "object"
+      },
+      "selfEnrollmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       }
@@ -6140,6 +6614,84 @@
         "x-interactive": false
       }
     },
+    "/api/v1/agent/mobile-runtime": {
+      "post": {
+        "deprecated": false,
+        "description": "Publishes versioned iOS Packet Tunnel evidence bound to the current agent credential, signed configuration, certificate, extension instance, and monotonic sequence without creating a desktop heartbeat.",
+        "operationId": "reportMobileRuntime",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "certificate_fingerprint": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+                "certificate_generation": 1,
+                "config_revision": 1,
+                "config_sha256": "abababababababababababababababababababababababababababababababab",
+                "engine_identity": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+                "instance_generation": 1,
+                "packets_read": 12,
+                "packets_written": 10,
+                "runtime_uptime_ms": 1000,
+                "sequence": 1,
+                "state": "tunnel-running",
+                "version": 1
+              },
+              "schema": {
+                "$ref": "#/components/schemas/MobileruntimeReportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Mobile runtime evidence accepted."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "agentBearer": []
+          }
+        ],
+        "summary": "Publish Packet Tunnel lifecycle evidence",
+        "tags": [
+          "Mobile runtime"
+        ],
+        "x-availability": "when Mobile runtime evidence is enabled",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  -H 'Authorization: Bearer \u003cagent-token\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"certificate_fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"certificate_generation\":1,\"config_revision\":1,\"config_sha256\":\"abababababababababababababababababababababababababababababababab\",\"engine_identity\":\"efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef\",\"instance_generation\":1,\"packets_read\":12,\"packets_written\":10,\"runtime_uptime_ms\":1000,\"sequence\":1,\"state\":\"tunnel-running\",\"version\":1}' \\\n  'https://mesh.example.com/api/v1/agent/mobile-runtime'"
+          }
+        ],
+        "x-interactive": false
+      }
+    },
     "/api/v1/agent/recover": {
       "post": {
         "deprecated": false,
@@ -6624,7 +7176,7 @@
                 }
               }
             },
-            "description": "Current desktop authorization state and, once, an authorized session."
+            "description": "Current native-app authorization state and, once, an authorized session."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -6674,7 +7226,7 @@
           }
         },
         "security": [],
-        "summary": "Poll desktop authorization",
+        "summary": "Poll native-app authorization",
         "tags": [
           "Authentication"
         ],
@@ -6692,7 +7244,7 @@
     "/api/v1/auth/desktop/start": {
       "post": {
         "deprecated": false,
-        "description": "Creates a desktop sign-in request that expires after five minutes in the configured shared identity store. Any current control-plane replica can approve or complete it. The response returns the poll secret once. The store keeps only its hash, and the native client must never put the secret in a URL or browser.",
+        "description": "Creates a native-app sign-in request that expires after five minutes in the configured shared identity store. Any current control-plane replica can approve or complete it. The response returns the poll secret once. The store keeps only its hash, and the native client must never put the secret in a URL or browser.",
         "operationId": "startDesktopAuthorization",
         "requestBody": {
           "content": {
@@ -6721,7 +7273,7 @@
                 }
               }
             },
-            "description": "One-time desktop authorization request."
+            "description": "One-time native-app authorization request."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -6749,7 +7301,7 @@
           }
         },
         "security": [],
-        "summary": "Start desktop authorization",
+        "summary": "Start native-app authorization",
         "tags": [
           "Authentication"
         ],
@@ -6831,7 +7383,7 @@
             "cookieSession": []
           }
         ],
-        "summary": "Approve or deny desktop authorization",
+        "summary": "Approve or deny native-app authorization",
         "tags": [
           "Authentication"
         ],
@@ -7523,7 +8075,7 @@
     "/api/v1/fleet/health": {
       "get": {
         "deprecated": false,
-        "description": "Returns one authoritative fleet snapshot across every network.",
+        "description": "Returns one authoritative fleet snapshot across every network. Runtime state is freshness-qualified; the Nebula-running boolean is only the last authenticated reported value.",
         "operationId": "getFleetHealth",
         "responses": {
           "200": {
@@ -7640,6 +8192,7 @@
                           "routed_subnets": [
                             "10.80.0.0/24"
                           ],
+                          "runtime_state": "example",
                           "severity": "example",
                           "site": "example"
                         }
@@ -8099,7 +8652,15 @@
                       "target_original_subnets": [
                         "10.80.0.0/24"
                       ]
-                    }
+                    },
+                    "security_groups": [
+                      {
+                        "created_at": "2026-07-23T12:00:00Z",
+                        "description": "example",
+                        "name": "example",
+                        "updated_at": "2026-07-23T12:00:00Z"
+                      }
+                    ]
                   }
                 ],
                 "schema": {
@@ -8327,7 +8888,15 @@
                     "target_original_subnets": [
                       "10.80.0.0/24"
                     ]
-                  }
+                  },
+                  "security_groups": [
+                    {
+                      "created_at": "2026-07-23T12:00:00Z",
+                      "description": "example",
+                      "name": "example",
+                      "updated_at": "2026-07-23T12:00:00Z"
+                    }
+                  ]
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Network"
@@ -9729,10 +10298,456 @@
         "x-required-permission": "networks.write"
       }
     },
+    "/api/v1/networks/{networkID}/groups": {
+      "get": {
+        "deprecated": false,
+        "description": "Returns the built-in all group plus independently managed group definitions, certificate-bound pending and active node membership, and stable plus staged firewall-reference counts.",
+        "operationId": "listNetworkSecurityGroups",
+        "parameters": [
+          {
+            "description": "Network identifier.",
+            "example": "net_example",
+            "in": "path",
+            "name": "networkID",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "groups": [
+                    {
+                      "active_members": 0,
+                      "builtin": false,
+                      "created_at": "2026-07-23T12:00:00Z",
+                      "description": "example",
+                      "member_node_ids": [
+                        "example"
+                      ],
+                      "name": "example",
+                      "peer_rule_references": 0,
+                      "pending_members": 0,
+                      "target_rule_references": 0,
+                      "updated_at": "2026-07-23T12:00:00Z"
+                    }
+                  ],
+                  "network_id": "net_example"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkSecurityGroupsDocument"
+                }
+              }
+            },
+            "description": "Network security-group catalog."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "cookieSession": []
+          },
+          {
+            "legacyAdminBearer": []
+          }
+        ],
+        "summary": "List network security groups",
+        "tags": [
+          "Security groups"
+        ],
+        "x-availability": "always",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X GET \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  'https://mesh.example.com/api/v1/networks/net_example/groups'"
+          }
+        ],
+        "x-interactive": true,
+        "x-required-permission": "networks.read"
+      },
+      "post": {
+        "deprecated": false,
+        "description": "Creates an empty reusable group definition without changing certificates or signed network configuration. Assign active members through the revision-bound node-groups operation.",
+        "operationId": "createNetworkSecurityGroup",
+        "parameters": [
+          {
+            "description": "Network identifier.",
+            "example": "net_example",
+            "in": "path",
+            "name": "networkID",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "description": "example",
+                "name": "example"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/CreateNetworkSecurityGroupInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "groups": [
+                    {
+                      "active_members": 0,
+                      "builtin": false,
+                      "created_at": "2026-07-23T12:00:00Z",
+                      "description": "example",
+                      "member_node_ids": [
+                        "example"
+                      ],
+                      "name": "example",
+                      "peer_rule_references": 0,
+                      "pending_members": 0,
+                      "target_rule_references": 0,
+                      "updated_at": "2026-07-23T12:00:00Z"
+                    }
+                  ],
+                  "network_id": "net_example"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkSecurityGroupsDocument"
+                }
+              }
+            },
+            "description": "Updated network security-group catalog."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "cookieSession": []
+          },
+          {
+            "legacyAdminBearer": []
+          }
+        ],
+        "summary": "Create a network security group",
+        "tags": [
+          "Security groups"
+        ],
+        "x-availability": "always",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"description\":\"example\",\"name\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/groups'"
+          }
+        ],
+        "x-interactive": true,
+        "x-required-permission": "networks.security"
+      }
+    },
+    "/api/v1/networks/{networkID}/groups/{groupName}": {
+      "delete": {
+        "deprecated": false,
+        "description": "Deletes a custom group only after all pending or active membership and stable or staged firewall references have been removed. The built-in all group cannot be deleted.",
+        "operationId": "deleteNetworkSecurityGroup",
+        "parameters": [
+          {
+            "description": "Network identifier.",
+            "example": "net_example",
+            "in": "path",
+            "name": "networkID",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Resource identifier.",
+            "example": "example",
+            "in": "path",
+            "name": "groupName",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "confirmation_name": "example"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/DeleteNetworkSecurityGroupInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "groups": [
+                    {
+                      "active_members": 0,
+                      "builtin": false,
+                      "created_at": "2026-07-23T12:00:00Z",
+                      "description": "example",
+                      "member_node_ids": [
+                        "example"
+                      ],
+                      "name": "example",
+                      "peer_rule_references": 0,
+                      "pending_members": 0,
+                      "target_rule_references": 0,
+                      "updated_at": "2026-07-23T12:00:00Z"
+                    }
+                  ],
+                  "network_id": "net_example"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkSecurityGroupsDocument"
+                }
+              }
+            },
+            "description": "Updated network security-group catalog."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "cookieSession": []
+          },
+          {
+            "legacyAdminBearer": []
+          }
+        ],
+        "summary": "Delete an unused security group",
+        "tags": [
+          "Security groups"
+        ],
+        "x-availability": "always",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X DELETE \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"confirmation_name\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/groups/{groupName}'"
+          }
+        ],
+        "x-interactive": true,
+        "x-required-permission": "networks.security"
+      },
+      "put": {
+        "deprecated": false,
+        "description": "Updates operator-facing group metadata. Group names are immutable because they are embedded in certificates and referenced by firewall rules.",
+        "operationId": "updateNetworkSecurityGroup",
+        "parameters": [
+          {
+            "description": "Network identifier.",
+            "example": "net_example",
+            "in": "path",
+            "name": "networkID",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Resource identifier.",
+            "example": "example",
+            "in": "path",
+            "name": "groupName",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "description": "example"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNetworkSecurityGroupInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "groups": [
+                    {
+                      "active_members": 0,
+                      "builtin": false,
+                      "created_at": "2026-07-23T12:00:00Z",
+                      "description": "example",
+                      "member_node_ids": [
+                        "example"
+                      ],
+                      "name": "example",
+                      "peer_rule_references": 0,
+                      "pending_members": 0,
+                      "target_rule_references": 0,
+                      "updated_at": "2026-07-23T12:00:00Z"
+                    }
+                  ],
+                  "network_id": "net_example"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkSecurityGroupsDocument"
+                }
+              }
+            },
+            "description": "Updated network security-group catalog."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "cookieSession": []
+          },
+          {
+            "legacyAdminBearer": []
+          }
+        ],
+        "summary": "Update a security-group description",
+        "tags": [
+          "Security groups"
+        ],
+        "x-availability": "always",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X PUT \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"description\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/groups/{groupName}'"
+          }
+        ],
+        "x-interactive": true,
+        "x-required-permission": "networks.security"
+      }
+    },
     "/api/v1/networks/{networkID}/health": {
       "get": {
         "deprecated": false,
-        "description": "Returns lifecycle, redundancy, rollout, and revocation health for one network.",
+        "description": "Returns lifecycle, redundancy, rollout, and revocation health for one network, including a freshness-qualified runtime state.",
         "operationId": "getNetworkHealth",
         "parameters": [
           {
@@ -9860,6 +10875,7 @@
                       "routed_subnets": [
                         "10.80.0.0/24"
                       ],
+                      "runtime_state": "example",
                       "severity": "example",
                       "site": "example"
                     }
@@ -9953,7 +10969,7 @@
     "/api/v1/networks/{networkID}/nodes": {
       "get": {
         "deprecated": false,
-        "description": "Returns pending, active, and revoked node inventory for one network.",
+        "description": "Returns pending, active, and revoked node inventory for one network. The web console uses this inventory to keep each node's permitted lifecycle actions grouped below its identity and health evidence; route permissions remain authoritative.",
         "operationId": "listNodes",
         "parameters": [
           {
@@ -10672,6 +11688,7 @@
                   "config_revision": 1,
                   "credentials_invalidated": false,
                   "encrypted_key_material_removed": false,
+                  "mobile_runtime_records_removed": 0,
                   "name": "example",
                   "name_cidr_permanently_reserved": false,
                   "network_id": "net_example",
@@ -11468,6 +12485,144 @@
         "x-required-permission": "networks.write"
       }
     },
+    "/api/v1/networks/{networkID}/self-enrollment": {
+      "post": {
+        "deprecated": false,
+        "description": "Requires an OIDC user session with nodes.enroll.self. Creates only a member in the fixed mobile site and all/members groups, and returns its one-time enrollment token once. A same-principal retry for the same still-pending fixed-policy node invalidates the previous token and returns a replacement.",
+        "operationId": "createSelfEnrollment",
+        "parameters": [
+          {
+            "description": "Network identifier.",
+            "example": "net_example",
+            "in": "path",
+            "name": "networkID",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "name": "example"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/selfEnrollmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "enrollment_token": "\u003credacted\u003e",
+                  "expires_at": "2026-07-23T12:00:00Z",
+                  "node": {
+                    "agent_boot_id": "example",
+                    "agent_credential_expires_at": "2026-07-23T12:00:00Z",
+                    "agent_credential_generation": 0,
+                    "agent_credential_last_used_at": "2026-07-23T12:00:00Z",
+                    "agent_status": "active",
+                    "agent_version": "example",
+                    "applied_certificate_generation": 0,
+                    "applied_config_revision": 1,
+                    "applied_config_sha256": "example",
+                    "certificate": "example",
+                    "certificate_authority_sha256": "example",
+                    "certificate_expires_at": "2026-07-23T12:00:00Z",
+                    "certificate_fingerprint": "\u003cexample-digest\u003e",
+                    "certificate_generation": 0,
+                    "certificate_renew_after": "2026-07-23T12:00:00Z",
+                    "created_at": "2026-07-23T12:00:00Z",
+                    "enrolled_at": "2026-07-23T12:00:00Z",
+                    "failure_domain": "example",
+                    "groups": [
+                      "example"
+                    ],
+                    "heartbeat_sequence": 1,
+                    "id": "example_id",
+                    "ip": "10.80.0.10",
+                    "last_error": "example reason",
+                    "last_renewed_at": "2026-07-23T12:00:00Z",
+                    "last_seen_at": "2026-07-23T12:00:00Z",
+                    "name": "example",
+                    "native_dns_active": false,
+                    "nebula_running": false,
+                    "nebula_version": "example",
+                    "network_id": "net_example",
+                    "public_endpoint": "example",
+                    "reported_certificate_fingerprint": "\u003cexample-digest\u003e",
+                    "revoked_at": "2026-07-23T12:00:00Z",
+                    "role": "admin",
+                    "routed_subnets": [
+                      "10.80.0.0/24"
+                    ],
+                    "site": "example",
+                    "status": "active"
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedNode"
+                }
+              }
+            },
+            "description": "Created or safely retried mobile member enrollment material."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "cookieSession": []
+          },
+          {
+            "legacyAdminBearer": []
+          }
+        ],
+        "summary": "Create the signed-in user's mobile enrollment",
+        "tags": [
+          "Enrollment"
+        ],
+        "x-availability": "always",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X POST \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  -H 'Origin: https://mesh.example.com' \\\n  -H 'X-Mesh-CSRF: \u003ccsrf-cookie-value\u003e' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"name\":\"example\"}' \\\n  'https://mesh.example.com/api/v1/networks/net_example/self-enrollment'"
+          }
+        ],
+        "x-interactive": false,
+        "x-required-permission": "nodes.enroll.self"
+      }
+    },
     "/api/v1/nodes/{nodeID}/agent-recovery": {
       "post": {
         "deprecated": false,
@@ -11638,6 +12793,7 @@
                   "enrollment_records_removed": 0,
                   "ip": "10.80.0.10",
                   "last_certificate_expired_at": "2026-07-23T12:00:00Z",
+                  "mobile_runtime_record_removed": false,
                   "name": "example",
                   "network_id": "net_example",
                   "node_id": "node_example",
@@ -12160,6 +13316,102 @@
         ],
         "x-interactive": true,
         "x-required-permission": "networks.security"
+      }
+    },
+    "/api/v1/nodes/{nodeID}/mobile-runtime": {
+      "get": {
+        "deprecated": false,
+        "description": "Returns the bounded server projection of the latest authenticated extension evidence. Server stale or revoked state dominates the historical client state.",
+        "operationId": "getNodeMobileRuntime",
+        "parameters": [
+          {
+            "description": "Node identifier.",
+            "example": "node_example",
+            "in": "path",
+            "name": "nodeID",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "age_seconds": 5,
+                  "certificate_generation": 1,
+                  "client_state": "tunnel-running",
+                  "config_revision": 1,
+                  "engine_identity": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+                  "fresh": true,
+                  "instance_generation": 1,
+                  "node_id": "node_example",
+                  "packets_read": 12,
+                  "packets_written": 10,
+                  "received_at": "2026-07-23T12:00:00Z",
+                  "runtime_uptime_ms": 1000,
+                  "schema": "mesh-mobile-runtime-projection-v1",
+                  "sequence": 1,
+                  "server_state": "tunnel-running",
+                  "stale_after": "2026-07-23T12:02:00Z"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/MobileRuntimeProjection"
+                }
+              }
+            },
+            "description": "Mobile runtime projection."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "cookieSession": []
+          },
+          {
+            "legacyAdminBearer": []
+          }
+        ],
+        "summary": "Read Packet Tunnel lifecycle evidence",
+        "tags": [
+          "Mobile runtime"
+        ],
+        "x-availability": "when Mobile runtime evidence is enabled",
+        "x-codeSamples": [
+          {
+            "label": "curl",
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  -X GET \\\n  --cookie '__Host-mesh_session=\u003cbrowser-session-value\u003e' \\\n  'https://mesh.example.com/api/v1/nodes/node_example/mobile-runtime'"
+          }
+        ],
+        "x-interactive": true,
+        "x-required-permission": "networks.read"
       }
     },
     "/api/v1/nodes/{nodeID}/replace": {
@@ -13816,6 +15068,10 @@
       "name": "Installation"
     },
     {
+      "description": "Mesh mobile runtime operations.",
+      "name": "Mobile runtime"
+    },
+    {
       "description": "Mesh networks operations.",
       "name": "Networks"
     },
@@ -13842,6 +15098,10 @@
     {
       "description": "Mesh runtime telemetry operations.",
       "name": "Runtime telemetry"
+    },
+    {
+      "description": "Mesh security groups operations.",
+      "name": "Security groups"
     },
     {
       "description": "Mesh sessions operations.",

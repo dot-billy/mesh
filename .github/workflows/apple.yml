@@ -1,0 +1,514 @@
+name: Mesh Apple source gates
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/apple.yml"
+      - ".gitleaks-apple-ios-admin.toml"
+      - ".gitleaks-apple-ios-tunnel.toml"
+      - ".gitleaks-apple-mobile.toml"
+      - ".gitleaks-image.toml"
+      - "Makefile"
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - "cmd/mesh-darwin-codesign-verify/**"
+      - "cmd/mesh-install/**"
+      - "cmd/mesh-release/**"
+      - "cmd/mesh-storage/**"
+      - "cmd/meshctl/agent_supervised_runtime*.go"
+      - "cmd/meshctl/enrollment_runtime*.go"
+      - "desktop/**"
+      - "ios-tunnel/**"
+      - "docs/apple-platform-security.md"
+      - "docs/apple-integration-status.md"
+      - "docs/decisions/**"
+      - "docs/public-guide.json"
+      - "docs/release-trust.md"
+      - "internal/darwinbundle/**"
+      - "internal/appleapprelease/**"
+      - "internal/darwincodesign/**"
+      - "internal/darwininstall/**"
+      - "internal/darwinnativeevidence/**"
+      - "internal/darwinnodepackage/**"
+      - "internal/darwinpackagesecurity/**"
+      - "internal/httpapi/cmd/desktop-e2e-fixture/**"
+      - "internal/linuxinstall/**"
+      - "internal/nebulaartifact/**"
+      - "internal/nodeagent/**"
+      - "internal/mobileruntime/**"
+      - "internal/postgresconfig/**"
+      - "internal/postgresstore/**"
+      - "internal/runtimetelemetry/**"
+      - "packaging/apple/**"
+      - "packaging/launchd/**"
+      - "scripts/apple-build-preflight.py"
+      - "scripts/apple-ios-source-build.sh"
+      - "scripts/apple-ios-mobile-framework-build.sh"
+      - "scripts/apple-ios-admin-security-baseline.sh"
+      - "scripts/apple-ios-tunnel-security-baseline.sh"
+      - "scripts/apple-ios-tunnel-source-build.sh"
+      - "scripts/apple_build_preflight_test.py"
+      - "scripts/apple_managed_configuration_verify.py"
+      - "scripts/apple_managed_configuration_verify_test.py"
+      - "scripts/apple-native-app-verify.py"
+      - "scripts/apple_native_app_verify_test.py"
+      - "scripts/apple_native_test_summary.py"
+      - "scripts/apple_native_test_summary_test.py"
+      - "scripts/apple-node-package-verify.py"
+      - "scripts/apple_node_package_verify_test.py"
+      - "scripts/apple_mobile_framework_normalize.py"
+      - "scripts/apple_mobile_framework_receipt.py"
+      - "scripts/apple_mobile_framework_receipt_test.py"
+      - "scripts/apple-mobile-framework-security-baseline.sh"
+      - "scripts/apple_mobile_framework_security_verify.py"
+      - "scripts/apple_mobile_framework_security_verify_test.py"
+      - "scripts/apple_ios_admin_security_verify.py"
+      - "scripts/apple_ios_admin_security_verify_test.py"
+      - "scripts/apple_ios_tunnel_security_verify.py"
+      - "scripts/apple_ios_tunnel_security_verify_test.py"
+      - "scripts/apple_project_test.py"
+      - "scripts/apple_distribution_verify.py"
+      - "scripts/apple_distribution_verify_test.py"
+      - "scripts/apple_local_developer_id_verify.py"
+      - "scripts/apple_local_developer_id_verify_test.py"
+      - "scripts/apple-admin-security-baseline.sh"
+      - "scripts/apple_admin_security_verify.py"
+      - "scripts/apple_admin_security_verify_test.py"
+      - "scripts/apple-protected-app-release.py"
+      - "scripts/apple_protected_app_release_test.py"
+      - "scripts/apple-protected-node-package-release.py"
+      - "scripts/apple_protected_node_package_release_test.py"
+      - "scripts/apple-source-build.sh"
+      - "scripts/apple_source_artifact_receipt.py"
+      - "scripts/apple_source_artifact_receipt_test.py"
+      - "scripts/apple_source_matrix_receipt.py"
+      - "scripts/apple_source_matrix_receipt_test.py"
+      - "scripts/apple_release_matrix_verify.py"
+      - "scripts/apple_release_matrix_verify_test.py"
+      - "scripts/postgres-mobile-runtime-smoke.sh"
+      - "scripts/darwin-*"
+  push:
+    paths:
+      - ".github/workflows/apple.yml"
+      - ".gitleaks-apple-ios-admin.toml"
+      - ".gitleaks-apple-ios-tunnel.toml"
+      - ".gitleaks-apple-mobile.toml"
+      - ".gitleaks-image.toml"
+      - "Makefile"
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - "cmd/mesh-darwin-codesign-verify/**"
+      - "cmd/mesh-install/**"
+      - "cmd/mesh-release/**"
+      - "cmd/mesh-storage/**"
+      - "cmd/meshctl/agent_supervised_runtime*.go"
+      - "cmd/meshctl/enrollment_runtime*.go"
+      - "desktop/**"
+      - "ios-tunnel/**"
+      - "docs/apple-platform-security.md"
+      - "docs/apple-integration-status.md"
+      - "docs/decisions/**"
+      - "docs/public-guide.json"
+      - "docs/release-trust.md"
+      - "internal/darwinbundle/**"
+      - "internal/appleapprelease/**"
+      - "internal/darwincodesign/**"
+      - "internal/darwininstall/**"
+      - "internal/darwinnativeevidence/**"
+      - "internal/darwinnodepackage/**"
+      - "internal/darwinpackagesecurity/**"
+      - "internal/httpapi/cmd/desktop-e2e-fixture/**"
+      - "internal/linuxinstall/**"
+      - "internal/nebulaartifact/**"
+      - "internal/nodeagent/**"
+      - "internal/mobileruntime/**"
+      - "internal/postgresconfig/**"
+      - "internal/postgresstore/**"
+      - "internal/runtimetelemetry/**"
+      - "packaging/apple/**"
+      - "packaging/launchd/**"
+      - "scripts/apple-build-preflight.py"
+      - "scripts/apple-ios-source-build.sh"
+      - "scripts/apple-ios-mobile-framework-build.sh"
+      - "scripts/apple-ios-admin-security-baseline.sh"
+      - "scripts/apple-ios-tunnel-security-baseline.sh"
+      - "scripts/apple-ios-tunnel-source-build.sh"
+      - "scripts/apple_build_preflight_test.py"
+      - "scripts/apple_managed_configuration_verify.py"
+      - "scripts/apple_managed_configuration_verify_test.py"
+      - "scripts/apple-native-app-verify.py"
+      - "scripts/apple_native_app_verify_test.py"
+      - "scripts/apple_native_test_summary.py"
+      - "scripts/apple_native_test_summary_test.py"
+      - "scripts/apple-node-package-verify.py"
+      - "scripts/apple_node_package_verify_test.py"
+      - "scripts/apple_mobile_framework_normalize.py"
+      - "scripts/apple_mobile_framework_receipt.py"
+      - "scripts/apple_mobile_framework_receipt_test.py"
+      - "scripts/apple-mobile-framework-security-baseline.sh"
+      - "scripts/apple_mobile_framework_security_verify.py"
+      - "scripts/apple_mobile_framework_security_verify_test.py"
+      - "scripts/apple_ios_admin_security_verify.py"
+      - "scripts/apple_ios_admin_security_verify_test.py"
+      - "scripts/apple_ios_tunnel_security_verify.py"
+      - "scripts/apple_ios_tunnel_security_verify_test.py"
+      - "scripts/apple_project_test.py"
+      - "scripts/apple_distribution_verify.py"
+      - "scripts/apple_distribution_verify_test.py"
+      - "scripts/apple_local_developer_id_verify.py"
+      - "scripts/apple_local_developer_id_verify_test.py"
+      - "scripts/apple-admin-security-baseline.sh"
+      - "scripts/apple_admin_security_verify.py"
+      - "scripts/apple_admin_security_verify_test.py"
+      - "scripts/apple-protected-app-release.py"
+      - "scripts/apple_protected_app_release_test.py"
+      - "scripts/apple-protected-node-package-release.py"
+      - "scripts/apple_protected_node_package_release_test.py"
+      - "scripts/apple-source-build.sh"
+      - "scripts/apple_source_artifact_receipt.py"
+      - "scripts/apple_source_artifact_receipt_test.py"
+      - "scripts/apple_source_matrix_receipt.py"
+      - "scripts/apple_source_matrix_receipt_test.py"
+      - "scripts/apple_release_matrix_verify.py"
+      - "scripts/apple_release_matrix_verify_test.py"
+      - "scripts/postgres-mobile-runtime-smoke.sh"
+      - "scripts/darwin-*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-regression:
+    name: Linux regression boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Install the pinned Go toolchain
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run the Linux and shared regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          private_tmp="/mnt/t"
+          tool_dir="$RUNNER_TEMP/mesh-linux-tools"
+          export GOCACHE="$RUNNER_TEMP/mesh-linux-go-build-cache"
+          export GOMODCACHE="$RUNNER_TEMP/mesh-linux-go-module-cache"
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 "$private_tmp"
+          install -d -m 0700 "$tool_dir"
+          GOBIN="$tool_dir" go install \
+            github.com/slackhq/nebula/cmd/nebula@v1.10.3 \
+            github.com/slackhq/nebula/cmd/nebula-cert@v1.10.3
+          TMPDIR="$private_tmp" PATH="$tool_dir:$PATH" make test
+          TMPDIR="$private_tmp" PATH="$tool_dir:$PATH" make build
+          (
+            cd ios-tunnel/engine
+            TMPDIR="$private_tmp" go test ./...
+          )
+
+  windows-regression:
+    name: Windows Go regression boundary
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Install the pinned Go toolchain
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install exact Windows test tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $toolDir = Join-Path $env:RUNNER_TEMP "mesh-windows-tools"
+          New-Item -ItemType Directory -Path $toolDir | Out-Null
+          $env:GOBIN = $toolDir
+          go install github.com/slackhq/nebula/cmd/nebula@v1.10.3
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installing Nebula 1.10.3 failed."
+          }
+          go install github.com/slackhq/nebula/cmd/nebula-cert@v1.10.3
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installing nebula-cert 1.10.3 failed."
+          }
+          $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Run the Windows and shared regression suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          go test -buildvcs=false ./...
+          if ($LASTEXITCODE -ne 0) {
+            throw "The Windows Go regression suite failed."
+          }
+          go build -buildvcs=false -trimpath ./...
+          if ($LASTEXITCODE -ne 0) {
+            throw "The Windows Go build failed."
+          }
+
+  source:
+    name: Unsigned Apple source
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      FLUTTER_VERSION: "3.44.8"
+      FLUTTER_MACOS_ARM64_SHA256: "c3d6fe95078f7001d947a31d42527de91d5bfe62e4cf444a1493a2e8f1fb199d"
+      TMPDIR: "/private/var/tmp"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Select the pinned Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.5.0.app
+
+      - name: Install the pinned iOS 18.6 simulator runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="com.apple.CoreSimulator.SimRuntime.iOS-18-6"
+          if ! xcrun simctl list runtimes | /usr/bin/grep -Fq "$runtime"; then
+            xcodebuild -downloadPlatform iOS -buildVersion 18.6
+          fi
+          xcrun simctl list runtimes | /usr/bin/grep -F "$runtime"
+
+      - name: Install the pinned Go toolchain
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Isolate source-build caches
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GOCACHE=$RUNNER_TEMP/mesh-go-build-cache" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$RUNNER_TEMP/mesh-go-module-cache" >> "$GITHUB_ENV"
+          echo "PUB_CACHE=$RUNNER_TEMP/mesh-pub-cache" >> "$GITHUB_ENV"
+
+      - name: Install the pinned Flutter SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/flutter_macos_arm64_${FLUTTER_VERSION}-stable.zip"
+          curl --fail --location --silent --show-error \
+            "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_arm64_${FLUTTER_VERSION}-stable.zip" \
+            --output "$archive"
+          echo "${FLUTTER_MACOS_ARM64_SHA256}  ${archive}" | shasum --algorithm 256 --check
+          ditto -x -k "$archive" "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          echo "MESH_FLUTTER_ARCHIVE=$archive" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/flutter/bin/flutter" config --no-analytics
+          "$RUNNER_TEMP/flutter/bin/flutter" precache --macos --ios
+
+      - name: Verify pinned tools and emit the unsigned build receipt
+        run: |
+          umask 077
+          security create-keychain -p "" "$RUNNER_TEMP/mesh-source.keychain-db"
+          chmod 0600 "$RUNNER_TEMP/mesh-source.keychain-db"
+          python3 scripts/apple_build_preflight_test.py
+          python3 scripts/apple_native_app_verify_test.py
+          python3 scripts/apple_native_test_summary_test.py
+          python3 scripts/apple_project_test.py
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+            python3 scripts/apple_distribution_verify_test.py
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+            python3 scripts/apple_local_developer_id_verify_test.py
+          python3 scripts/apple_mobile_framework_receipt_test.py
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+            python3 scripts/apple_mobile_framework_security_verify_test.py
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+            python3 scripts/apple_ios_admin_security_verify_test.py
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+            python3 scripts/apple_ios_tunnel_security_verify_test.py
+          python3 scripts/apple_protected_app_release_test.py
+          PYTHONDONTWRITEBYTECODE=1 \
+            python3 scripts/apple_protected_node_package_release_test.py
+          PYTHONDONTWRITEBYTECODE=1 \
+            python3 scripts/apple_node_package_verify_test.py
+          python3 scripts/apple_source_artifact_receipt_test.py
+          python3 scripts/apple_source_matrix_receipt_test.py
+          python3 scripts/apple_release_matrix_verify_test.py
+          python3 scripts/apple_release_matrix_verify.py
+          python3 scripts/apple-build-preflight.py \
+            --flutter "$RUNNER_TEMP/flutter/bin/flutter" \
+            --flutter-archive "$MESH_FLUTTER_ARCHIVE" \
+            --source-keychain "$RUNNER_TEMP/mesh-source.keychain-db" \
+            --output "$RUNNER_TEMP/mesh-apple-source-receipt.json" \
+            --require-clean
+
+      - name: Run Darwin and shared source tests
+        run: |
+          umask 077
+          go test ./cmd/mesh-darwin-codesign-verify \
+            ./cmd/mesh-install \
+            ./internal/appleapprelease \
+            ./internal/darwinbundle \
+            ./internal/darwincodesign \
+            ./internal/darwininstall \
+            ./internal/darwinnativeevidence \
+            ./internal/darwinnodepackage \
+            ./internal/darwinpackagesecurity \
+            ./internal/httpapi/cmd/desktop-e2e-fixture \
+            ./internal/nebulaartifact \
+            ./packaging/launchd
+          go test ./internal/postgresconfig -run '^$' -count=1
+          go test ./internal/postgresstore \
+            ./internal/runtimetelemetry \
+            ./cmd/mesh-storage
+          go test ./cmd/mesh-release \
+            -run '^(TestVerifyAppleAppReleaseBindsFinalArchive|TestVerifyPublishedAppleAppAuthenticatesArchiveAndReceipt|TestVerifyDarwinNodePackageReleaseBindsFinalBytesAndPolicies)$' \
+            -count=1
+          go test ./cmd/meshctl \
+            -run '^(TestInspectEnrollmentRuntime|TestEnrollmentChecksRuntime|TestDarwinNativeChildIdentityAndDetachedCycleContext|TestDarwinNativeChildForcedGroupKillAndReap)$' \
+            -count=1
+          go test ./internal/nodeagent -run 'Darwin|Apple' -count=1
+          (
+            cd ios-tunnel/engine
+            go test ./...
+            go test \
+              -run '^TestPinnedNebulaEngineUsesCallbackPacketsOverRealUDP$' \
+              -count=20
+          )
+
+      - name: Verify shared Flutter source and real control-plane contract
+        working-directory: desktop
+        run: |
+          dart pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze
+          flutter test
+
+      - name: Build unsigned debug and release macOS applications
+        env:
+          MESH_FLUTTER: ${{ runner.temp }}/flutter/bin/flutter
+          MESH_APPLE_INPUT_RECEIPT: ${{ runner.temp }}/mesh-apple-source-receipt.json
+          MESH_SOURCE_KEYCHAIN: ${{ runner.temp }}/mesh-source.keychain-db
+        run: |
+          scripts/apple-source-build.sh debug "$RUNNER_TEMP/mesh-macos-debug"
+          scripts/apple-source-build.sh release "$RUNNER_TEMP/mesh-macos-release"
+
+      - name: Build and inspect the unsigned iPhone and iPad application
+        env:
+          MESH_FLUTTER: ${{ runner.temp }}/flutter/bin/flutter
+          MESH_APPLE_INPUT_RECEIPT: ${{ runner.temp }}/mesh-apple-source-receipt.json
+          MESH_SOURCE_KEYCHAIN: ${{ runner.temp }}/mesh-source.keychain-db
+        run: scripts/apple-ios-source-build.sh "$RUNNER_TEMP/mesh-ios-simulator"
+
+      - name: Build, reproduce, and inspect the iOS mobile framework proof
+        env:
+          MESH_APPLE_INPUT_RECEIPT: ${{ runner.temp }}/mesh-apple-source-receipt.json
+          MESH_SOURCE_KEYCHAIN: ${{ runner.temp }}/mesh-source.keychain-db
+        run: scripts/apple-ios-mobile-framework-build.sh "$RUNNER_TEMP/mesh-ios-mobile-framework"
+
+      - name: Build and inspect the fail-closed iOS Packet Tunnel proof
+        env:
+          MESH_APPLE_INPUT_RECEIPT: ${{ runner.temp }}/mesh-apple-source-receipt.json
+          MESH_SOURCE_KEYCHAIN: ${{ runner.temp }}/mesh-source.keychain-db
+          MESH_IOS_MOBILE_FRAMEWORK_OUTPUT: ${{ runner.temp }}/mesh-ios-mobile-framework
+        run: scripts/apple-ios-tunnel-source-build.sh "$RUNNER_TEMP/mesh-ios-tunnel-simulator"
+
+      - name: Run native macOS runner tests
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          umask 077
+          flutter build macos --debug --config-only
+          xcodebuild -quiet \
+            -workspace macos/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/mesh-macos-tests" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS= \
+            "OTHER_CODE_SIGN_FLAGS=--keychain $RUNNER_TEMP/mesh-source.keychain-db" \
+            test
+          xcresult="$(find \
+            "$RUNNER_TEMP/mesh-macos-tests/Logs/Test" \
+            -maxdepth 1 -type d -name '*.xcresult' -print -quit)"
+          test -n "$xcresult"
+          xcrun xcresulttool get test-results summary \
+            --schema-version 0.1.0 \
+            --path "$xcresult" \
+            --compact \
+            > "$RUNNER_TEMP/mesh-macos-native-test-summary.raw.json"
+          python3 ../scripts/apple_native_test_summary.py \
+            --platform macos \
+            --input "$RUNNER_TEMP/mesh-macos-native-test-summary.raw.json" \
+            --source-receipt "$RUNNER_TEMP/mesh-apple-source-receipt.json" \
+            --output "$RUNNER_TEMP/mesh-macos-native-test-summary.json"
+
+      - name: Run native iOS runner tests
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          umask 077
+          flutter build ios --simulator --debug --config-only
+          simulator_udid="$(xcrun simctl create \
+            "Mesh Apple Source ${GITHUB_RUN_ID}" \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro \
+            com.apple.CoreSimulator.SimRuntime.iOS-18-6)"
+          trap 'xcrun simctl delete "$simulator_udid" >/dev/null 2>&1 || true' EXIT
+          xcodebuild -quiet \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${simulator_udid},arch=arm64" \
+            -derivedDataPath "$RUNNER_TEMP/mesh-ios-tests" \
+            test
+          app="$RUNNER_TEMP/mesh-ios-tests/Build/Products/Debug-iphonesimulator/Runner.app"
+          codesign --verify --deep --strict "$app"
+          xcresult="$(find \
+            "$RUNNER_TEMP/mesh-ios-tests/Logs/Test" \
+            -maxdepth 1 -type d -name '*.xcresult' -print -quit)"
+          test -n "$xcresult"
+          xcrun xcresulttool get test-results summary \
+            --schema-version 0.1.0 \
+            --path "$xcresult" \
+            --compact \
+            > "$RUNNER_TEMP/mesh-ios-native-test-summary.raw.json"
+          python3 ../scripts/apple_native_test_summary.py \
+            --platform ios-simulator \
+            --input "$RUNNER_TEMP/mesh-ios-native-test-summary.raw.json" \
+            --source-receipt "$RUNNER_TEMP/mesh-apple-source-receipt.json" \
+            --output "$RUNNER_TEMP/mesh-ios-native-test-summary.json"
+
+      - name: Create the sanitized source matrix
+        run: |
+          python3 scripts/apple_source_matrix_receipt.py \
+            --preflight "$RUNNER_TEMP/mesh-apple-source-receipt.json" \
+            --macos-debug "$RUNNER_TEMP/mesh-macos-debug/mesh-apple-debug-source-receipt.json" \
+            --macos-release "$RUNNER_TEMP/mesh-macos-release/mesh-apple-release-source-receipt.json" \
+            --ios-admin-simulator "$RUNNER_TEMP/mesh-ios-simulator/mesh-apple-ios-simulator-source-receipt.json" \
+            --ios-tunnel-simulator "$RUNNER_TEMP/mesh-ios-tunnel-simulator/mesh-apple-ios-tunnel-simulator-source-receipt.json" \
+            --ios-mobile-framework "$RUNNER_TEMP/mesh-ios-mobile-framework/mesh-apple-ios-mobile-framework-source-receipt.json" \
+            --output "$RUNNER_TEMP/mesh-apple-source-matrix.json"
+
+      - name: Upload the sanitized source receipt
+        uses: actions/upload-artifact@v6
+        with:
+          name: mesh-apple-source-receipt
+          path: |
+            ${{ runner.temp }}/mesh-apple-source-receipt.json
+            ${{ runner.temp }}/mesh-apple-source-matrix.json
+            ${{ runner.temp }}/mesh-macos-debug/mesh-apple-debug-source-receipt.json
+            ${{ runner.temp }}/mesh-macos-release/mesh-apple-release-source-receipt.json
+            ${{ runner.temp }}/mesh-ios-simulator/mesh-apple-ios-simulator-source-receipt.json
+            ${{ runner.temp }}/mesh-ios-tunnel-simulator/mesh-apple-ios-tunnel-simulator-source-receipt.json
+            ${{ runner.temp }}/mesh-ios-mobile-framework/mesh-apple-ios-mobile-framework-source-receipt.json
+            ${{ runner.temp }}/mesh-macos-native-test-summary.json
+            ${{ runner.temp }}/mesh-ios-native-test-summary.json
+          if-no-files-found: error

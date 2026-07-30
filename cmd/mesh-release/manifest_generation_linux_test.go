@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"mesh/internal/appleapprelease"
 	releasetrust "mesh/internal/release"
 )
 
@@ -426,6 +427,11 @@ func TestCreateReleaseManifestRequiresDarwinSecurityEvidence(t *testing.T) {
 	if err := createReleaseManifest(baseArgs, &output); err == nil || !strings.Contains(err.Error(), "requires one --darwin-package-security-receipt") || output.Len() != 0 {
 		t.Fatalf("unscanned Darwin artifact returned output %q, error %v", output.String(), err)
 	}
+	withPackageOnly := append(append([]string(nil), baseArgs...),
+		"--darwin-package-security-receipt", filepath.Join(directory, "package-receipt.json"))
+	if err := createReleaseManifest(withPackageOnly, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "requires one --darwin-codesign-receipt") {
+		t.Fatalf("Darwin artifact without native receipt returned %v", err)
+	}
 	withBypass := append(append([]string(nil), baseArgs...), "--test-only-allow-unscanned-darwin-artifact")
 	if err := createReleaseManifest(withBypass, &output); err != nil {
 		t.Fatal(err)
@@ -437,6 +443,63 @@ func TestCreateReleaseManifestRequiresDarwinSecurityEvidence(t *testing.T) {
 		"--test-only-allow-unscanned-darwin-artifact", "--darwin-package-security-receipt", filepath.Join(directory, "receipt.json"))
 	if err := createReleaseManifest(combined, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "cannot be combined") {
 		t.Fatalf("Darwin receipt and bypass combination returned %v", err)
+	}
+	codesignCombined := append(append([]string(nil), baseArgs...),
+		"--test-only-allow-unscanned-darwin-artifact", "--darwin-codesign-receipt", filepath.Join(directory, "codesign.json"))
+	if err := createReleaseManifest(codesignCombined, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("Darwin code-signing receipt and bypass combination returned %v", err)
+	}
+}
+
+func TestMeshAdminPublicationRequiresExactArtifactAndReceiptPair(t *testing.T) {
+	directory := t.TempDir()
+	now := time.Date(2026, 7, 24, 18, 0, 0, 0, time.UTC)
+	applicationRaw := []byte("final stapled Mesh Admin zip")
+	applicationDigest := sha256.Sum256(applicationRaw)
+	receipt := manifestAppleAppReceipt(now, int64(len(applicationRaw)), hex.EncodeToString(applicationDigest[:]))
+	receiptRaw, err := appleapprelease.EncodeReceipt(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiptPath := filepath.Join(directory, "protected-receipt.json")
+	if err := os.WriteFile(receiptPath, receiptRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	receiptDigest := sha256.Sum256(receiptRaw)
+	artifacts := []releasetrust.Artifact{
+		{OS: "macos-admin", Arch: "universal", Size: int64(len(applicationRaw)), SHA256: hex.EncodeToString(applicationDigest[:])},
+		{OS: "macos-admin-evidence", Arch: "portable", Size: int64(len(receiptRaw)), SHA256: hex.EncodeToString(receiptDigest[:])},
+	}
+	options := releaseManifestOptions{
+		version:                     receipt.Application.Version,
+		appleAppReleaseReceiptPath:  receiptPath,
+		appleAppSourceReceiptSHA256: receipt.Source.ReceiptSHA256,
+	}
+	loadTeamID := func() (string, error) { return receipt.Signing.TeamID, nil }
+	if err := validateAppleAppReleaseReceiptUsing(options, artifacts, now, loadTeamID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := validateAppleAppReleaseReceiptUsing(options, artifacts[:1], now, loadTeamID); err == nil ||
+		!strings.Contains(err.Error(), "requires both") {
+		t.Fatalf("incomplete Mesh Admin pair returned %v", err)
+	}
+	wrongSource := options
+	wrongSource.appleAppSourceReceiptSHA256 = strings.Repeat("9", 64)
+	if err := validateAppleAppReleaseReceiptUsing(wrongSource, artifacts, now, loadTeamID); err == nil ||
+		!strings.Contains(err.Error(), "source receipt") {
+		t.Fatalf("wrong Mesh Admin source receipt returned %v", err)
+	}
+	tamperedEvidence := append([]releasetrust.Artifact(nil), artifacts...)
+	tamperedEvidence[1].SHA256 = strings.Repeat("8", 64)
+	if err := validateAppleAppReleaseReceiptUsing(options, tamperedEvidence, now, loadTeamID); err == nil ||
+		!strings.Contains(err.Error(), "differs") {
+		t.Fatalf("tampered Mesh Admin evidence artifact returned %v", err)
+	}
+	if !supportedReleaseArtifactTarget("macos-admin", "universal") ||
+		!supportedReleaseArtifactTarget("macos-admin-evidence", "portable") ||
+		supportedReleaseArtifactTarget("macos-admin", "arm64") {
+		t.Fatal("Mesh Admin publication targets are not exact")
 	}
 }
 
@@ -782,6 +845,62 @@ func TestCreateManifestsValidateHTTPSSemantics(t *testing.T) {
 		t.Fatalf("HTTP manifest URL returned %v", err)
 	}
 	assertTestPathAbsent(t, channel.outputPath)
+}
+
+func manifestAppleAppReceipt(now time.Time, size int64, digest string) appleapprelease.Receipt {
+	nested := []appleapprelease.NestedCodeEvidence{
+		{
+			Architectures: []string{"arm64", "x86_64"}, EntitlementsSHA256: appleapprelease.EmptyEntitlementsSHA,
+			Identifier: "io.flutter.flutter.app", Path: "Contents/Frameworks/App.framework",
+		},
+		{
+			Architectures: []string{"arm64", "x86_64"}, EntitlementsSHA256: appleapprelease.EmptyEntitlementsSHA,
+			Identifier: "io.flutter.flutter-macos", Path: "Contents/Frameworks/FlutterMacOS.framework",
+		},
+		{
+			Architectures: []string{"arm64", "x86_64"}, EntitlementsSHA256: appleapprelease.EmptyEntitlementsSHA,
+			Identifier: "io.flutter.flutter.native-assets.objective-c", Path: "Contents/Frameworks/objective_c.framework",
+		},
+	}
+	tools := map[string]appleapprelease.ToolEvidence{}
+	for _, name := range []string{
+		"/usr/bin/codesign", "/usr/bin/ditto", "/usr/bin/lipo", "/usr/bin/security",
+		"/usr/bin/xcrun", "/usr/sbin/spctl", "notarytool", "stapler",
+	} {
+		tools[name] = appleapprelease.ToolEvidence{SHA256: strings.Repeat("a", 64), Size: 1024}
+	}
+	return appleapprelease.Receipt{
+		Application: appleapprelease.ApplicationEvidence{
+			Architectures: []string{"arm64", "x86_64"}, Build: "1",
+			BundleIdentifier: appleapprelease.ApplicationIdentifier, MinimumMacOS: "14.0",
+			SignedRegularBytes: 4096, SignedRegularFiles: 12,
+			SignedTreeSHA256: strings.Repeat("b", 64), Version: "0.1.0",
+		},
+		Distribution: appleapprelease.DistributionEvidence{
+			ExtractedRegularBytes: 4096,
+			ExtractedRegularFiles: 12,
+			ExtractedTreeSHA256:   strings.Repeat("b", 64),
+			Format:                "ditto-zip",
+			RoundTripVerified:     true,
+			SHA256:                digest,
+			Size:                  size,
+		},
+		Notarization: appleapprelease.NotarizationEvidence{
+			GatekeeperAssessment: "accepted", Staple: "validated", Status: "Accepted",
+			SubmissionID: "12345678-1234-4234-8234-123456789abc",
+		},
+		Schema: appleapprelease.ReceiptSchema,
+		Signing: appleapprelease.SigningEvidence{
+			ApplicationEntitlementsSHA256: appleapprelease.ApplicationEntitlementsSHA,
+			HardenedRuntime:               true, IdentitySHA1: strings.Repeat("A", 40),
+			NestedCode: nested, TeamID: "AB12CD34EF",
+		},
+		Source: appleapprelease.SourceEvidence{
+			ReceiptSHA256: strings.Repeat("d", 64), SecurityReceiptSHA256: strings.Repeat("f", 64),
+			TreeSHA256: strings.Repeat("e", 64),
+		},
+		Tools: tools, VerifiedAt: now.Format(time.RFC3339),
+	}
 }
 
 func manifestTestTimes() (string, string) {

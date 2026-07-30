@@ -30,23 +30,46 @@ func prepareEnrollmentRuntime(ctx context.Context, nebula, nebulaCert string, ru
 	}
 	requireInstalledRelease := buildinfo.Identity != buildinfo.DevelopmentIdentity
 	if requireInstalledRelease {
-		if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		if runtime.GOOS != "linux" && runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
 			return enrollmentRuntime{}, runtimePrerequisiteError(fmt.Errorf("production enrollment has no supported runtime installer for %s", runtime.GOOS))
 		}
 		if _, err := buildinfo.CurrentProduction(); err != nil {
 			return enrollmentRuntime{}, runtimePrerequisiteError(fmt.Errorf("authenticate meshctl build identity: %w", err))
+		}
+		binaryDirectory, err := resolveInstalledEnrollmentRuntimeDirectory(nebula, nebulaCert, executable)
+		if err != nil {
+			return enrollmentRuntime{}, runtimePrerequisiteError(err)
+		}
+		if err := validateInstalledRuntimeDirectory(binaryDirectory); err != nil {
+			return enrollmentRuntime{}, runtimePrerequisiteError(err)
 		}
 	}
 	prepared, err := inspectEnrollmentRuntime(ctx, nebula, nebulaCert, executable, requireInstalledRelease, runner)
 	if err != nil {
 		return enrollmentRuntime{}, runtimePrerequisiteError(err)
 	}
-	if requireInstalledRelease {
-		if err := validateInstalledRuntimeDirectory(filepath.Dir(prepared.nebulaBinary)); err != nil {
-			return enrollmentRuntime{}, runtimePrerequisiteError(err)
-		}
-	}
 	return prepared, nil
+}
+
+func resolveInstalledEnrollmentRuntimeDirectory(nebula, nebulaCert, meshctlExecutable string) (string, error) {
+	nebulaPath, err := resolveEnrollmentExecutable(nebula, "nebula")
+	if err != nil {
+		return "", err
+	}
+	nebulaCertPath, err := resolveEnrollmentExecutable(nebulaCert, "nebula-cert")
+	if err != nil {
+		return "", err
+	}
+	meshctlPath, err := resolveEnrollmentExecutable(meshctlExecutable, "meshctl")
+	if err != nil {
+		return "", err
+	}
+	binaryDirectory := filepath.Dir(meshctlPath)
+	if !samePath(filepath.Dir(nebulaPath), binaryDirectory) ||
+		!samePath(filepath.Dir(nebulaCertPath), binaryDirectory) {
+		return "", errors.New("nebula, nebula-cert, and meshctl are not from one authenticated installed release")
+	}
+	return binaryDirectory, nil
 }
 
 func inspectEnrollmentRuntime(ctx context.Context, nebula, nebulaCert, meshctlExecutable string, requireInstalledRelease bool, runner nodeagent.CommandRunner) (enrollmentRuntime, error) {
@@ -157,6 +180,8 @@ func runtimeInstallGuidance() string {
 		return "Authenticate mesh-install independently, then run `mesh-install install-online EXACT_BUNDLE_URL` or `mesh-install install ABSOLUTE_SNAPSHOT_DIR`; rerun enrollment with the installed /usr/local/bin/nebula and /usr/local/bin/nebula-cert"
 	case "windows":
 		return "Authenticate mesh-install-windows.exe independently, then run `mesh-install-windows.exe install-online EXACT_BUNDLE_URL` or `mesh-install-windows.exe install ABSOLUTE_PRIVATE_SNAPSHOT_DIR`; rerun enrollment with the installed runtime pair"
+	case "darwin":
+		return "The authenticated macOS node installer remains release-gated until clean-host native lifecycle, signing, notarization, and installed-host evidence pass; do not bypass this gate or download an upstream moving latest release"
 	default:
 		return "Install one independently authenticated Mesh release containing meshctl, nebula, and nebula-cert for this operating system, or use the signed offline package path; do not download an upstream moving latest release"
 	}

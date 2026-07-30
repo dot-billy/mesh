@@ -62,6 +62,14 @@ func TestDashboardFleetHealthAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	nodeSearchScript, err := webFiles.ReadFile("web/node-search.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	securityGroupsScript, err := webFiles.ReadFile("web/security-groups.js")
+	if err != nil {
+		t.Fatal(err)
+	}
 	desktopAuthorizationScript, err := webFiles.ReadFile("web/desktop-authorization.js")
 	if err != nil {
 		t.Fatal(err)
@@ -271,10 +279,17 @@ func TestDashboardFleetHealthAssets(t *testing.T) {
 	firewallRolloutIndex := bytes.Index(html, []byte(`<script src="/firewall-rollout.js" defer></script>`))
 	certificateRotationIndex := bytes.Index(html, []byte(`<script src="/certificate-rotation.js" defer></script>`))
 	nodeRevocationIndex := bytes.Index(html, []byte(`<script src="/node-revocation.js" defer></script>`))
+	nodeSearchIndex := bytes.Index(html, []byte(`<script src="/node-search.js" defer></script>`))
+	securityGroupsIndex := bytes.Index(html, []byte(`<script src="/security-groups.js" defer></script>`))
 	desktopAuthorizationIndex := bytes.Index(html, []byte(`<script src="/desktop-authorization.js" defer></script>`))
 	appIndex := bytes.Index(html, []byte(`<script src="/app.js" defer></script>`))
-	if healthIndex < 0 || telemetryIndex < 0 || readinessIndex < 0 || dnsIndex < 0 || relayIndex < 0 || caRotationIndex < 0 || routeTransferIndex < 0 || routeProfileIndex < 0 || routePoliciesIndex < 0 || firewallRolloutIndex < 0 || certificateRotationIndex < 0 || nodeRevocationIndex < 0 || desktopAuthorizationIndex < 0 || appIndex < 0 || healthIndex >= telemetryIndex || telemetryIndex >= readinessIndex || readinessIndex >= dnsIndex || dnsIndex >= relayIndex || relayIndex >= caRotationIndex || caRotationIndex >= routeTransferIndex || routeTransferIndex >= routeProfileIndex || routeProfileIndex >= routePoliciesIndex || routePoliciesIndex >= firewallRolloutIndex || firewallRolloutIndex >= certificateRotationIndex || certificateRotationIndex >= nodeRevocationIndex || nodeRevocationIndex >= desktopAuthorizationIndex || desktopAuthorizationIndex >= appIndex {
+	if healthIndex < 0 || telemetryIndex < 0 || readinessIndex < 0 || dnsIndex < 0 || relayIndex < 0 || caRotationIndex < 0 || routeTransferIndex < 0 || routeProfileIndex < 0 || routePoliciesIndex < 0 || firewallRolloutIndex < 0 || certificateRotationIndex < 0 || nodeRevocationIndex < 0 || nodeSearchIndex < 0 || securityGroupsIndex < 0 || desktopAuthorizationIndex < 0 || appIndex < 0 || healthIndex >= telemetryIndex || telemetryIndex >= readinessIndex || readinessIndex >= dnsIndex || dnsIndex >= relayIndex || relayIndex >= caRotationIndex || caRotationIndex >= routeTransferIndex || routeTransferIndex >= routeProfileIndex || routeProfileIndex >= routePoliciesIndex || routePoliciesIndex >= firewallRolloutIndex || firewallRolloutIndex >= certificateRotationIndex || certificateRotationIndex >= nodeRevocationIndex || nodeRevocationIndex >= nodeSearchIndex || nodeSearchIndex >= securityGroupsIndex || securityGroupsIndex >= desktopAuthorizationIndex || desktopAuthorizationIndex >= appIndex {
 		t.Fatal("dashboard must load its strict adapters before the application script")
+	}
+	for name, script := range map[string][]byte{"node search": nodeSearchScript, "security groups": securityGroupsScript} {
+		if len(script) == 0 {
+			t.Fatalf("%s adapter is empty", name)
+		}
 	}
 	for _, required := range []string{
 		`id="fleet-health"`, `aria-labelledby="fleet-health-title"`,
@@ -293,6 +308,8 @@ func TestDashboardFleetHealthAssets(t *testing.T) {
 		`id="route-profile-dialog"`, `id="route-profile-subnets"`, `id="route-profile-primary"`, "complete routed-subnet set",
 		`id="route-policies-dialog"`, `id="route-policies-prefix"`, `id="route-policies-gateways"`, `id="save-route-policy"`, "relative gateway weights",
 		`id="policy-rollout-panel"`, `id="policy-canary-list"`, `id="promote-policy"`, `id="rollback-policy"`, "selected canaries",
+		`id="security-groups-dialog"`, `id="security-group-list"`, `id="security-group-member-list"`, `id="save-security-group-members"`, "Create groups independently",
+		`id="policy-manage-groups"`, `id="manage-network-groups"`, `id="policy-security-group-options"`,
 		`id="desktop-authorization-dialog"`, `id="desktop-authorization-approve"`, `id="desktop-authorization-deny"`,
 		"Approve only if you started sign-in from the native app.",
 	} {
@@ -307,6 +324,10 @@ func TestDashboardFleetHealthAssets(t *testing.T) {
 		!bytes.Contains(desktopAuthorizationScript, []byte("replaceState(null")) ||
 		!bytes.Contains(desktopAuthorizationScript, []byte(`^desktop_[A-Za-z0-9_-]{43}$`)) {
 		t.Fatal("desktop authorization UI must keep poll secrets out of markup and strictly scrub public request IDs from browser history")
+	}
+	if !bytes.Contains(appScript, []byte(`'member'`)) ||
+		!bytes.Contains(appScript, []byte(`'nodes.enroll.self'`)) {
+		t.Fatal("dashboard access projection must accept the self-enrollment role and permission")
 	}
 	for _, required := range []string{
 		"--surface-raised", "--accent-hover", ".skip-link", ".login-assurance",

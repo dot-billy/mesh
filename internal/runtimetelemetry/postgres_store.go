@@ -15,7 +15,7 @@ import (
 const (
 	defaultPostgresOperationTimeout = 15 * time.Second
 	postgresUpdateOperation         = "runtime_telemetry.state.update"
-	postgresMigrateOperation        = "runtime_telemetry.state.migrate_v7"
+	postgresMigrateOperation        = "runtime_telemetry.state.migrate_v8"
 )
 
 type PostgresStoreOptions struct {
@@ -198,6 +198,161 @@ func (s *PostgresStore) Delete(nodeID string) (bool, error) {
 	})
 	if err != nil {
 		return false, translatePostgresError("delete runtime telemetry record", err)
+	}
+	return deleted && result.Changed, nil
+}
+
+func (s *PostgresStore) PutMobile(
+	nodeID string,
+	receivedAt time.Time,
+	input MobileRuntimeReportInput,
+) (MobileRuntimeRecord, bool, error) {
+	candidate, err := newMobileRuntimeRecord(nodeID, receivedAt, input)
+	if err != nil {
+		return MobileRuntimeRecord{}, false, err
+	}
+	ctx, cancel, err := s.operationContext(context.Background())
+	if err != nil {
+		return MobileRuntimeRecord{}, false, err
+	}
+	defer cancel()
+	changed := false
+	accepted := candidate
+	result, err := s.repository.Update(
+		ctx,
+		postgresstore.DomainRuntimeTelemetry,
+		postgresUpdateOperation,
+		func(raw []byte) ([]byte, error) {
+			state, err := DecodeState(raw)
+			if err != nil {
+				return nil, err
+			}
+			index := sort.Search(
+				len(state.MobileRecords),
+				func(index int) bool {
+					return state.MobileRecords[index].NodeID >= nodeID
+				},
+			)
+			var previous *MobileRuntimeRecord
+			if index < len(state.MobileRecords) &&
+				state.MobileRecords[index].NodeID == nodeID {
+				existing := state.MobileRecords[index]
+				previous = &existing
+			}
+			transitioned, transitionChanged, err :=
+				transitionMobileRuntimeRecord(previous, candidate)
+			if err != nil {
+				return nil, err
+			}
+			accepted = transitioned
+			if !transitionChanged {
+				return raw, nil
+			}
+			if previous == nil {
+				if len(state.MobileRecords) >= MaxRecords {
+					return nil, ErrInvalid
+				}
+				state.MobileRecords = append(
+					state.MobileRecords,
+					MobileRuntimeRecord{},
+				)
+				copy(
+					state.MobileRecords[index+1:],
+					state.MobileRecords[index:],
+				)
+			}
+			state.MobileRecords[index] = cloneMobileRuntimeRecord(accepted)
+			changed = true
+			return EncodeState(state)
+		},
+	)
+	if err != nil {
+		return MobileRuntimeRecord{}, false, translatePostgresError(
+			"update mobile runtime state",
+			err,
+		)
+	}
+	return cloneMobileRuntimeRecord(accepted), changed && result.Changed, nil
+}
+
+func (s *PostgresStore) GetMobile(
+	nodeID string,
+) (MobileRuntimeRecord, bool, error) {
+	if !nodeIDPattern.MatchString(nodeID) {
+		return MobileRuntimeRecord{}, false, ErrInvalid
+	}
+	state, err := s.readState()
+	if err != nil {
+		return MobileRuntimeRecord{}, false, err
+	}
+	index := sort.Search(len(state.MobileRecords), func(index int) bool {
+		return state.MobileRecords[index].NodeID >= nodeID
+	})
+	if index == len(state.MobileRecords) ||
+		state.MobileRecords[index].NodeID != nodeID {
+		return MobileRuntimeRecord{}, false, nil
+	}
+	return cloneMobileRuntimeRecord(state.MobileRecords[index]), true, nil
+}
+
+func (s *PostgresStore) ListMobile() ([]MobileRuntimeRecord, error) {
+	state, err := s.readState()
+	if err != nil {
+		return nil, err
+	}
+	records := make([]MobileRuntimeRecord, len(state.MobileRecords))
+	for index := range state.MobileRecords {
+		records[index] = cloneMobileRuntimeRecord(
+			state.MobileRecords[index],
+		)
+	}
+	return records, nil
+}
+
+func (s *PostgresStore) DeleteMobile(nodeID string) (bool, error) {
+	if !nodeIDPattern.MatchString(nodeID) {
+		return false, ErrInvalid
+	}
+	ctx, cancel, err := s.operationContext(context.Background())
+	if err != nil {
+		return false, err
+	}
+	defer cancel()
+	deleted := false
+	result, err := s.repository.Update(
+		ctx,
+		postgresstore.DomainRuntimeTelemetry,
+		postgresUpdateOperation,
+		func(raw []byte) ([]byte, error) {
+			state, err := DecodeState(raw)
+			if err != nil {
+				return nil, err
+			}
+			index := sort.Search(
+				len(state.MobileRecords),
+				func(index int) bool {
+					return state.MobileRecords[index].NodeID >= nodeID
+				},
+			)
+			if index == len(state.MobileRecords) ||
+				state.MobileRecords[index].NodeID != nodeID {
+				return raw, nil
+			}
+			copy(
+				state.MobileRecords[index:],
+				state.MobileRecords[index+1:],
+			)
+			state.MobileRecords =
+				state.MobileRecords[:len(state.MobileRecords)-1]
+			deleted = true
+			return EncodeState(state)
+		},
+	)
+	if err != nil {
+		return false, translatePostgresError(
+			"delete mobile runtime record",
+			err,
+		)
 	}
 	return deleted && result.Changed, nil
 }

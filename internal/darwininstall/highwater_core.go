@@ -291,6 +291,19 @@ func (state DarwinInstallState) RollbackPrevious() (DarwinInstallState, error) {
 	return next, next.Validate()
 }
 
+// DeactivateRuntime clears only the active and previous runtime selections.
+// Immutable release trees, trusted-root history, and accepted high-water
+// authority remain available for an explicitly authorized reinstall.
+func (state DarwinInstallState) DeactivateRuntime() (DarwinInstallState, error) {
+	if err := state.Validate(); err != nil {
+		return DarwinInstallState{}, err
+	}
+	next := cloneDarwinInstallState(state)
+	next.Active = nil
+	next.Previous = nil
+	return next, next.Validate()
+}
+
 func validateDarwinAgentStateRollbackPair(source, target AuthenticatedDarwinRelease) error {
 	if target.AgentStateReadMin > source.AgentStateWriteVersion || target.AgentStateReadMax < source.AgentStateWriteVersion {
 		return fmt.Errorf("Darwin target cannot read source agent-state schema %d", source.AgentStateWriteVersion)

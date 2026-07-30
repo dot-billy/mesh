@@ -8,6 +8,7 @@ import (
 	"path"
 
 	meshbuildinfo "mesh/internal/buildinfo"
+	"mesh/internal/darwincodesign"
 	"mesh/internal/nebulaobserverartifact"
 	"mesh/packaging/launchd"
 	nebulasource "mesh/third_party/nebula"
@@ -116,8 +117,16 @@ func (policy bundlePolicy) validateMetadata(metadata Package) error {
 		if entry.ArchiveMode != expectation.archiveMode {
 			return fmt.Errorf("payload %q archive mode does not match compiled policy", spec.path)
 		}
-		if expectation.size != 0 && (entry.Size != expectation.size || entry.SHA256 != expectation.sha256) {
-			return fmt.Errorf("payload %q identity does not match compiled policy", spec.path)
+		if expectation.size != 0 {
+			if metadata.Schema == SignedSchema &&
+				(expectation.kind == kindMeshctl || expectation.kind == kindNebula || expectation.kind == kindNebulaCert) {
+				difference := entry.Size - expectation.size
+				if difference < -(4<<20) || difference > 4<<20 || entry.Size < 512 {
+					return fmt.Errorf("signed payload %q size is outside the code-signature replacement bound", spec.path)
+				}
+			} else if entry.Size != expectation.size || entry.SHA256 != expectation.sha256 {
+				return fmt.Errorf("payload %q identity does not match compiled policy", spec.path)
+			}
 		}
 	}
 	return nil
@@ -144,6 +153,13 @@ func (policy bundlePolicy) validateContent(name string, content []byte, metadata
 	}
 	switch expectation.kind {
 	case kindMeshctl:
+		if metadata.Schema == SignedSchema {
+			envelope, err := darwincodesign.InspectMachOSignature(content)
+			if err != nil || !envelope.HasCMS || !envelope.HardenedRuntime ||
+				envelope.AdHoc || envelope.LinkerSigned || envelope.HasEntitlements {
+				return errors.Join(err, errors.New("bin/meshctl does not have one entitlement-free CMS-backed hardened-runtime signature"))
+			}
+		}
 		goVersion, err := verifyMeshBinary(content, "mesh/cmd/meshctl", policy.arch, meshIdentity)
 		if err != nil {
 			return fmt.Errorf("validate bin/meshctl: %w", err)
@@ -152,7 +168,13 @@ func (policy bundlePolicy) validateContent(name string, content []byte, metadata
 			return errors.New("bin/meshctl Go version does not match package.json")
 		}
 	case kindNebula, kindNebulaCert:
-		if err := nebulaobserverartifact.VerifyDarwinBinary(content, policy.arch, path.Base(name)); err != nil {
+		var err error
+		if metadata.Schema == SignedSchema {
+			_, err = nebulaobserverartifact.VerifySignedDarwinBinary(content, policy.arch, path.Base(name))
+		} else {
+			err = nebulaobserverartifact.VerifyDarwinBinary(content, policy.arch, path.Base(name))
+		}
+		if err != nil {
 			return fmt.Errorf("validate %s: %w", name, err)
 		}
 	case kindEmbedded:

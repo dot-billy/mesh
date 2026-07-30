@@ -188,7 +188,7 @@ func (lock *InstallerJournalLock) reconcileInstallStatePending() error {
 }
 
 func (lock *InstallerJournalLock) writeInstallStatePending(raw []byte) (returnErr error) {
-	fd, err := unix.Openat(lock.directory.fd, darwinInstallStatePendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY, uint32(darwinInstallStateFileMode))
+	fd, err := unix.Openat(lock.directory.fd, darwinInstallStatePendingName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY, uint32(darwinInstallStateFileMode))
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,7 @@ func (lock *InstallerJournalLock) readInstallStateRaw(name string) (result darwi
 	if err := nodeagent.InspectDarwinSensitivePath(path); err != nil {
 		return result, err
 	}
-	fd, err := unix.Openat(lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
+	fd, err := unix.Openat(lock.directory.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW_ANY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return result, err
 	}

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"mesh/internal/appleapprelease"
+	"mesh/internal/darwinbundle"
+	"mesh/internal/darwincodesign"
 	"mesh/internal/darwinpackagesecurity"
 	"mesh/internal/linuxpackagesecurity"
 	releasetrust "mesh/internal/release"
@@ -36,9 +40,12 @@ type releaseManifestOptions struct {
 	artifactURLs                []string
 	artifactPaths               []string
 	darwinSecurityReceiptPaths  []string
+	darwinCodesignReceiptPaths  []string
 	linuxSecurityReceiptPaths   []string
 	windowsSecurityReceiptPaths []string
 	windowsAuthenticodeReceipts []string
+	appleAppReleaseReceiptPath  string
+	appleAppSourceReceiptSHA256 string
 	enforceDarwinSecurity       bool
 	enforceLinuxSecurity        bool
 	enforceWindowsSecurity      bool
@@ -85,14 +92,18 @@ func createReleaseManifest(args []string, output io.Writer) error {
 	var artifactURLs repeatedFlag
 	var artifactPaths repeatedFlag
 	var darwinSecurityReceiptPaths repeatedFlag
+	var darwinCodesignReceiptPaths repeatedFlag
 	var linuxSecurityReceiptPaths repeatedFlag
 	var windowsSecurityReceiptPaths repeatedFlag
 	var windowsAuthenticodeReceipts repeatedFlag
-	flags.Var(&platformOSes, "os", "artifact operating system (linux, darwin, or windows; repeat once per artifact)")
-	flags.Var(&platformArches, "arch", "artifact architecture (amd64 or arm64; repeat once per artifact)")
+	appleAppReleaseReceiptPath := flags.String("apple-app-release-receipt", "", "canonical protected Mesh Admin receipt published as the macos-admin-evidence/portable artifact")
+	appleAppSourceReceiptSHA256 := flags.String("apple-app-source-receipt-sha256", "", "expected unsigned Mesh Admin source receipt SHA-256")
+	flags.Var(&platformOSes, "os", "artifact operating-system/product target; repeat once per artifact")
+	flags.Var(&platformArches, "arch", "artifact architecture/evidence target; repeat once per artifact")
 	flags.Var(&artifactURLs, "artifact-url", "absolute HTTPS artifact URL (repeat once per artifact)")
 	flags.Var(&artifactPaths, "artifact", "exact local artifact to hash (repeat once per artifact)")
 	flags.Var(&darwinSecurityReceiptPaths, "darwin-package-security-receipt", "canonical security receipt for one exact Darwin artifact (repeat once per Darwin artifact)")
+	flags.Var(&darwinCodesignReceiptPaths, "darwin-codesign-receipt", "fresh native code-signing receipt for one exact final Darwin artifact (repeat once per Darwin artifact)")
 	flags.Var(&linuxSecurityReceiptPaths, "linux-package-security-receipt", "canonical security receipt for one exact Linux artifact (repeat once per Linux artifact)")
 	flags.Var(&windowsSecurityReceiptPaths, "windows-package-security-receipt", "canonical security receipt for one exact Windows artifact (repeat once per Windows artifact)")
 	flags.Var(&windowsAuthenticodeReceipts, "windows-authenticode-receipt", "fresh native Authenticode receipt for one exact final Windows artifact (repeat once per Windows artifact)")
@@ -114,9 +125,12 @@ func createReleaseManifest(args []string, output io.Writer) error {
 		artifactURLs:                append([]string(nil), artifactURLs...),
 		artifactPaths:               append([]string(nil), artifactPaths...),
 		darwinSecurityReceiptPaths:  append([]string(nil), darwinSecurityReceiptPaths...),
+		darwinCodesignReceiptPaths:  append([]string(nil), darwinCodesignReceiptPaths...),
 		linuxSecurityReceiptPaths:   append([]string(nil), linuxSecurityReceiptPaths...),
 		windowsSecurityReceiptPaths: append([]string(nil), windowsSecurityReceiptPaths...),
 		windowsAuthenticodeReceipts: append([]string(nil), windowsAuthenticodeReceipts...),
+		appleAppReleaseReceiptPath:  *appleAppReleaseReceiptPath,
+		appleAppSourceReceiptSHA256: *appleAppSourceReceiptSHA256,
 		enforceDarwinSecurity:       true, enforceLinuxSecurity: true, enforceWindowsSecurity: true,
 		allowUnscannedDarwin: *allowUnscannedDarwin,
 		allowUnscannedLinux:  *allowUnscannedLinux, allowUnscannedWindows: *allowUnscannedWindows,
@@ -129,9 +143,9 @@ func createReleaseManifest(args []string, output io.Writer) error {
 	if len(options.artifactPaths) == 1 {
 		artifactLabel = "artifact"
 	}
-	securityLabels := make([]string, 0, 3)
+	securityLabels := make([]string, 0, 4)
 	if slicesContain(options.platformOSes, "darwin") {
-		label := fmt.Sprintf("%d Darwin package security receipts", len(options.darwinSecurityReceiptPaths))
+		label := fmt.Sprintf("%d Darwin package security receipts and %d native code-signing receipts", len(options.darwinSecurityReceiptPaths), len(options.darwinCodesignReceiptPaths))
 		if options.allowUnscannedDarwin {
 			label = "an explicit test-only unscanned-Darwin bypass"
 		}
@@ -150,6 +164,9 @@ func createReleaseManifest(args []string, output io.Writer) error {
 			label = "an explicit test-only unscanned-Windows bypass"
 		}
 		securityLabels = append(securityLabels, label)
+	}
+	if slicesContain(options.platformOSes, "macos-admin") {
+		securityLabels = append(securityLabels, "one protected Mesh Admin receipt published as authenticated evidence")
 	}
 	if len(securityLabels) == 0 {
 		securityLabels = append(securityLabels, "no Darwin, Linux, or Windows package artifacts")
@@ -232,6 +249,9 @@ func createRootedReleaseManifestUsing(options releaseManifestOptions, hooks mani
 			return generatedManifestIdentity{}, err
 		}
 	}
+	if err := validateAppleAppReleaseReceipt(options, artifacts); err != nil {
+		return generatedManifestIdentity{}, err
+	}
 	manifest := releasetrust.ReleaseManifest{
 		Schema: releasetrust.ReleaseSchemaV2, Channel: root.Document.Channel,
 		ReleaseEpoch: root.Document.ReleaseEpoch, Version: options.version, Sequence: options.sequence,
@@ -271,19 +291,22 @@ func validateDarwinSecurityReceipts(options releaseManifestOptions, artifacts []
 		}
 	}
 	if len(darwinArtifacts) == 0 {
-		if len(options.darwinSecurityReceiptPaths) != 0 || options.allowUnscannedDarwin {
-			return errors.New("Darwin package security options were supplied without a Darwin artifact")
+		if len(options.darwinSecurityReceiptPaths) != 0 || len(options.darwinCodesignReceiptPaths) != 0 || options.allowUnscannedDarwin {
+			return errors.New("Darwin package-security or code-signing options were supplied without a Darwin artifact")
 		}
 		return nil
 	}
 	if options.allowUnscannedDarwin {
-		if len(options.darwinSecurityReceiptPaths) != 0 {
-			return errors.New("test-only unscanned-Darwin bypass cannot be combined with security receipts")
+		if len(options.darwinSecurityReceiptPaths) != 0 || len(options.darwinCodesignReceiptPaths) != 0 {
+			return errors.New("test-only unscanned-Darwin bypass cannot be combined with package-security or code-signing receipts")
 		}
 		return nil
 	}
 	if len(options.darwinSecurityReceiptPaths) != len(darwinArtifacts) {
 		return fmt.Errorf("every Darwin artifact requires one --darwin-package-security-receipt (got %d for %d artifacts)", len(options.darwinSecurityReceiptPaths), len(darwinArtifacts))
+	}
+	if len(options.darwinCodesignReceiptPaths) != len(darwinArtifacts) {
+		return fmt.Errorf("every Darwin artifact requires one --darwin-codesign-receipt (got %d for %d artifacts)", len(options.darwinCodesignReceiptPaths), len(darwinArtifacts))
 	}
 	seen := make(map[string]struct{}, len(darwinArtifacts))
 	for _, path := range options.darwinSecurityReceiptPaths {
@@ -306,6 +329,151 @@ func validateDarwinSecurityReceipts(options releaseManifestOptions, artifacts []
 			return err
 		}
 		seen[receipt.Candidate.Architecture] = struct{}{}
+	}
+	policy, err := darwincodesign.LoadPolicy()
+	if err != nil {
+		return fmt.Errorf("load release-authoring Darwin code-signing policy: %w", err)
+	}
+	artifactPaths := make(map[string]string, len(darwinArtifacts))
+	for index, platformOS := range options.platformOSes {
+		if platformOS == "darwin" {
+			artifactPaths[options.platformArches[index]] = options.artifactPaths[index]
+		}
+	}
+	seen = make(map[string]struct{}, len(darwinArtifacts))
+	for _, path := range options.darwinCodesignReceiptPaths {
+		raw, err := readAuthoringPublicFile("Darwin code-signing receipt", path, darwincodesign.MaximumReceiptSize)
+		if err != nil {
+			return err
+		}
+		receipt, err := darwincodesign.ParseReceipt(raw)
+		if err != nil {
+			return err
+		}
+		artifact, ok := darwinArtifacts[receipt.Architecture]
+		if !ok {
+			return fmt.Errorf("Darwin code-signing receipt for %s has no release artifact", receipt.Architecture)
+		}
+		if _, duplicate := seen[receipt.Architecture]; duplicate {
+			return fmt.Errorf("Darwin code-signing receipt repeats architecture %s", receipt.Architecture)
+		}
+		artifactRaw, err := readAuthoringPublicFile("final signed Darwin artifact", artifactPaths[receipt.Architecture], int(darwinbundle.MaxArchiveSize))
+		if err != nil {
+			return err
+		}
+		artifactDigest := sha256.Sum256(artifactRaw)
+		if int64(len(artifactRaw)) != artifact.Size || hex.EncodeToString(artifactDigest[:]) != artifact.SHA256 {
+			return errors.New("final signed Darwin artifact changed after release-manifest hashing")
+		}
+		expanded, err := darwinbundle.InspectCandidateArchive(artifactRaw)
+		if err != nil {
+			return fmt.Errorf("inspect final signed Darwin artifact for native receipt: %w", err)
+		}
+		if expanded.Inspection.Package.Schema != darwinbundle.SignedSchema ||
+			expanded.Inspection.Package.Target.Arch != receipt.Architecture {
+			return errors.New("Darwin code-signing receipt requires the matching final signed bundle-v2 artifact")
+		}
+		if err := receipt.Match(time.Now(), policy, receipt.Architecture, darwinCodesignArtifactIdentities(expanded)); err != nil {
+			return err
+		}
+		seen[receipt.Architecture] = struct{}{}
+	}
+	return nil
+}
+
+func darwinCodesignArtifactIdentities(expanded darwinbundle.ExpandedCandidate) []darwincodesign.ArtifactIdentity {
+	wanted := map[string]struct{}{"bin/meshctl": {}, "bin/nebula": {}, "bin/nebula-cert": {}}
+	identities := make([]darwincodesign.ArtifactIdentity, 0, len(wanted))
+	for _, file := range expanded.Files {
+		if _, ok := wanted[file.Path]; !ok {
+			continue
+		}
+		digest := sha256.Sum256(file.Content)
+		identities = append(identities, darwincodesign.ArtifactIdentity{
+			Path: file.Path, SHA256: hex.EncodeToString(digest[:]), Size: int64(len(file.Content)),
+		})
+	}
+	return identities
+}
+
+func validateAppleAppReleaseReceipt(options releaseManifestOptions, artifacts []releasetrust.Artifact) error {
+	return validateAppleAppReleaseReceiptUsing(
+		options,
+		artifacts,
+		time.Now(),
+		func() (string, error) {
+			policy, err := darwincodesign.LoadPolicy()
+			if err != nil {
+				return "", fmt.Errorf("load Mesh Admin release-authoring Team ID policy: %w", err)
+			}
+			return policy.TeamID, nil
+		},
+	)
+}
+
+func validateAppleAppReleaseReceiptUsing(
+	options releaseManifestOptions,
+	artifacts []releasetrust.Artifact,
+	now time.Time,
+	loadTeamID func() (string, error),
+) error {
+	var application *releasetrust.Artifact
+	var evidence *releasetrust.Artifact
+	for index := range artifacts {
+		artifact := &artifacts[index]
+		switch {
+		case artifact.OS == "macos-admin" && artifact.Arch == "universal":
+			application = artifact
+		case artifact.OS == "macos-admin-evidence" && artifact.Arch == "portable":
+			evidence = artifact
+		}
+	}
+	hasOptions := strings.TrimSpace(options.appleAppReleaseReceiptPath) != "" ||
+		strings.TrimSpace(options.appleAppSourceReceiptSHA256) != ""
+	if application == nil && evidence == nil {
+		if hasOptions {
+			return errors.New("Apple application receipt options were supplied without macos-admin/universal and macos-admin-evidence/portable artifacts")
+		}
+		return nil
+	}
+	if application == nil || evidence == nil {
+		return errors.New("Mesh Admin publication requires both macos-admin/universal and macos-admin-evidence/portable artifacts")
+	}
+	if strings.TrimSpace(options.appleAppReleaseReceiptPath) == "" ||
+		strings.TrimSpace(options.appleAppSourceReceiptSHA256) == "" {
+		return errors.New("Mesh Admin publication requires --apple-app-release-receipt and --apple-app-source-receipt-sha256")
+	}
+	raw, err := readAuthoringPublicFile(
+		"protected Mesh Admin release receipt",
+		options.appleAppReleaseReceiptPath,
+		appleapprelease.MaximumReceiptSize,
+	)
+	if err != nil {
+		return err
+	}
+	receipt, err := appleapprelease.ParseReceipt(raw)
+	if err != nil {
+		return err
+	}
+	evidenceDigest := sha256.Sum256(raw)
+	if evidence.Size != int64(len(raw)) ||
+		evidence.SHA256 != hex.EncodeToString(evidenceDigest[:]) {
+		return errors.New("macos-admin-evidence/portable artifact differs from the protected Mesh Admin receipt")
+	}
+	if receipt.Application.Version != options.version {
+		return errors.New("protected Mesh Admin receipt version differs from the release manifest")
+	}
+	teamID, err := loadTeamID()
+	if err != nil {
+		return err
+	}
+	if err := receipt.MatchForPublication(
+		now,
+		appleapprelease.ArtifactIdentity{SHA256: application.SHA256, Size: application.Size},
+		strings.TrimSpace(options.appleAppSourceReceiptSHA256),
+		teamID,
+	); err != nil {
+		return err
 	}
 	return nil
 }
@@ -717,7 +885,7 @@ func validateReleaseManifestOptions(options releaseManifestOptions) error {
 		}
 		platformOS, platformArch := options.platformOSes[index], options.platformArches[index]
 		if !supportedReleaseArtifactTarget(platformOS, platformArch) {
-			return fmt.Errorf("artifact %d has unsupported target %q/%q (supported: linux, darwin, or windows with amd64 or arm64)", index+1, platformOS, platformArch)
+			return fmt.Errorf("artifact %d has unsupported target %q/%q", index+1, platformOS, platformArch)
 		}
 		target := platformOS + "\x00" + platformArch
 		if _, duplicate := targets[target]; duplicate {
@@ -729,8 +897,10 @@ func validateReleaseManifestOptions(options releaseManifestOptions) error {
 }
 
 func supportedReleaseArtifactTarget(platformOS, platformArch string) bool {
-	return (platformOS == "linux" || platformOS == "darwin" || platformOS == "windows") &&
-		(platformArch == "amd64" || platformArch == "arm64")
+	return ((platformOS == "linux" || platformOS == "darwin" || platformOS == "windows") &&
+		(platformArch == "amd64" || platformArch == "arm64")) ||
+		(platformOS == "macos-admin" && platformArch == "universal") ||
+		(platformOS == "macos-admin-evidence" && platformArch == "portable")
 }
 
 func validateChannelManifestOptions(options channelManifestOptions) error {
@@ -777,13 +947,28 @@ func hashStableManifestInput(role, path string, limit int64, afterRead func(stri
 	if written != input.identity.size {
 		return generatedManifestIdentity{}, fmt.Errorf("%s %q was truncated or appended while hashing", role, path)
 	}
+	digest := hasher.Sum(nil)
 	if afterRead != nil {
 		afterRead(path)
 	}
 	if err := validateOpenedSnapshotInput(input); err != nil {
 		return generatedManifestIdentity{}, fmt.Errorf("%s %q changed while hashing: %w", role, path, err)
 	}
-	return generatedManifestIdentity{size: written, sha256: hex.EncodeToString(hasher.Sum(nil))}, nil
+	if _, err := input.file.Seek(0, io.SeekStart); err != nil {
+		return generatedManifestIdentity{}, fmt.Errorf("%s %q changed while hashing: seek for independent revalidation: %w", role, path, err)
+	}
+	revalidator := sha256.New()
+	revalidated, err := io.Copy(revalidator, io.LimitReader(input.file, input.identity.size+1))
+	if err != nil {
+		return generatedManifestIdentity{}, fmt.Errorf("%s %q changed while hashing: independent re-read: %w", role, path, err)
+	}
+	if revalidated != input.identity.size || !bytes.Equal(revalidator.Sum(nil), digest) {
+		return generatedManifestIdentity{}, fmt.Errorf("%s %q changed while hashing: independently re-read content differs", role, path)
+	}
+	if err := validateOpenedSnapshotInput(input); err != nil {
+		return generatedManifestIdentity{}, fmt.Errorf("%s %q changed while hashing: %w", role, path, err)
+	}
+	return generatedManifestIdentity{size: written, sha256: hex.EncodeToString(digest)}, nil
 }
 
 func readStableManifestInput(path string, limit int, afterRead func(string)) ([]byte, generatedManifestIdentity, error) {
@@ -801,6 +986,19 @@ func readStableManifestInput(path string, limit int, afterRead func(string)) ([]
 	}
 	if afterRead != nil {
 		afterRead(path)
+	}
+	if err := validateOpenedSnapshotInput(input); err != nil {
+		return nil, generatedManifestIdentity{}, err
+	}
+	if _, err := input.file.Seek(0, io.SeekStart); err != nil {
+		return nil, generatedManifestIdentity{}, fmt.Errorf("seek release manifest for independent content revalidation: %w", err)
+	}
+	revalidated, err := io.ReadAll(io.LimitReader(input.file, input.identity.size+1))
+	if err != nil {
+		return nil, generatedManifestIdentity{}, fmt.Errorf("independently re-read release manifest: %w", err)
+	}
+	if int64(len(revalidated)) != input.identity.size || !bytes.Equal(revalidated, raw) {
+		return nil, generatedManifestIdentity{}, errors.New("release manifest content changed after its first bounded read")
 	}
 	if err := validateOpenedSnapshotInput(input); err != nil {
 		return nil, generatedManifestIdentity{}, err

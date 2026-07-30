@@ -1,5 +1,5 @@
 name: mesh_desktop
-description: "Native Mesh operator console for Linux and Windows."
+description: "Native Mesh operator console for Linux, Windows, macOS, iPhone, and iPad."
 publish_to: 'none'
 version: 0.1.0+1
 

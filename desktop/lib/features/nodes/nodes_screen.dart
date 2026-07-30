@@ -12,6 +12,7 @@ class NodesScreen extends StatefulWidget {
     required this.networkId,
     required this.nodes,
     required this.role,
+    required this.permissions,
     required this.onSelectNode,
     this.mutationCallbacks,
     super.key,
@@ -20,6 +21,7 @@ class NodesScreen extends StatefulWidget {
   final String networkId;
   final List<NodeViewModel> nodes;
   final MeshRole role;
+  final Set<MeshPermission> permissions;
   final ValueChanged<String> onSelectNode;
   final MeshMutationCallbacks? mutationCallbacks;
 
@@ -62,6 +64,32 @@ class _NodesScreenState extends State<NodesScreen> {
             networkId: widget.networkId,
             nodeId: node.id,
             nodeName: node.name,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _cancelPendingEnrollment(NodeViewModel node) async {
+    final mutations = widget.mutationCallbacks;
+    if (mutations == null) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => ExactNameConfirmationDialog(
+        title: 'Cancel enrollment for ${node.name}?',
+        detail:
+            'This permanently removes the never-enrolled node, invalidates '
+            'its one-time credentials, and releases its reserved address and '
+            'routes. The pending identity cannot be recovered.',
+        requiredName: node.name,
+        confirmLabel: 'Cancel pending enrollment',
+        onConfirm: (confirmedName) => mutations.cancelPendingEnrollment(
+          CancelPendingEnrollmentRequest(
+            networkId: widget.networkId,
+            nodeId: node.id,
+            nodeName: node.name,
+            confirmedName: confirmedName,
           ),
         ),
       ),
@@ -145,7 +173,7 @@ class _NodesScreenState extends State<NodesScreen> {
         final list = _NodeList(
           nodes: filtered,
           query: _query,
-          canCreate: widget.role.allows(MeshPermission.networksWrite),
+          canCreate: widget.permissions.contains(MeshPermission.networksWrite),
           creationAvailable: widget.mutationCallbacks != null,
           onCreate: _createEnrollment,
           onQueryChanged: (value) => setState(() => _query = value),
@@ -159,8 +187,11 @@ class _NodesScreenState extends State<NodesScreen> {
             : NodeDetail(
                 node: selected,
                 role: widget.role,
+                permissions: widget.permissions,
                 mutationAvailable: widget.mutationCallbacks != null,
                 onReissueEnrollment: () => _reissueEnrollment(selected),
+                onCancelPendingEnrollment: () =>
+                    _cancelPendingEnrollment(selected),
                 onRotateCertificate: () => _rotateCertificate(selected),
                 onRevoke: () => _revokeNode(selected),
               );
@@ -304,8 +335,10 @@ class NodeDetail extends StatelessWidget {
   const NodeDetail({
     required this.node,
     required this.role,
+    required this.permissions,
     required this.mutationAvailable,
     required this.onReissueEnrollment,
+    required this.onCancelPendingEnrollment,
     required this.onRotateCertificate,
     required this.onRevoke,
     super.key,
@@ -313,8 +346,10 @@ class NodeDetail extends StatelessWidget {
 
   final NodeViewModel node;
   final MeshRole role;
+  final Set<MeshPermission> permissions;
   final bool mutationAvailable;
   final VoidCallback onReissueEnrollment;
+  final VoidCallback onCancelPendingEnrollment;
   final VoidCallback onRotateCertificate;
   final VoidCallback onRevoke;
 
@@ -384,6 +419,7 @@ class NodeDetail extends StatelessWidget {
             if (node.status == NodeLifecycleStatus.pending) ...[
               PermissionGate(
                 role: role,
+                permissions: permissions,
                 permission: MeshPermission.networksWrite,
                 child: Tooltip(
                   message: mutationAvailable
@@ -398,9 +434,29 @@ class NodeDetail extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
+              PermissionGate(
+                role: role,
+                permissions: permissions,
+                permission: MeshPermission.networksWrite,
+                child: Tooltip(
+                  message: mutationAvailable
+                      ? 'Permanently remove this never-enrolled node'
+                      : 'Pending enrollment cancellation is unavailable in this session.',
+                  child: FilledButton.tonalIcon(
+                    key: const Key('cancel-pending-enrollment-button'),
+                    onPressed: mutationAvailable
+                        ? onCancelPendingEnrollment
+                        : null,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Cancel pending enrollment'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
             PermissionGate(
               role: role,
+              permissions: permissions,
               permission: MeshPermission.networksSecurity,
               child: Wrap(
                 spacing: 8,

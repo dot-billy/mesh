@@ -118,7 +118,7 @@ func fixtureReceipt(arch string) Receipt {
 	receipt.Candidate.Inspection = record("c", 1024)
 	receipt.Candidate.PackageJSONSHA256 = strings.Repeat("e", 64)
 	receipt.Candidate.Runtime = expectedRuntime
-	receipt.Candidate.Schema = "mesh-darwin-node-staging-bundle-v1"
+	receipt.Candidate.Schema = "mesh-darwin-node-bundle-v2"
 	receipt.Candidate.SecurityFloor = 2
 	receipt.Candidate.Verifier = record("f", 1024)
 	receipt.Candidate.Version = "1.2.3"

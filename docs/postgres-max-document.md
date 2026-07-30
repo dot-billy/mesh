@@ -31,7 +31,7 @@ The sequence is deliberately ordered:
 
 1. Run tagged static tests and build untagged production binaries plus the separately tagged test-only driver. The fixture helpers, driver, and package are excluded from normal release builds.
 2. Generate and validate both canonical graphs, the bounded OIDC claim intake, the purpose-sealed login payload, exact padded documents, hashes, credential bindings, and recovery snapshots before creating any Docker resource.
-3. Create, reopen, and authenticate a current control-v13 backup before PostgreSQL exists.
+3. Create, reopen, and authenticate a current control-v14 backup before PostgreSQL exists.
 4. Resolve the cached PostgreSQL image to one content ID and create from that immutable ID; create one uniquely named and labeled volume and one uniquely named and labeled container capped at two CPUs and 1 GiB; verify its exact identity and PostgreSQL 17 major version.
 5. Migrate a fresh database, import only through `mesh-storage import-backup` with the exact expected backup ID, and run offline `mesh-storage verify`.
 6. Read the pair twice, require byte-identical revisions/hashes/write IDs, require revision-1 bytes to equal the authenticated source files, repeat full recovery and credential validation, run both production-shaped readiness adapters, and verify revision-1 import receipts plus immutable provenance.

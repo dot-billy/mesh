@@ -11,11 +11,14 @@ final class MeshApi {
     required this.profile,
     required this.transport,
     Random? secureRandom,
-  }) : _secureRandom = secureRandom ?? Random.secure();
+    DateTime Function()? now,
+  }) : _secureRandom = secureRandom ?? Random.secure(),
+       _now = now ?? DateTime.now;
 
   final ConnectionProfile profile;
   final JsonTransport transport;
   final Random _secureRandom;
+  final DateTime Function() _now;
 
   Future<AuthenticationMethods> authenticationMethods() async {
     final body = await _object(
@@ -71,12 +74,28 @@ final class MeshApi {
       authenticated: false,
       sameOriginJson: true,
     );
+    _exactObject(
+      body,
+      required: const <String>{
+        'request_id',
+        'poll_secret',
+        'verification_url',
+        'expires_at',
+        'interval_seconds',
+      },
+      optional: const <String>{},
+      name: 'desktop authorization start',
+    );
     final requestId = _identifier(body, 'request_id', desktop: true);
     final pollSecret = _opaqueCredential(body, 'poll_secret');
     final verificationUrl = _absoluteUri(body, 'verification_url');
+    final verificationQuery = verificationUrl.queryParametersAll;
     if (verificationUrl.origin != profile.originString ||
         verificationUrl.path != '/' ||
-        verificationUrl.fragment.isNotEmpty) {
+        verificationUrl.fragment.isNotEmpty ||
+        verificationQuery.length != 1 ||
+        verificationQuery['mesh_desktop_request']?.length != 1 ||
+        verificationQuery['mesh_desktop_request']?.single != requestId) {
       throw const MeshApiProtocolException(
         'Desktop verification URL did not use the selected control plane.',
       );
@@ -100,7 +119,7 @@ final class MeshApi {
   Future<DesktopAuthorizationResult> completeDesktopAuthorization(
     DesktopAuthorizationAttempt attempt,
   ) async {
-    if (attempt.isExpiredAt(DateTime.now().toUtc())) {
+    if (attempt.isExpiredAt(_now().toUtc())) {
       return const DesktopAuthorizationResult(
         state: DesktopAuthorizationState.expired,
       );
@@ -115,7 +134,21 @@ final class MeshApi {
       authenticated: false,
       sameOriginJson: true,
     );
+    _exactObject(
+      body,
+      required: const <String>{'state', 'expires_at', 'interval_seconds'},
+      optional: const <String>{'session'},
+      name: 'desktop authorization completion',
+    );
     final state = DesktopAuthorizationState.parse(_string(body, 'state'));
+    final expiresAt = _time(body, 'expires_at');
+    final intervalSeconds = _integer(body, 'interval_seconds');
+    if (!expiresAt.isAtSameMomentAs(attempt.expiresAt) ||
+        intervalSeconds != attempt.pollInterval.inSeconds) {
+      throw const MeshApiProtocolException(
+        'Desktop authorization completion changed its polling contract.',
+      );
+    }
     final sessionValue = body['session'];
     if (state == DesktopAuthorizationState.authorized) {
       if (sessionValue == null) {
@@ -304,6 +337,31 @@ final class MeshApi {
       );
     }
     return enrollment;
+  }
+
+  Future<PendingEnrollmentCancellationReceipt> cancelPendingEnrollment({
+    required String networkId,
+    required String nodeId,
+    required int expectedConfigRevision,
+    required String confirmationName,
+  }) async {
+    final canonicalNetworkId = _resourceID(networkId);
+    final canonicalNodeId = _resourceID(nodeId);
+    _positiveRevision(expectedConfigRevision);
+    _name(confirmationName, 'Confirmation name');
+    final body = await _object(
+      method: 'POST',
+      path: '/api/v1/nodes/$canonicalNodeId/enrollment/cancel',
+      body: <String, Object?>{'confirmation_name': confirmationName},
+      acceptedStatuses: const <int>{200},
+    );
+    return PendingEnrollmentCancellationReceipt.fromJson(
+      body,
+      expectedNetworkId: canonicalNetworkId,
+      expectedNodeId: canonicalNodeId,
+      expectedConfigRevision: expectedConfigRevision,
+      expectedName: confirmationName,
+    );
   }
 
   Future<NodeCertificateRotationReceipt> rotateNodeCertificate({
@@ -756,6 +814,91 @@ final class NodeEnrollment {
   @override
   String toString() =>
       'NodeEnrollment(node: ${node.id}, token: [redacted], expiresAt: $expiresAt)';
+}
+
+final class PendingEnrollmentCancellationReceipt {
+  const PendingEnrollmentCancellationReceipt({
+    required this.nodeId,
+    required this.networkId,
+    required this.name,
+    required this.cancelledAt,
+    required this.enrollmentRecordsInvalidated,
+    required this.relayAssignmentRemoved,
+    required this.routedSubnetReservationsReleased,
+    required this.configRevision,
+  });
+
+  factory PendingEnrollmentCancellationReceipt.fromJson(
+    Map<String, Object?> body, {
+    required String expectedNetworkId,
+    required String expectedNodeId,
+    required int expectedConfigRevision,
+    required String expectedName,
+  }) {
+    _exactObject(
+      body,
+      required: const <String>{
+        'node_id',
+        'network_id',
+        'name',
+        'ip',
+        'role',
+        'cancelled_at',
+        'enrollment_records_invalidated',
+        'relay_assignment_removed',
+        'routed_subnet_reservations_released',
+        'config_revision',
+      },
+      name: 'pending enrollment cancellation receipt',
+    );
+    final nodeId = _identifier(body, 'node_id');
+    final networkId = _identifier(body, 'network_id');
+    final name = _string(body, 'name');
+    _name(name, 'Cancelled node name');
+    _canonicalIPv4(_string(body, 'ip'), 'Cancelled node IP');
+    _nodeRole(_string(body, 'role'));
+    final cancelledAt = _time(body, 'cancelled_at');
+    final invalidated = _nonNegativeInteger(
+      body,
+      'enrollment_records_invalidated',
+    );
+    final relayRemoved = _boolean(body, 'relay_assignment_removed');
+    final routesReleased = _nonNegativeInteger(
+      body,
+      'routed_subnet_reservations_released',
+    );
+    final configRevision = _positiveInteger(body, 'config_revision');
+    final expectedRevision = expectedConfigRevision + (relayRemoved ? 1 : 0);
+    if (nodeId != expectedNodeId ||
+        networkId != expectedNetworkId ||
+        name != expectedName ||
+        invalidated < 1 ||
+        routesReleased > 8 ||
+        configRevision != expectedRevision) {
+      throw const MeshApiProtocolException(
+        'Pending enrollment cancellation receipt did not prove the requested removal.',
+      );
+    }
+    return PendingEnrollmentCancellationReceipt(
+      nodeId: nodeId,
+      networkId: networkId,
+      name: name,
+      cancelledAt: cancelledAt,
+      enrollmentRecordsInvalidated: invalidated,
+      relayAssignmentRemoved: relayRemoved,
+      routedSubnetReservationsReleased: routesReleased,
+      configRevision: configRevision,
+    );
+  }
+
+  final String nodeId;
+  final String networkId;
+  final String name;
+  final DateTime cancelledAt;
+  final int enrollmentRecordsInvalidated;
+  final bool relayAssignmentRemoved;
+  final int routedSubnetReservationsReleased;
+  final int configRevision;
 }
 
 final class NodeCertificateRotationReceipt {

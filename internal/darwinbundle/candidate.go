@@ -19,8 +19,11 @@ import (
 
 const CandidateInspectionSchema = "mesh-darwin-security-candidate-inspection-v1"
 
+type candidatePolicyResolver func(string) (bundlePolicy, error)
+
 // CandidateInspection is structural and build-policy evidence for an unsigned
-// Darwin staging bundle. It grants no release or Darwin host authority.
+// staging bundle or final signed Darwin bundle. It grants no release or Darwin
+// host authority; signed bundles still require native trust evidence.
 type CandidateInspection struct {
 	Schema            string  `json:"schema"`
 	ArtifactSHA256    string  `json:"artifact_sha256"`
@@ -30,6 +33,49 @@ type CandidateInspection struct {
 	DirectoryCount    int     `json:"directory_count"`
 	TotalBytes        int64   `json:"total_bytes"`
 	Package           Package `json:"package"`
+}
+
+// ExpandedFile is one authenticated file from a canonical Darwin candidate
+// archive. Content is owned by the returned ExpandedCandidate and does not
+// alias the caller's archive buffer.
+type ExpandedFile struct {
+	Path        string
+	ArchiveMode uint32
+	Content     []byte
+}
+
+// ExpandedCandidate is the fully authenticated, in-memory expansion of one
+// canonical Darwin candidate archive. It grants no release authority: a
+// caller must compare Inspection with independently authenticated metadata
+// before placing these bytes in a managed release tree.
+type ExpandedCandidate struct {
+	Inspection CandidateInspection
+	Files      []ExpandedFile
+}
+
+// InspectCandidateArchive fully validates one bounded canonical USTAR archive
+// and returns its exact expansion without performing filesystem writes.
+func InspectCandidateArchive(raw []byte) (ExpandedCandidate, error) {
+	inspection, packageJSON, contents, err := inspectCandidateArchive(raw)
+	if err != nil {
+		return ExpandedCandidate{}, err
+	}
+	return expandedCandidateFromParts(inspection, packageJSON, contents), nil
+}
+
+func expandedCandidateFromParts(inspection CandidateInspection, packageJSON []byte, contents map[string][]byte) ExpandedCandidate {
+	files := make([]ExpandedFile, 0, len(inspection.Package.Entries)+1)
+	files = append(files, ExpandedFile{
+		Path: packageJSONPath, ArchiveMode: packageJSONArchiveMode,
+		Content: append([]byte(nil), packageJSON...),
+	})
+	for _, entry := range inspection.Package.Entries {
+		files = append(files, ExpandedFile{
+			Path: entry.Path, ArchiveMode: entry.ArchiveMode,
+			Content: append([]byte(nil), contents[entry.Path]...),
+		})
+	}
+	return ExpandedCandidate{Inspection: inspection, Files: files}
 }
 
 // InspectCandidateFile stably snapshots, fully validates, and stages one exact
@@ -85,10 +131,6 @@ func InspectCandidateFile(artifactPath, outputDirectory string) (CandidateInspec
 	if err != nil {
 		return CandidateInspection{}, err
 	}
-	digest := sha256.Sum256(raw)
-	inspection.Schema = CandidateInspectionSchema
-	inspection.ArtifactSHA256 = hex.EncodeToString(digest[:])
-	inspection.ArtifactSize = int64(len(raw))
 	return inspection, nil
 }
 
@@ -169,90 +211,122 @@ func ReconstructCandidateInspection(artifactSHA256 string, packageJSON []byte) (
 }
 
 func inspectAndStageCandidate(raw []byte, root *os.Root) (result CandidateInspection, returnErr error) {
+	return inspectAndStageCandidateWithPolicy(raw, root, productionPolicy)
+}
+
+func inspectAndStageCandidateWithPolicy(raw []byte, root *os.Root, policyResolver candidatePolicyResolver) (result CandidateInspection, returnErr error) {
 	if root == nil {
 		return result, errors.New("candidate staging root is required")
+	}
+	if policyResolver == nil {
+		return result, errors.New("candidate policy resolver is required")
 	}
 	children, err := fs.ReadDir(root.FS(), ".")
 	if err != nil || len(children) != 0 {
 		return result, errors.New("candidate staging root must be empty")
 	}
+	result, packageJSON, contents, err := inspectCandidateArchiveWithPolicy(raw, policyResolver)
+	if err != nil {
+		return CandidateInspection{}, err
+	}
+	directories := candidateDirectories(result.Package.Target.Arch)
+	if err := stageCandidateTree(root, directories, packageJSON, result.Package, contents); err != nil {
+		return CandidateInspection{}, err
+	}
+	return result, nil
+}
+
+func inspectCandidateArchive(raw []byte) (result CandidateInspection, packageJSON []byte, contents map[string][]byte, returnErr error) {
+	return inspectCandidateArchiveWithPolicy(raw, productionPolicy)
+}
+
+func inspectCandidateArchiveWithPolicy(raw []byte, policyResolver candidatePolicyResolver) (result CandidateInspection, packageJSON []byte, contents map[string][]byte, returnErr error) {
+	if len(raw) == 0 || int64(len(raw)) > MaxArchiveSize {
+		return result, nil, nil, errors.New("candidate archive is empty or exceeds its bound")
+	}
+	if policyResolver == nil {
+		return result, nil, nil, errors.New("candidate archive policy resolver is required")
+	}
 	reader := tar.NewReader(bytes.NewReader(raw))
 	packageHeader, err := reader.Next()
 	if err != nil || !exactUSTARHeader(packageHeader, packageJSONPath, packageJSONArchiveMode, packageHeaderSize(packageHeader), nil) ||
 		packageHeader.Size < 1 || packageHeader.Size > maxPackageJSONSize {
-		return result, errors.New("candidate archive must begin with canonical bounded USTAR package.json")
+		return result, nil, nil, errors.New("candidate archive must begin with canonical bounded USTAR package.json")
 	}
-	packageJSON, err := readExactMember(reader, packageHeader.Size)
+	packageJSON, err = readExactMember(reader, packageHeader.Size)
 	if err != nil {
-		return result, fmt.Errorf("read candidate package.json: %w", err)
+		return result, nil, nil, fmt.Errorf("read candidate package.json: %w", err)
 	}
 	metadata, err := parsePackage(packageJSON)
 	if err != nil {
-		return result, err
+		return result, nil, nil, err
 	}
 	buildTime, _ := validatePackage(metadata)
 	if !exactUSTARHeader(packageHeader, packageJSONPath, packageJSONArchiveMode, int64(len(packageJSON)), &buildTime) {
-		return result, errors.New("candidate package.json USTAR header is not canonical")
+		return result, nil, nil, errors.New("candidate package.json USTAR header is not canonical")
 	}
-	policy, err := productionPolicy(metadata.Target.Arch)
+	policy, err := policyResolver(metadata.Target.Arch)
 	if err != nil {
-		return result, err
+		return result, nil, nil, err
 	}
 	if err := policy.validateMetadata(metadata); err != nil {
-		return result, err
+		return result, nil, nil, err
 	}
 	wantSize, err := exactArchiveSize(int64(len(packageJSON)), metadata.Entries)
 	if err != nil || int64(len(raw)) != wantSize {
-		return result, fmt.Errorf("archive size is %d bytes, canonical size is %d", len(raw), wantSize)
+		return result, nil, nil, fmt.Errorf("archive size is %d bytes, canonical size is %d", len(raw), wantSize)
 	}
-	contents := make(map[string][]byte, len(metadata.Entries))
+	contents = make(map[string][]byte, len(metadata.Entries))
 	for _, entry := range metadata.Entries {
 		header, err := reader.Next()
 		if err != nil || !exactUSTARHeader(header, entry.Path, entry.ArchiveMode, entry.Size, &buildTime) {
-			return result, fmt.Errorf("payload %q USTAR header is not canonical", entry.Path)
+			return result, nil, nil, fmt.Errorf("payload %q USTAR header is not canonical", entry.Path)
 		}
 		content, err := readExactMember(reader, entry.Size)
 		if err != nil {
-			return result, fmt.Errorf("read candidate payload %q: %w", entry.Path, err)
+			return result, nil, nil, fmt.Errorf("read candidate payload %q: %w", entry.Path, err)
 		}
 		if err := policy.validateContent(entry.Path, content, metadata); err != nil {
-			return result, err
+			return result, nil, nil, err
 		}
 		contents[entry.Path] = content
 		result.TotalBytes += entry.Size
 	}
 	if _, err := reader.Next(); !errors.Is(err, io.EOF) {
-		return result, errors.New("candidate archive has a trailing member or malformed terminator")
+		return result, nil, nil, errors.New("candidate archive has a trailing member or malformed terminator")
 	}
 	canonicalHash := sha256.New()
 	counted := &countWriter{writer: canonicalHash}
 	writer := tar.NewWriter(counted)
 	if err := writeMember(writer, packageJSONPath, packageJSONArchiveMode, packageJSON, buildTime); err != nil {
-		return result, err
+		return result, nil, nil, err
 	}
 	for _, entry := range metadata.Entries {
 		if err := writeMember(writer, entry.Path, entry.ArchiveMode, contents[entry.Path], buildTime); err != nil {
-			return result, err
+			return result, nil, nil, err
 		}
 	}
 	if err := writer.Close(); err != nil {
-		return result, fmt.Errorf("reconstruct canonical candidate: %w", err)
+		return result, nil, nil, fmt.Errorf("reconstruct canonical candidate: %w", err)
 	}
 	artifactDigest := sha256.Sum256(raw)
 	if counted.count != int64(len(raw)) || !bytes.Equal(canonicalHash.Sum(nil), artifactDigest[:]) {
-		return result, errors.New("candidate archive bytes differ from canonical USTAR reconstruction")
+		return result, nil, nil, errors.New("candidate archive bytes differ from canonical USTAR reconstruction")
 	}
 	directories := candidateDirectories(metadata.Target.Arch)
-	if err := stageCandidateTree(root, directories, packageJSON, metadata, contents); err != nil {
-		return result, err
-	}
 	packageDigest := sha256.Sum256(packageJSON)
+	result.Schema = CandidateInspectionSchema
+	result.ArtifactSHA256 = hex.EncodeToString(artifactDigest[:])
+	result.ArtifactSize = int64(len(raw))
 	result.PackageJSONSHA256 = hex.EncodeToString(packageDigest[:])
 	result.FileCount = len(metadata.Entries) + 1
 	result.DirectoryCount = len(directories)
 	result.TotalBytes += int64(len(packageJSON))
 	result.Package = clonePackage(metadata)
-	return result, nil
+	if err := ValidateCandidateInspection(result); err != nil {
+		return CandidateInspection{}, nil, nil, err
+	}
+	return result, packageJSON, contents, nil
 }
 
 type countWriter struct {

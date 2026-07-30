@@ -120,6 +120,9 @@ func TestEnsureAdminCredentialVerifierBindsRotatesAndPersistsWithoutToken(t *tes
 	if err := service.EnsureFirewallScopeSchema(); err != nil {
 		t.Fatal(err)
 	}
+	if err := service.EnsureSecurityGroupSchema(); err != nil {
+		t.Fatal(err)
+	}
 	firstInfo, err := os.Stat(statePath)
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +183,7 @@ func TestEnsureAdminCredentialVerifierBindsRotatesAndPersistsWithoutToken(t *tes
 	if err := store.View(func(state State) error { observed = state; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if observed.Version != ControlStateVersionFirewallScopes || !masterKeyVerifierEqual(observed.MasterKeyVerifier, masterVerifier) || !adminCredentialVerifierEqual(observed.AdminCredentialVerifier, second) || len(observed.Audit) != 13 || observed.Audit[0].Action != "admin.credential_bound" || observed.Audit[1].Action != "control.topology_schema_migrated" || observed.Audit[2].Action != "control.network_dns_schema_migrated" || observed.Audit[3].Action != "control.network_relay_schema_migrated" || observed.Audit[4].Action != "control.ca_rotation_schema_migrated" || observed.Audit[5].Action != "control.firewall_rollout_schema_migrated" || observed.Audit[6].Action != "control.firewall_rollout_pause_schema_migrated" || observed.Audit[7].Action != "control.route_transfer_schema_migrated" || observed.Audit[8].Action != "control.route_profile_edit_schema_migrated" || observed.Audit[9].Action != "control.route_policy_schema_migrated" || observed.Audit[10].Action != "control.native_dns_schema_migrated" || observed.Audit[11].Action != "control.firewall_scope_schema_migrated" || observed.Audit[12].Action != "admin.credential_rotated" {
+	if observed.Version != ControlStateVersionSecurityGroups || !masterKeyVerifierEqual(observed.MasterKeyVerifier, masterVerifier) || !adminCredentialVerifierEqual(observed.AdminCredentialVerifier, second) || len(observed.Audit) != 14 || observed.Audit[0].Action != "admin.credential_bound" || observed.Audit[1].Action != "control.topology_schema_migrated" || observed.Audit[2].Action != "control.network_dns_schema_migrated" || observed.Audit[3].Action != "control.network_relay_schema_migrated" || observed.Audit[4].Action != "control.ca_rotation_schema_migrated" || observed.Audit[5].Action != "control.firewall_rollout_schema_migrated" || observed.Audit[6].Action != "control.firewall_rollout_pause_schema_migrated" || observed.Audit[7].Action != "control.route_transfer_schema_migrated" || observed.Audit[8].Action != "control.route_profile_edit_schema_migrated" || observed.Audit[9].Action != "control.route_policy_schema_migrated" || observed.Audit[10].Action != "control.native_dns_schema_migrated" || observed.Audit[11].Action != "control.firewall_scope_schema_migrated" || observed.Audit[12].Action != "control.security_group_schema_migrated" || observed.Audit[13].Action != "admin.credential_rotated" {
 		t.Fatalf("unexpected credential binding state: verifier=%q audit=%+v", observed.AdminCredentialVerifier, observed.Audit)
 	}
 	raw, err := os.ReadFile(statePath)

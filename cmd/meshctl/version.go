@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"mesh/internal/buildinfo"
+	"mesh/internal/darwincodesign"
 )
 
 func version(args []string) error {
@@ -28,9 +29,22 @@ func versionTo(args []string, output io.Writer) error {
 		return err
 	}
 	if *jsonOutput {
+		policySHA := ""
+		if info.OS == "darwin" && darwincodesign.Identity != darwincodesign.DevelopmentPolicy {
+			policy, err := darwincodesign.LoadPolicy()
+			if err != nil {
+				return fmt.Errorf("load compiled Darwin code-signing policy: %w", err)
+			}
+			policySHA = policy.SHA256
+		}
 		encoder := json.NewEncoder(output)
 		encoder.SetEscapeHTML(false)
-		return encoder.Encode(info)
+		return encoder.Encode(struct {
+			buildinfo.Info
+			DarwinCodeSigningPolicySHA256 string `json:"darwin_code_signing_policy_sha256"`
+		}{
+			Info: info, DarwinCodeSigningPolicySHA256: policySHA,
+		})
 	}
 	_, err = fmt.Fprintf(output, "meshctl %s (%s, built %s, %s/%s, security floor %d)\n", info.Version, info.Commit, info.BuildTime, info.OS, info.Arch, info.SecurityFloor)
 	return err

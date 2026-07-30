@@ -111,9 +111,10 @@
             <h3>Use the operations workspace</h3>
             <p>The control plane has a fleet view and a separate workspace for each network. Review fleet alerts first, then open the affected network.</p>
             <ul class="docs-list">
-              <li>Networks shows the fleet overview, rollout convergence, and network directory. Expand Needs attention to read the full alert list.</li>
-              <li>Open a network row to see its topology and next setup action. Manage nodes contains the detailed lifecycle controls.</li>
-              <li>Within a network, use Settings for readiness, DNS, relays, firewall, routing, certificate authority, and retirement. The signed-in Viewer, Operator, or Admin role controls which actions are available.</li>
+              <li>Networks shows the fleet overview, rollout convergence, and network directory. Expand Needs attention to read the full alert list. Use Search every node to find a machine across all networks by name, overlay address, role, placement, route, lifecycle state, or health evidence.</li>
+              <li>Open a network row to see its topology and next setup action. Manage nodes keeps each machine&#x27;s permitted lifecycle controls in an action toolbar below its identity and health evidence. Its network-level search narrows that inventory without changing authoritative state; on smaller screens the toolbar uses two columns so actions remain readable and reachable.</li>
+              <li>Within a network, use Settings for readiness, security groups, DNS, relays, firewall, routing, certificate authority, and retirement. The signed-in Viewer, Operator, or Admin role controls which actions are available.</li>
+              <li>The console refreshes authoritative health and runtime evidence in the background. Open panels, node-search text, keyboard focus, text selection, and scroll position are retained across those refreshes; an explicit logout is the only normal full-page reload.</li>
               <li>Activity shows append-only security events. It also includes recovery-code administration when the feature is enabled and the signed-in role has permission.</li>
               <li>On smaller screens, use the labeled bottom navigation. Keyboard users can skip directly to the control-plane content.</li>
             </ul>
@@ -145,9 +146,11 @@
           </article>
           <article class="docs-topic">
             <h3>Runtime prerequisite and trusted installation</h3>
-            <p>Before production enrollment reads a token or changes local state, Mesh checks nebula and nebula-cert. Both files must be executable, report the same supported version, and resolve beside meshctl in one authenticated installed release.</p>
+            <p>Before production enrollment reads a token or changes local state, Mesh authenticates the installed runtime boundary. On a supported enrollment platform, nebula and nebula-cert must both be executable, report the same supported version, and resolve beside meshctl in one authenticated installed release.</p>
             <ul class="docs-list">
-              <li>On Linux, use mesh-install. On another supported platform, use its Mesh installer. Online installation selects the OS and architecture artifact authorized by threshold-signed release metadata, then verifies its signed size and SHA-256 before installation.</li>
+              <li>On Linux, use mesh-install. On another supported platform, use its Mesh installer. The macOS node-installer source is still release-gated and is not a supported installation path. Online installation selects the OS and architecture artifact authorized by threshold-signed release metadata, then verifies its signed size and SHA-256 before installation.</li>
+              <li>The macOS source validator can authenticate the exact active immutable release, current selector, live launchd plist, quiescent installer state, closed runtime gate, and a strict compiled Team-ID/code-identifier signature policy. Code-signing policy v2 reserves a fourth distinct identifier for the production mesh-install bootstrap, and a separate fail-closed package policy binds the eventual flat-package identifier plus protected bootstrap and root-private snapshot paths. Its compiled post-install source can recover the existing journal/intake state and import only that fixed snapshot without enrolling or opening the runtime gate. Signed-bundle assembly and dual-receipt release preflight are implemented. A current Apple Silicon partial native receipt passes the enabled path, installer-gate, release-layout, exact-child, process-group, and reap tests, but explicitly records no bundle and no system launchctl mutation. Final code/package identifiers are not approved or embedded, and no real signed bundle, payload package, or full native receipt exists. Production meshctl still rejects macOS enrollment before running the runtime or reading the token until clean-host native lifecycle, protected signing, notarization, and installed-host evidence pass.</li>
+              <li>The release-gated macOS uninstall-runtime source deactivates only the node runtime. It retains immutable releases, installer trust and anti-rollback state, and root-private agent enrollment state; it is not a supported package or data-removal command.</li>
               <li>Do not fetch GitHub&#x27;s moving latest Nebula release during enrollment. That would bypass Mesh release-root authorization, compatibility policy, package evidence, anti-rollback state, and recovery.</li>
               <li>For an offline or air-gapped host, independently authenticate the bootstrap verifier and installer, then install the complete root-private signed snapshot before enrollment.</li>
               <li>If either runtime is missing, old, mismatched, in another directory, or not executable, Mesh leaves the token unread and does not start enrollment. Follow the mesh-install guidance in the error, then rerun the same enrollment command.</li>
@@ -188,12 +191,29 @@
           </article>
           <article class="docs-topic">
             <h3>Health and heartbeat meaning</h3>
-            <p>A fresh authenticated heartbeat proves lifecycle contact with the managed agent. It does not by itself prove that arbitrary peers can exchange application traffic.</p>
+            <p>A fresh authenticated heartbeat proves lifecycle contact with the managed agent. The current runtime state is running or stopped only while that heartbeat remains current; after five minutes it becomes unknown, while the separate Nebula-running field remains only the last reported historical value. None of this by itself proves that arbitrary peers can exchange application traffic.</p>
             <ul class="docs-list">
               <li>Operational means desired signed state, certificate generation, agent status, and Nebula runtime have converged.</li>
+              <li>A quarantined agent keeps Nebula stopped while it uses a bounded recovery poll to validate and fetch fresh signed configuration.</li>
               <li>Active probes provide stronger evidence but still cover only the configured probe relationship.</li>
               <li>Use real packet and application checks for production acceptance.</li>
             </ul>
+          </article>
+          <article class="docs-topic docs-topic-wide">
+            <h3>Mesh Tunnel for iPhone and iPad is a controlled preview</h3>
+            <p>Mesh Tunnel is a separate controlled preview with shared app-and-extension device-only Keychain custody, OIDC onboarding, lifecycle refresh, runtime evidence, identity removal, and host controls. Builds 2 through 11 entered external testing. Build 8 physically completed OIDC and server enrollment: server audit proves the existing iPhone enrollment was reissued, its token was consumed, and the node became active. Build 9 subsequently read and displayed that authenticated local identity, proving local configuration commit and retained identity recovery. Build 10 corrects the first-inspection race around that state. Build 11 is externally distributed and keeps Mesh sign-in and provision-first enrollment while replacing the separate Swift packet-copy transport with Mobile Nebula&#x27;s production iOS design: the Go engine validates the provider-owned utun descriptor and gives it directly to pinned Nebula. Source tests reject production packet-copy tasks. No released build proved a working packet path. Physical Build 11 provider start, lighthouse reachability, peer traffic, roaming, and resource behavior remain unproved, so this is not a supported VPN.</p>
+            <ul class="docs-list">
+              <li>The containing app and Packet Tunnel share device-only Keychain custody of the node private key and current or pending agent credentials. Narrow Go sessions use them in place; VPN preferences, the App Group, and Swift results never receive those secrets.</li>
+              <li>A fresh mobile runtime report is evidence only for its named configuration, certificate, engine, sequence, and optional counters. Missing or stale reports remain unknown; a credential rejection quarantines the client and does not by itself prove server revocation.</li>
+              <li>Remove local node identity requires confirmation of the exact authenticated node, deletes shared app-and-extension node authority before configuration slots, and removes the VPN preference only after bounded completion. It does not revoke or delete the server-side node.</li>
+              <li>All actions remain disabled until initial VPN and identity inspection completes. If setup observes an authenticated current identity, it validates and prepares that identity&#x27;s same-origin manager and returns to Start existing tunnel without OIDC, self-enrollment, or another token.</li>
+              <li>Current source prepares Apple VPN state before OIDC. For exactly one valid same-origin disabled manager with no configuration slot or Keychain authority, it offers Replace VPN and sign in, confirms and revalidates the scope, removes only that manager, and saves/reloads a fresh enabled manager. It never automatically removes an enabled, identity-bearing, mismatched, or duplicate configuration. After network selection, it re-enumerates and reloads exactly one manager and rechecks identity absence and policy. The self-enrollment mutation begins a bounded protected transaction; ambiguous transport or 5xx receives one safe retry using the same principal and stable device name. Before token use the host stores a device-only exact origin/node/network/counter recovery intent. The containing app passes the token only to its narrow Go enrollment session, validates and installs the exact authenticated configuration, retires only the matching intent with a verified delete, refreshes the site through a narrow host lifecycle session, reloads the current manager, and creates a one-use exact-configuration start authorization. The provider consumes that authorization and rejects direct Settings starts. On relaunch, candidate or agent-bootstrap recovery must match the exact intent; a matching committed site retires a retained marker, while any mismatch blocks start and exposes only confirmed exact-node removal using the authenticated current site. If its VPN preference is missing or disabled, that explicit confirmation creates or re-enables the exact same-origin manager only to launch deletion. The marker and manager are removed only after provider-confirmed completion. Temporarily deferred recovery preserves authority. Incomplete or unauthorized no-configuration authority exposes only an explicit destructive local reset after administrator review; the reset removes local credentials, marker, slots, and VPN preference but does not revoke the server node.</li>
+              <li>Do not use the preview for production access. Physical iPhone/iPad Keychain, Network Extension, renewal, rotation, revocation, roaming, suspension, packet, cutoff, reinstall, and deletion tests are still required.</li>
+            </ul>
+            <aside class="docs-note warning">
+              <strong>TestFlight is not a support claim</strong>
+              <p>An uploaded, processed, or Beta Review-approved build proves distribution state only. Treat tunnel, peer, relay, and packet behavior as unproved until the matching installed-device evidence passes.</p>
+            </aside>
           </article>
         </div>
       </section>
@@ -209,10 +229,33 @@
             <p>Start with the smallest required flows. Prefer group selectors for stable roles and node selectors for narrow exceptions.</p>
             <ul class="docs-list">
               <li>Every node belongs to the built-in all group.</li>
-              <li>Use named groups such as app, database, admin, or monitoring for reusable policy.</li>
+              <li>Create named groups such as app, database, admin, or monitoring under Settings, Security groups before referencing them in policy. A group can exist before it has any members.</li>
               <li>Preview effective policy before deployment to confirm target-node, target-group, and peer-node expansion.</li>
               <li>Keep management access separate from application traffic.</li>
             </ul>
+          </article>
+          <article class="docs-topic docs-topic-wide">
+            <h3>Manage network security groups</h3>
+            <p>Security groups are network-level definitions. Viewers can inspect the catalog and membership. Administrators with network-security permission can create groups, edit descriptions, assign several active nodes, and delete unused definitions.</p>
+            <ul class="docs-list">
+              <li>The built-in all group is present on every node certificate and cannot be edited or deleted.</li>
+              <li>Custom group names are immutable because certificates and firewall rules refer to the exact name. Descriptions can be changed without rotating certificates or advancing the signed network revision.</li>
+              <li>Pending-node membership is visible but cannot be changed by the bulk active-node workflow. If a pending node was created with the wrong groups, cancel that enrollment and create it again before it enrolls.</li>
+              <li>A custom group cannot be deleted while any pending or active node belongs to it or while the stable or staged firewall policy refers to it.</li>
+            </ul>
+            <ol class="docs-steps">
+              <li>Open the network, choose Settings, then Security groups. Create the reusable group and add a description that explains its intended access.</li>
+              <li>Select the group, choose every active node that should carry it, and review the exact addition and removal count.</li>
+              <li>Confirm the batch. Mesh changes one node at a time: it signs a same-key replacement certificate, blocklists the prior certificate through expiry, invalidates outstanding recovery tokens for that node, advances the signed network revision, and verifies the transition receipt before continuing.</li>
+              <li>Wait for every changed node to report the new certificate generation and signed configuration revision. Test traffic that should pass and traffic that should fail; lifecycle convergence alone is not packet-level proof.</li>
+              <li>Reference the group in the firewall editor, preview the per-node effective policy, then use a representative canary rollout before promotion.</li>
+              <li>If a batch stops partway through, read the refreshed membership and retry Save node membership. The next attempt calculates only the remaining active-node changes.</li>
+              <li>To delete a group, first remove it from stable and staged firewall policy, remove every active membership, resolve any pending membership, then use Delete unused group.</li>
+            </ol>
+            <aside class="docs-note warning">
+              <strong>Bulk membership is a sequence of trust changes</strong>
+              <p>A multi-node update is not one atomic certificate transaction. Earlier nodes remain committed if a later node fails. Use the authoritative refreshed catalog and revision before retrying; do not assume the entire batch rolled back.</p>
+            </aside>
           </article>
           <article class="docs-topic">
             <h3>Roll out safely</h3>
@@ -227,7 +270,7 @@
           </article>
           <article class="docs-topic">
             <h3>Change node groups</h3>
-            <p>Group changes rotate the node certificate so group membership is cryptographically bound to the new identity claims.</p>
+            <p>Use Settings, Security groups for reusable definitions and multi-node assignment. Security &amp; access on an individual active node remains available for a narrow one-node change. Either path rotates the affected node certificate so membership is cryptographically bound to the new identity claims.</p>
             <aside class="docs-note important">
               <strong>Expect certificate convergence</strong>
               <p>Do not treat the group change as complete until the node reports the desired certificate generation and remains reachable under the new policy.</p>
@@ -289,24 +332,54 @@
         <div class="docs-topic-grid">
           <article class="docs-topic">
             <h3>Roles</h3>
-            <p>OIDC groups map to one of three Mesh roles.</p>
+            <p>OIDC groups map to one of four Mesh roles.</p>
             <ul class="docs-list">
+              <li>Member: read the network directory and create only a fixed-policy mobile enrollment for the signed-in user.</li>
               <li>Viewer: read network, health, readiness, runtime telemetry, and audit information.</li>
               <li>Operator: viewer access plus routine network and node changes.</li>
               <li>Admin: operator access plus certificate authority, node-security, recovery, session, and retirement operations.</li>
             </ul>
           </article>
           <article class="docs-topic docs-topic-wide">
-            <h3>Use Mesh Desktop</h3>
-            <p>Mesh Desktop is a preview, unprivileged operator console for Linux and Windows. It connects to a remote Mesh control plane. It does not install Nebula, manage a local tunnel, or run the privileged node service.</p>
+            <h3>Enroll an iPhone with your own account</h3>
+            <p>Mesh Tunnel can use your organization&#x27;s OIDC sign-in instead of asking an administrator to copy a one-time token into the app.</p>
             <ul class="docs-list">
-              <li>Mesh Desktop keeps the session and CSRF cookie pair in the operating system credential store. A legacy administrator token, when a deployment still allows one, stays in memory and is not saved.</li>
+              <li>An administrator must map the user&#x27;s OIDC subject, verified email, or group to the member, operator, or admin role. Viewer access cannot self-enroll.</li>
+              <li>A member can create only a member in the mobile site and the all and members groups. It cannot choose an IP address, route, lighthouse endpoint, topology label, or privileged group.</li>
+              <li>Retrying with the same signed-in principal and stable device name replaces the pending one-time token instead of creating another pending node.</li>
+              <li>If iOS retained exactly one structurally valid same-origin disabled Mesh VPN manager after reinstall and no current, candidate, recovery, or Keychain authority exists, the app offers Replace VPN and sign in before OIDC. It asks destructive confirmation, revalidates the exact singleton/disabled/origin/identity scope, removes only that stale manager, and saves/reloads a fresh enabled manager before login. It never automatically removes an enabled, identity-bearing, mismatched, or duplicate configuration. After login it performs a bounded read-only retry when iOS temporarily returns no matching manager or the one matching manager as disabled. Every attempt re-enumerates and reloads current preferences; duplicate managers, origin/schema/on-demand mismatch, or any local identity fail immediately. Self-enrollment and local site activation occur before normal provider start. A terminal setup failure remains visible until the user explicitly retries or inspects the configuration instead of being overwritten by a later VPN-status notification.</li>
+              <li>The current role model exposes the network directory globally to principals with network-read access. Per-network user bindings and enrollment quotas are not yet implemented.</li>
+            </ul>
+            <ol class="docs-steps">
+              <li>Enter the exact HTTPS origin of the Mesh control plane and choose Sign in and set up VPN.</li>
+              <li>Before login, Mesh Tunnel validates the existing Apple VPN configuration or creates and reloads a fresh one. Approve Apple&#x27;s Add VPN Configuration prompt when iOS presents it; Mesh cannot bypass this explicit device permission.</li>
+              <li>If the app instead finds exactly one valid same-origin disabled Mesh configuration with no identity state, choose Replace VPN and sign in, review the exact recovery scope, and confirm or cancel. Cancellation leaves the configuration unchanged and does not open login.</li>
+              <li>Complete the organization&#x27;s sign-in in the system authentication window and approve the request you just started. Your provider password and provider tokens do not enter Mesh Tunnel.</li>
+              <li>Choose a network if your account can see more than one.</li>
+              <li>Mesh Tunnel follows a provision-first flow. After sign-in and exact VPN-manager validation, the app asks the server for one fixed mobile-member enrollment, passes the returned one-time token only to the in-process Go enrollment session, installs the verified Nebula site, and then starts the Packet Tunnel normally. The token is not shown, saved, placed in VPN preferences, or sent through provider start options or messages.</li>
+              <li>Inspect runtime status and prove peer packet exchange before treating the device as connected.</li>
+            </ol>
+            <aside class="docs-note warning">
+              <strong>Device permission and packet proof remain separate</strong>
+              <p>Browser approval proves the user&#x27;s Mesh authority; Apple&#x27;s prompt authorizes the local VPN configuration. Neither one proves that the Packet Tunnel started, reached a lighthouse, or exchanged traffic with a peer.</p>
+            </aside>
+          </article>
+          <article class="docs-topic docs-topic-wide">
+            <h3>Use Mesh Desktop</h3>
+            <p>Mesh Desktop is a preview, unprivileged operator console for Linux and Windows. Mesh Admin for macOS, iPhone, and iPad is currently an unsupported Apple runner for that same remote operator client. Historical local macOS Admin bytes passed Developer ID signing, notarization, stapling, Gatekeeper, and live test-control-plane checks, but their portable v2 receipt is superseded because its tree identity did not survive archive extraction. A clean replacement v3 artifact now passes exact pre-archive/post-extraction tree matching, portable verification, deep signing, staple, and Gatekeeper checks. Local App Store exports have proved iOS signing feasibility. There is still no published, publicly re-downloaded, installed-channel, clean-host, or physical-device Apple release evidence. None of these clients installs Nebula, enrolls the computer or mobile device as a node, manages a local tunnel, or runs the privileged node service.</p>
+            <ul class="docs-list">
+              <li>Mesh Desktop keeps the session and CSRF cookie pair in the operating system credential store. Saved control-plane display names and exact normalized origins use a separate bounded record: sign-out deletes the credential-bearing session while retaining at most eight profiles, and relaunch re-verifies system TLS plus the server-advertised authentication methods before enabling sign-in. Malformed, duplicate, over-limit, or managed-policy-conflicting profiles fail closed. A legacy administrator token, when a deployment still allows one, stays in memory and is not saved.</li>
               <li>Pending, denied, and expired requests return no session credentials. An approved request can create a session only once.</li>
-              <li>The app must wait for the server-provided polling interval. A 429 response includes Retry-After and means the client polled too soon.</li>
-              <li>The preview can create networks and node enrollments, reissue a pending enrollment, rotate or permanently revoke a node identity, revoke a control-plane session, and create one-use recovery access. Every action is checked again by server-side RBAC.</li>
-              <li>A lighthouse enrollment requires its reachable public UDP endpoint. Enrollment tokens and recovery codes appear in a one-time custody view and are removed when the view closes or the app leaves the foreground.</li>
+              <li>The app must wait for the server-provided polling interval. A 429 response includes Retry-After and means the client polled too soon. The Apple Admin source retries a transient 503 completion interruption only while the original server-issued authorization remains valid. Verification URLs from another origin fail closed, and the disposable production control-plane test proves an already consumed approval cannot create a second session. A separate opt-in test passed every advertised read against an operator-supplied HTTPS control plane on a Mac after the bounded client was fixed to request identity encoding while still rejecting encoded response bodies. That live test kept the administrator token in process memory, changed only its own login/logout session, and omitted the optional recovery inventory because the server advertised break-glass as disabled. This remains source-client evidence rather than a final installed application, OIDC/browser-return ceremony, or physical-device result.</li>
+              <li>The preview can create networks and node enrollments, reissue or permanently cancel a never-enrolled pending enrollment with exact-name confirmation, rotate or permanently revoke a node identity, revoke a control-plane session, and create one-use recovery access. Every action is checked again by server-side RBAC. Before every foreground fleet poll, the Apple Admin source refreshes the authoritative session and drives privileged controls from the exact permission set returned by the server. A downgrade removes Access state and one-time material, stale audit or access responses are discarded after permission loss, and a revoked or unexpectedly changed session fails closed to signed-out state. Use the web control plane or API for workflows the preview does not expose; the server remains the authority for every request. This is source and local-test evidence, not a physical-device or external identity-provider revocation result.</li>
+              <li>A lighthouse enrollment requires its reachable public UDP endpoint. Enrollment tokens and recovery codes appear in a one-time custody view and are removed when the view closes, the app leaves the foreground, or the operator selects or leaves a network context. Internal authoritative refresh of the same network does not dismiss the active custody view. The macOS source runner also maps only screen lock, screen sleep, system sleep, application hide, main-window close, and application termination into fixed data-free erasure events. Its native menu exposes only argument-free Refresh and Preferences commands through the same Flutter shell, not a second API client. This remains source/native-test evidence until exercised on a signed clean host.</li>
+              <li>The Apple source runners provide an explicit bounded diagnostic-copy action. Its schema contains only application/release identity, aggregate UI/evidence state, stable error codes, and fixed remediation text; it excludes origins, user, organization, network, node, request, session, credential, certificate, configuration, raw-error, log, and arbitrary-file data. Mesh never collects, uploads, or persists it automatically. The iOS local-only pasteboard item expires after two minutes. The macOS system clipboard does not expire automatically, so clear or replace it immediately after transfer. Approved support recipients must restrict the bundle to the support case and delete every copy when the case closes; Mesh cannot enforce deletion of a recipient&#x27;s copy.</li>
+              <li>Apple native-runner source emits only closed sets of fixed lifecycle event codes through Unified Logging. The Admin wrapper has no logging input for origins, identities, errors, credentials, configuration, or user data. Its notification bridge accepts only fixed fleet-warning and fleet-critical events; after permission and a non-notifying baseline, a foreground fleet poll may emit a fixed title and body with no names, identifiers, counts, or server text. It does not perform background monitoring or prove physical delivery. The separately gated Packet Tunnel wrapper covers start, stop, configuration and enrollment rejection, enrollment failure, lifecycle-refresh deferral or failure, agent-authorization rejection, unavailable engine, network-rebind failure, bounded status-request outcomes, and identity-removal requested/completed/failed without accepting the stop reason, configuration content, error text, packet data, identity, or arbitrary strings. Mesh Admin also accepts a strict managed-application schema for an HTTPS control-plane origin, origin locking, release-channel and update-ring labels, local-status display policy, and notification policy. Native macOS and iOS readers plus Dart independently reject unknown fields, wrong types, and secret-bearing additions; a locked origin is enforced again in the controller. Mesh revalidates managed settings after foregrounding, and a newly invalid payload clears local authenticated state and keeps direct connection callbacks disabled. The checked-in macOS mobileconfig and iOS MDM dictionary are unsigned source examples only. No signed MDM deployment, supervised/unsupervised device result, or Packet Tunnel VPN/on-demand profile exists, and the labels do not authorize downloads, releases, enrollment, or local node control. These are source boundaries, not physical notification, log-archive, retention, redaction, crash-collector, MDM, or supported-tunnel evidence.</li>
+              <li>On iPhone and iPad, copying one-time material fails closed if the native local-only expiring-pasteboard bridge is unavailable; Mesh does not fall back to an ordinary non-expiring clipboard. The iOS source UI keeps drawer navigation and visible role context across iPhone portrait and landscape plus standard iPad split and portrait widths. Widget gates cover 100%, 200%, and 320% text scaling, reduced-motion and high-contrast feature propagation, labeled controls, iOS touch targets, and contrast. This does not replace physical VoiceOver, Switch Control, screenshot, or device accessibility review.</li>
               <li>Linux Debian and Windows MSIX artifacts produced by the current CI workflow are unsigned. Verify the published checksum, then sign and validate the package in a protected release environment before distribution.</li>
-              <li>Use the web control plane or API for any workflow that the preview desktop client does not yet expose. The server remains the authorization authority for every request.</li>
+              <li>The macOS source gate compiles unsigned debug and release applications without release credentials and binds the exact Flutter framework, dependency, notice, privacy, vulnerability, and secret-scan inventories. A historical protected local run used matching clean-source and security receipts, embedded the Team-scoped provisioning profile, signed the reviewed nested-code inventory inside out with hardened runtime, received accepted notarization, stapled the ticket, and passed Gatekeeper. The exact bytes authenticated to the live test control plane and restored their Keychain session after process termination and relaunch, but the portable v2 receipt is superseded because its symlink-mode tree identity did not survive `ditto` extraction. A clean replacement build now has a v3 receipt that re-extracts and fully re-verifies the archive; its portable verifier and a separate ordinary-umask extraction both reproduce the signed tree and pass deep signature, profile, staple, and Gatekeeper checks. Disposable local-test threshold metadata also exercised the complete native downloaded-artifact verifier, after which its private test keys were removed. This is bounded local evidence, not release authority: notice coverage is not legal approval, final signed dependency/privacy reconciliation remains pending, and no approved production-root publication, public re-download, clean-host installation, update, uninstall, or MDM proof exists. The release-verification matrix therefore keeps every Apple product unsupported.</li>
+              <li>The iOS Admin simulator app has a create-only security gate; its local Apple Distribution archive and no-upload IPA match the active Team profile and entitlement allowlist. The separately gated current MeshMobile framework-v5 source has matching dirty-path and clean-source framework trees plus dependency, license, vulnerability, and secret-scan receipts; this local reproduction is not an independent clean-host result. It keeps the private key and current or pending agent credentials in a shared host-and-extension, device-only Keychain boundary and exposes bounded enrollment, same-key certificate renewal, crash-recoverable hash-only agent-credential rotation, strict mobile runtime reporting, deletion-only identity removal, and signed-config packet sessions without secret export. Mobile evidence binds the exact configuration, certificate, engine, instance, and sequence; missing/stale remains unknown, and generic authorization failure quarantines without claiming revocation. Exact-node local removal deletes node authority before configuration slots and removes the VPN preference only after bounded completion; server revocation and deletion are separate.</li>
+              <li>The Tunnel host rediscovers exactly one provider and can start, stop, and inspect an existing identity without re-enrollment or end-to-end claims. Builds 2 through 11 entered external testing. Build 8 provisions before connecting and physically completed OIDC plus server enrollment; Build 9 then read and displayed the authenticated local identity, proving local configuration commit and retained identity recovery. Build 10 corrects the initial-inspection race. Recovery binds device-only origin, node, network, and monotonic-counter intent and accepts only a matching candidate or existing-agent committed-node result. Externally distributed Build 11 adopts Mobile Nebula&#x27;s native utun-to-Nebula provider transport while retaining Mesh authentication, custody, and lifecycle controls. That selection passes source tests, but no physical Build 11 result proves provider startup or packet behavior. Neither iOS product is supported.</li>
             </ul>
             <ol class="docs-steps">
               <li>Enter the exact HTTPS origin of the Mesh control plane. Plain HTTP is limited to an explicitly enabled loopback development profile.</li>
@@ -381,6 +454,20 @@
             </ul>
           </article>
           <article class="docs-topic">
+            <h3>Mobile runtime evidence</h3>
+            <p>A Packet Tunnel can publish one bounded, authenticated lifecycle observation for its exact current node configuration and certificate. This is reconstructible operator evidence, not a desktop heartbeat, server authority, or proof that an iPhone can exchange tunnel packets.</p>
+            <ul class="docs-list">
+              <li>The server accepts only strict monotonic reports bound to the current agent credential, configuration revision and digest, certificate fingerprint and generation, extension instance, and engine identity.</li>
+              <li>A reader with network-read permission can inspect the latest report for one node. The projection omits the private configuration digest and certificate fingerprint.</li>
+              <li>Server-derived stale or revoked state overrides the historical client state. Missing evidence remains missing.</li>
+              <li>Mobile observations are excluded from authenticated control-plane backups, restart empty after PostgreSQL import, and are removed when the node is archived or its network is retired.</li>
+            </ul>
+            <aside class="docs-note warning">
+              <strong>Evidence is not connectivity</strong>
+              <p>A fresh tunnel-running report and packet counters describe only the authenticated extension report. Require separate installed-device, VPN-permission, peer, and packet-path evidence before claiming iOS connectivity.</p>
+            </aside>
+          </article>
+          <article class="docs-topic">
             <h3>Backup and restore</h3>
             <p>The JSON storage backend uses an authenticated offline backup. The server must be stopped so the utility can take both state locks and verify bound credentials.</p>
             <ol class="docs-steps">
@@ -389,6 +476,7 @@
               <li>Create and verify a fresh archive with the exact current utility version.</li>
               <li>Record the authenticated backup ID in an external monotonic catalog.</li>
               <li>Restore only into a nonexistent target directory and validate before starting a server.</li>
+              <li>For PostgreSQL cutover, import only a selected bound control-v2 through control-v14 archive into an empty migrated database; desktop and mobile runtime telemetry are reconstructible and restart empty.</li>
             </ol>
             <aside class="docs-note important">
               <strong>Backups are versioned operations</strong>
@@ -463,7 +551,7 @@
 
   <footer class="docs-footer">
     <div><span class="docs-mark small" aria-hidden="true">M</span><strong>Mesh documentation</strong></div>
-    <p>Last reviewed 2026-07-23. Validate current health and policy in your own control plane before making production changes.</p>
+    <p>Last reviewed 2026-07-30. Validate current health and policy in your own control plane before making production changes.</p>
   </footer>
 </body>
 </html>

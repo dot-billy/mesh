@@ -325,10 +325,13 @@ func TestPostgresStateStoreInstancesObserveSharedServiceCredentialBinding(t *tes
 	if err := first.EnsureFirewallScopeSchema(); err != nil {
 		t.Fatal(err)
 	}
+	if err := first.EnsureSecurityGroupSchema(); err != nil {
+		t.Fatal(err)
+	}
 	if err := second.CheckCurrentRecoveryCredentialBinding(masterVerifier, adminVerifier); err != nil {
 		t.Fatalf("second adapter did not observe committed binding: %v", err)
 	}
-	if repository.updateCalls != 12 || repository.readCalls != 1 {
-		t.Fatalf("shared repository calls = update %d read %d, want 12/1", repository.updateCalls, repository.readCalls)
+	if repository.updateCalls != 13 || repository.readCalls != 1 {
+		t.Fatalf("shared repository calls = update %d read %d, want 13/1", repository.updateCalls, repository.readCalls)
 	}
 }

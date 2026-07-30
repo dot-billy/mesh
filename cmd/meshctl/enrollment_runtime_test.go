@@ -86,7 +86,7 @@ func TestEnrollmentChecksRuntimeBeforeReadingTokenOrCreatingTargets(t *testing.T
 		"--nebula-cert", filepath.Join(private, "missing-nebula-cert"),
 	}, reader, func(string) string { return "" })
 	if err == nil || !strings.Contains(err.Error(), "Nebula runtime prerequisite failed before enrollment") ||
-		!strings.Contains(err.Error(), "mesh-install install-online EXACT_BUNDLE_URL") {
+		!strings.Contains(err.Error(), runtimeInstallGuidance()) {
 		t.Fatalf("missing runtime error = %v", err)
 	}
 	if reader.reads != 0 {

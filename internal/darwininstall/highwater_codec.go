@@ -90,7 +90,10 @@ func validateDarwinInstallStateTransition(found bool, current, next DarwinInstal
 	if expected, err := current.RollbackPrevious(); err == nil && sameDarwinInstallState(expected, next) {
 		return nil
 	}
-	return errors.New("Darwin active-release transition is neither exact activation nor recorded rollback")
+	if expected, err := current.DeactivateRuntime(); err == nil && sameDarwinInstallState(expected, next) {
+		return nil
+	}
+	return errors.New("Darwin active-release transition is neither exact activation, recorded rollback, nor runtime deactivation")
 }
 
 func sameDarwinInstallState(left, right DarwinInstallState) bool {

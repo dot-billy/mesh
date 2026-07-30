@@ -89,6 +89,45 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   });
 
+  testWidgets(
+    'keeps plaintext scrubbed through the inactive-to-detached lifecycle',
+    (tester) async {
+      var scrubbed = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: OneTimeSecretPanel(
+              model: _model,
+              onAcknowledged: () {},
+              onScrubbed: () => scrubbed++,
+            ),
+          ),
+        ),
+      );
+      expect(find.textContaining(_model.items.first.value), findsOneWidget);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(find.textContaining(_model.items.first.value), findsNothing);
+      expect(find.textContaining('removed from this view'), findsOneWidget);
+      expect(scrubbed, 1);
+
+      for (final state in <AppLifecycleState>[
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.detached,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+        await tester.pump();
+        expect(find.textContaining(_model.items.first.value), findsNothing);
+        expect(find.textContaining('removed from this view'), findsOneWidget);
+        expect(scrubbed, 1);
+      }
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    },
+  );
+
   testWidgets('recovery custody exposes and copies only the recovery code', (
     tester,
   ) async {

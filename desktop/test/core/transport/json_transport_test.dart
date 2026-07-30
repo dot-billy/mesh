@@ -22,6 +22,9 @@ void main() {
         'path': request.uri.path,
         'content_type': request.headers.value(HttpHeaders.contentTypeHeader),
         'accept': request.headers.value(HttpHeaders.acceptHeader),
+        'accept_encoding': request.headers.value(
+          HttpHeaders.acceptEncodingHeader,
+        ),
         'cookie': request.headers.value(HttpHeaders.cookieHeader),
         'csrf': request.headers.value('X-Mesh-CSRF'),
         'origin': request.headers.value('Origin'),
@@ -72,6 +75,7 @@ void main() {
     expect(seen, hasLength(2));
     expect(seen.first['content_type'], 'application/json');
     expect(seen.first['accept'], 'application/json');
+    expect(seen.first['accept_encoding'], 'identity');
     expect(seen.first['body'], '{"token":"placeholder"}');
     expect(seen.first['cookie'], isNull);
     expect(seen.first['origin'], profile.originString);

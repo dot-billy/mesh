@@ -11,6 +11,7 @@ import (
 type Role string
 
 const (
+	RoleMember   Role = "member"
 	RoleViewer   Role = "viewer"
 	RoleOperator Role = "operator"
 	RoleAdmin    Role = "admin"
@@ -22,11 +23,16 @@ const (
 	PermissionNetworksRead     Permission = "networks.read"
 	PermissionNetworksWrite    Permission = "networks.write"
 	PermissionNetworksSecurity Permission = "networks.security"
+	PermissionNodesEnrollSelf  Permission = "nodes.enroll.self"
 	PermissionIdentityManage   Permission = "identity.manage"
 	PermissionAuditRead        Permission = "audit.read"
 )
 
 var rolePermissions = map[Role][]Permission{
+	RoleMember: {
+		PermissionNetworksRead,
+		PermissionNodesEnrollSelf,
+	},
 	RoleViewer: {
 		PermissionNetworksRead,
 		PermissionAuditRead,
@@ -34,12 +40,14 @@ var rolePermissions = map[Role][]Permission{
 	RoleOperator: {
 		PermissionNetworksRead,
 		PermissionNetworksWrite,
+		PermissionNodesEnrollSelf,
 		PermissionAuditRead,
 	},
 	RoleAdmin: {
 		PermissionNetworksRead,
 		PermissionNetworksWrite,
 		PermissionNetworksSecurity,
+		PermissionNodesEnrollSelf,
 		PermissionIdentityManage,
 		PermissionAuditRead,
 	},
@@ -121,12 +129,14 @@ func selectorMatchesPrincipal(selector AdminSelector, principal Principal) bool 
 
 func roleRank(role Role) int {
 	switch role {
-	case RoleViewer:
+	case RoleMember:
 		return 1
-	case RoleOperator:
+	case RoleViewer:
 		return 2
-	case RoleAdmin:
+	case RoleOperator:
 		return 3
+	case RoleAdmin:
+		return 4
 	default:
 		return 0
 	}

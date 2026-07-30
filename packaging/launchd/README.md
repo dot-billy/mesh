@@ -1,8 +1,9 @@
 # macOS launchd ownership contract
 
 This directory contains the reviewed launchd contract for a future native
-macOS node package. It is embedded in the deterministic non-installing Darwin
-staging bundle for testing, scanning, and release review. The native installer
+macOS node package. It is embedded first in the deterministic unsigned Darwin
+bundle-v1 input and unchanged in final signed bundle v2 for testing, scanning,
+and release review. The native installer
 foundation can journal, publish, select, and apply fail-closed activation to an
 authenticated immutable release below `/opt/mesh/releases`. Its exact-plist
 publisher can atomically replace this asset, but no supported installer invokes
@@ -51,6 +52,24 @@ ACL. Both managed executables and all state paths must be root-owned and must
 not traverse writable or symbolic-link ancestors. The `/private/var` spelling
 is intentional: `/var` is a compatibility symlink on macOS and is therefore
 outside this contract.
+
+The release-gated `mesh-install uninstall-runtime` command removes only the
+runtime activation surface. It closes the gate, proves the fixed system job
+absent, removes the exact authenticated live plist and active selector, and
+then clears active/previous selections. It retains immutable releases,
+trusted-root history, anti-rollback high water, installer files, and
+root-private agent enrollment state. It is not a recursive package or data
+removal command.
+
+Production bootstrap and kickstart additionally require all three executables
+in the selected release to satisfy strict native code-signature verification
+against the Team ID and distinct code identifiers compiled into
+`mesh-install`. The fixed codesign and launchctl tools must satisfy their
+Apple designated requirements. Development builds contain an explicit
+no-policy sentinel, so unsigned staging bundles cannot activate. Signed-bundle
+assembly and dual-receipt release preflight are implemented, but final
+identifiers, actual protected Developer ID signing, exact entitlement review,
+notarization, and real native receipts remain required.
 
 Before this contract can be called supported, a real Mac must prove native
 arm64 and amd64 execution, Developer ID validation and notarization, first

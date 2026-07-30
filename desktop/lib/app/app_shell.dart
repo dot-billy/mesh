@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/platform/macos_admin_menu.dart';
 import '../features/access/access_screen.dart';
 import '../features/activity/activity_screen.dart';
 import '../features/fleet/fleet_screen.dart';
@@ -37,10 +40,16 @@ extension MeshDestinationPresentation on MeshDestination {
 }
 
 class MeshAppShell extends StatefulWidget {
-  const MeshAppShell({required this.model, required this.callbacks, super.key});
+  const MeshAppShell({
+    required this.model,
+    required this.callbacks,
+    required this.menuCommands,
+    super.key,
+  });
 
   final MeshDesktopViewModel model;
   final MeshPresentationCallbacks callbacks;
+  final Stream<MacAdminMenuCommand> menuCommands;
 
   @override
   State<MeshAppShell> createState() => _MeshAppShellState();
@@ -48,6 +57,7 @@ class MeshAppShell extends StatefulWidget {
 
 class _MeshAppShellState extends State<MeshAppShell> {
   MeshDestination _destination = MeshDestination.fleet;
+  StreamSubscription<MacAdminMenuCommand>? _menuSubscription;
 
   AccessContextViewModel get _access => widget.model.accessContext!;
   MeshMutationCallbacks? get _mutations =>
@@ -59,18 +69,45 @@ class _MeshAppShellState extends State<MeshAppShell> {
     MeshDestination.fleet,
     MeshDestination.networks,
     MeshDestination.activity,
-    if (_access.role.allows(MeshPermission.identityManage))
-      MeshDestination.access,
+    if (_access.allows(MeshPermission.identityManage)) MeshDestination.access,
     MeshDestination.preferences,
     MeshDestination.help,
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _listenForMenuCommands();
+  }
+
+  @override
   void didUpdateWidget(covariant MeshAppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.menuCommands, widget.menuCommands)) {
+      unawaited(_menuSubscription?.cancel());
+      _listenForMenuCommands();
+    }
     if (!_destinations.contains(_destination)) {
       _destination = MeshDestination.fleet;
     }
+  }
+
+  void _listenForMenuCommands() {
+    _menuSubscription = widget.menuCommands.listen((command) {
+      if (!mounted) return;
+      switch (command) {
+        case MacAdminMenuCommand.refresh:
+          _refresh();
+        case MacAdminMenuCommand.preferences:
+          _selectDestination(MeshDestination.preferences);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    unawaited(_menuSubscription?.cancel());
+    super.dispose();
   }
 
   void _selectDestination(MeshDestination destination) {
@@ -102,7 +139,10 @@ class _MeshAppShellState extends State<MeshAppShell> {
       shortcuts: const {
         SingleActivator(LogicalKeyboardKey.keyR, control: true):
             _RefreshIntent(),
+        SingleActivator(LogicalKeyboardKey.keyR, meta: true): _RefreshIntent(),
         SingleActivator(LogicalKeyboardKey.comma, control: true):
+            _PreferencesIntent(),
+        SingleActivator(LogicalKeyboardKey.comma, meta: true):
             _PreferencesIntent(),
         SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): _BackIntent(),
       },
@@ -131,81 +171,124 @@ class _MeshAppShellState extends State<MeshAppShell> {
             },
           ),
         },
-        child: FocusTraversalGroup(
-          child: Stack(
-            children: [
-              ExcludeSemantics(
-                excluding: modal,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final extended =
-                        constraints.maxWidth >=
-                        MeshWindowMetrics.extendedRailBreakpoint;
-                    return Scaffold(
-                      body: Row(
-                        children: [
-                          _AppNavigation(
-                            access: _access,
-                            extended: extended,
-                            destinations: _destinations,
-                            selected: _destination,
-                            onSelected: _selectDestination,
-                            onSignOut: widget.callbacks.signOut,
-                          ),
-                          const VerticalDivider(width: 1),
-                          Expanded(child: _content()),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-              if (widget.model.receipt case final receipt?)
-                Positioned(
-                  left: 24,
-                  right: 24,
-                  bottom: 24,
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 760),
-                      child: OperationReceipt(
-                        receipt: receipt,
-                        onDismiss: widget.callbacks.dismissReceipt,
-                      ),
-                    ),
+        child: Focus(
+          autofocus: true,
+          child: FocusTraversalGroup(
+            child: Stack(
+              children: [
+                ExcludeSemantics(
+                  excluding: modal,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final ios =
+                          Theme.of(context).platform == TargetPlatform.iOS;
+                      final mobileWidth = ios
+                          ? MeshWindowMetrics.iosNavigationBreakpoint
+                          : MeshWindowMetrics.mobileNavigationBreakpoint;
+                      if (constraints.maxWidth < mobileWidth ||
+                          (ios &&
+                              constraints.maxHeight <
+                                  MeshWindowMetrics
+                                      .iosLandscapeHeightBreakpoint)) {
+                        return _mobileScaffold();
+                      }
+                      final extended =
+                          constraints.maxWidth >=
+                          MeshWindowMetrics.extendedRailBreakpoint;
+                      return Scaffold(
+                        body: Row(
+                          children: [
+                            _AppNavigation(
+                              access: _access,
+                              extended: extended,
+                              destinations: _destinations,
+                              selected: _destination,
+                              onSelected: _selectDestination,
+                              onSignOut: widget.callbacks.signOut,
+                            ),
+                            const VerticalDivider(width: 1),
+                            Expanded(child: _content()),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ),
-              if (widget.model.oneTimeSecret case final secret?) ...[
-                const ModalBarrier(
-                  dismissible: false,
-                  semanticsLabel: 'One-time credential dialog',
-                ),
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: 760,
-                      maxHeight: 720,
-                    ),
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(24),
-                        child: OneTimeSecretPanel(
-                          model: secret,
-                          onAcknowledged:
-                              widget.callbacks.acknowledgeOneTimeSecret,
-                          onScrubbed: widget.callbacks.scrubOneTimeSecret,
+                if (widget.model.receipt case final receipt?)
+                  Positioned(
+                    left: 24,
+                    right: 24,
+                    bottom: 24,
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 760),
+                        child: OperationReceipt(
+                          receipt: receipt,
+                          onDismiss: widget.callbacks.dismissReceipt,
                         ),
                       ),
                     ),
                   ),
-                ),
+                if (widget.model.oneTimeSecret case final secret?) ...[
+                  const ModalBarrier(
+                    dismissible: false,
+                    semanticsLabel: 'One-time credential dialog',
+                  ),
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: 760,
+                        maxHeight: 720,
+                      ),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(24),
+                          child: OneTimeSecretPanel(
+                            model: secret,
+                            onAcknowledged:
+                                widget.callbacks.acknowledgeOneTimeSecret,
+                            onScrubbed: widget.callbacks.scrubOneTimeSecret,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _mobileScaffold() {
+    return Scaffold(
+      key: const Key('mobile-navigation'),
+      appBar: AppBar(
+        toolbarHeight: 72,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_destination.label),
+            Text(
+              '${_access.role.label} access',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+      drawer: _MobileNavigation(
+        access: _access,
+        destinations: _destinations,
+        selected: _destination,
+        onSelected: _selectDestination,
+        onSignOut: widget.callbacks.signOut,
+      ),
+      body: SafeArea(child: _content()),
     );
   }
 
@@ -216,6 +299,7 @@ class _MeshAppShellState extends State<MeshAppShell> {
       return NetworkScreen(
         state: widget.model.selectedNetwork,
         role: _access.role,
+        permissions: _access.permissions,
         callbacks: widget.callbacks,
       );
     }
@@ -228,6 +312,7 @@ class _MeshAppShellState extends State<MeshAppShell> {
       MeshDestination.networks => NetworksDirectoryScreen(
         state: widget.model.fleet,
         role: _access.role,
+        permissions: _access.permissions,
         onSelectNetwork: _selectNetwork,
         onCreateNetwork: _mutations?.createNetwork,
         onRefresh: widget.callbacks.refreshFleet,
@@ -243,11 +328,14 @@ class _MeshAppShellState extends State<MeshAppShell> {
       ),
       MeshDestination.preferences => PreferencesScreen(
         model: widget.model.preferences,
+        managedPolicy: widget.model.managedPolicy,
         onThemeModeChanged: widget.callbacks.updateThemeMode,
         onNotificationsChanged: widget.callbacks.updateNotifications,
         onBackgroundMonitoringChanged:
             widget.callbacks.updateBackgroundMonitoring,
         onOpenSystemSettings: widget.callbacks.openSystemSettings,
+        onCopyDiagnosticBundle: widget.callbacks.copyDiagnosticBundle,
+        onEraseLocalData: widget.callbacks.eraseLocalData,
       ),
       MeshDestination.help => HelpScreen(
         access: _access,
@@ -255,6 +343,86 @@ class _MeshAppShellState extends State<MeshAppShell> {
         onOpenAPIReference: widget.callbacks.openAPIReference,
       ),
     };
+  }
+}
+
+class _MobileNavigation extends StatelessWidget {
+  const _MobileNavigation({
+    required this.access,
+    required this.destinations,
+    required this.selected,
+    required this.onSelected,
+    required this.onSignOut,
+  });
+
+  final AccessContextViewModel access;
+  final List<MeshDestination> destinations;
+  final MeshDestination selected;
+  final ValueChanged<MeshDestination> onSelected;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Primary navigation',
+      container: true,
+      child: NavigationDrawer(
+        selectedIndex: destinations.indexOf(selected),
+        onDestinationSelected: (index) {
+          Navigator.of(context).pop();
+          onSelected(destinations[index]);
+        },
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 20, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _Mark(),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Mesh Admin',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(access.displayName),
+                  Text('${access.role.label} access'),
+                  Text(
+                    access.controlPlaneName,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Divider(),
+          for (final destination in destinations)
+            NavigationDrawerDestination(
+              icon: Icon(destination.icon),
+              selectedIcon: Icon(destination.icon),
+              label: Text(destination.label),
+            ),
+          const Divider(),
+          ListTile(
+            minTileHeight: 48,
+            leading: const Icon(Icons.logout),
+            title: const Text('Sign out'),
+            onTap: () {
+              Navigator.of(context).pop();
+              onSignOut();
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
 

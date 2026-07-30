@@ -418,8 +418,9 @@ save_expected_network() {
   local output="$2"
   local expected_name="$3"
   local expected_cidr="$4"
+  local expected_id="${5:-}"
 
-  python3 - "${response}" "${output}" "${expected_name}" "${expected_cidr}" <<'PY'
+  python3 - "${response}" "${output}" "${expected_name}" "${expected_cidr}" "${expected_id}" <<'PY'
 import json
 import os
 import pathlib
@@ -436,9 +437,27 @@ def reject_duplicates(pairs):
 
 raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 decoder = json.JSONDecoder(object_pairs_hook=reject_duplicates)
-network, end = decoder.raw_decode(raw)
-if raw[end:].strip() or not isinstance(network, dict):
-    raise SystemExit("network response is not one strict JSON object")
+response, end = decoder.raw_decode(raw)
+if raw[end:].strip():
+    raise SystemExit("network response has trailing JSON data")
+expected_id = sys.argv[5]
+if isinstance(response, list):
+    if re.fullmatch(r"[A-Za-z0-9_-]+", expected_id) is None:
+        raise SystemExit("network-list checkpoint requires an expected network ID")
+    matches = [
+        item
+        for item in response
+        if isinstance(item, dict) and item.get("id") == expected_id
+    ]
+    if len(matches) != 1:
+        raise SystemExit("network list did not return exactly one expected network")
+    network = matches[0]
+elif isinstance(response, dict):
+    network = response
+    if expected_id and network.get("id") != expected_id:
+        raise SystemExit("network response identity changed")
+else:
+    raise SystemExit("network response is not one strict object or list")
 expected = {
     "id": network.get("id"),
     "name": network.get("name"),
@@ -1061,24 +1080,25 @@ PY
 assert_no_known_credentials_in_diagnostics() {
   local admin_path="$1"
   local master_path="$2"
-  local lighthouse_enrollment_path="$3"
-  local active_member_enrollment_path="$4"
-  local backup_key_path="$5"
-  local cookies_path="$6"
+  local active_lighthouse_enrollment_path="$3"
+  local lighthouse_enrollment_path="$4"
+  local active_member_enrollment_path="$5"
+  local backup_key_path="$6"
+  local cookies_path="$7"
 
-  python3 - "${work_dir}" "${admin_path}" "${master_path}" "${lighthouse_enrollment_path}" \
-    "${active_member_enrollment_path}" "${backup_key_path}" "${cookies_path}" <<'PY'
+  python3 - "${work_dir}" "${admin_path}" "${master_path}" "${active_lighthouse_enrollment_path}" \
+    "${lighthouse_enrollment_path}" "${active_member_enrollment_path}" "${backup_key_path}" "${cookies_path}" <<'PY'
 import os
 import pathlib
 import sys
 
 root = pathlib.Path(sys.argv[1])
 secrets = []
-for path in sys.argv[2:7]:
+for path in sys.argv[2:8]:
     value = pathlib.Path(path).read_bytes().strip()
     if value:
         secrets.append(value)
-for line in pathlib.Path(sys.argv[7]).read_bytes().splitlines():
+for line in pathlib.Path(sys.argv[8]).read_bytes().splitlines():
     if not line or (line.startswith(b"#") and not line.startswith(b"#HttpOnly_")):
         continue
     fields = line.split(b"\t")
@@ -1170,21 +1190,47 @@ network_name="backup-restore-smoke"
 network_cidr="10.86.240.0/24"
 printf '%s\n' "{\"name\":\"${network_name}\",\"cidr\":\"${network_cidr}\"}" >"${work_dir}/network-create-request.json"
 api_request POST "/api/v1/networks" "${work_dir}/network-created.json" "${work_dir}/network-create-request.json"
-save_expected_network "${work_dir}/network-created.json" "${work_dir}/expected-network.json" "${network_name}" "${network_cidr}"
-network_id="$(json_scalar "${work_dir}/expected-network.json" id)"
-network_revision="$(json_scalar "${work_dir}/expected-network.json" config_revision)"
+save_expected_network "${work_dir}/network-created.json" "${work_dir}/created-network-checkpoint.json" "${network_name}" "${network_cidr}"
+network_id="$(json_scalar "${work_dir}/created-network-checkpoint.json" id)"
+network_revision="$(json_scalar "${work_dir}/created-network-checkpoint.json" config_revision)"
 require_record_id "${network_id}" "network ID"
 require_positive_integer "${network_revision}" "network config revision"
 
-printf '%s\n' '{"name":"backup-smoke-lighthouse","role":"lighthouse","public_endpoint":"127.0.0.1:4242"}' \
+say "Enrolling and validating an active lighthouse before member preflight"
+active_lighthouse_name="backup-smoke-active-lighthouse"
+printf '%s\n' "{\"name\":\"${active_lighthouse_name}\",\"role\":\"lighthouse\",\"public_endpoint\":\"127.0.0.1:4242\"}" \
+  >"${work_dir}/active-lighthouse-create-request.json"
+active_lighthouse_enrollment_token_file="${work_dir}/active-lighthouse.enrollment-token"
+capture_pending_node "${work_dir}/active-lighthouse-create-request.json" "${active_lighthouse_enrollment_token_file}" \
+  "${work_dir}/active-lighthouse-created-sanitized.json" lighthouse
+active_lighthouse_id="$(json_scalar "${work_dir}/active-lighthouse-created-sanitized.json" node.id)"
+require_record_id "${active_lighthouse_id}" "active lighthouse ID"
+active_lighthouse_root="${work_dir}/active-lighthouse"
+active_lighthouse_state="${active_lighthouse_root}/agent/state.json"
+active_lighthouse_output="${active_lighthouse_root}/nebula"
+mkdir -p -- "${active_lighthouse_root}/agent"
+chmod 0700 "${active_lighthouse_root}" "${active_lighthouse_root}/agent"
+MESH_ENROLL_TOKEN= "${meshctl}" enroll \
+  --server "${server_url}" \
+  --token-file "${active_lighthouse_enrollment_token_file}" \
+  --state "${active_lighthouse_state}" \
+  --output "${active_lighthouse_output}" \
+  --nebula "${nebula}" \
+  --nebula-cert "${nebula_cert}" \
+  >"${work_dir}/active-lighthouse-enroll.log" 2>&1
+[[ "$(json_scalar "${active_lighthouse_state}" node_id)" == "${active_lighthouse_id}" ]] || die "enrolled active lighthouse state has the wrong node ID"
+[[ "$(json_scalar "${active_lighthouse_state}" network_id)" == "${network_id}" ]] || die "enrolled active lighthouse state has the wrong network ID"
+validate_bundle "${active_lighthouse_output}" "${work_dir}/active-lighthouse-bundle-validation.log"
+
+printf '%s\n' '{"name":"backup-smoke-lighthouse","role":"lighthouse","public_endpoint":"127.0.0.1:4243"}' \
   >"${work_dir}/lighthouse-create-request.json"
 enrollment_token_file="${work_dir}/lighthouse.enrollment-token"
 capture_pending_node "${work_dir}/lighthouse-create-request.json" "${enrollment_token_file}" \
   "${work_dir}/lighthouse-created-sanitized.json" lighthouse
 lighthouse_id="$(json_scalar "${work_dir}/lighthouse-created-sanitized.json" node.id)"
 require_record_id "${lighthouse_id}" "pending lighthouse ID"
-api_request GET "/api/v1/networks/${network_id}/nodes" "${work_dir}/nodes-before-active-enroll.json"
-assert_pending_node "${work_dir}/nodes-before-active-enroll.json" "${lighthouse_id}"
+api_request GET "/api/v1/networks/${network_id}/nodes" "${work_dir}/nodes-after-active-lighthouse.json"
+assert_pending_node "${work_dir}/nodes-after-active-lighthouse.json" "${lighthouse_id}"
 
 say "Enrolling and validating an active member before backup"
 active_member_name="backup-smoke-active-member"
@@ -1220,6 +1266,13 @@ save_active_node_checkpoint \
   "${network_id}" \
   "${active_member_name}" \
   "${work_dir}/active-member-before-backup.json"
+api_request GET "/api/v1/networks" "${work_dir}/networks-before-backup.json"
+save_expected_network \
+  "${work_dir}/networks-before-backup.json" \
+  "${work_dir}/expected-network.json" \
+  "${network_name}" \
+  "${network_cidr}" \
+  "${network_id}"
 
 "${mesh_backup}" keygen --output "${backup_key}" >"${work_dir}/keygen.json" 2>"${work_dir}/keygen.stderr"
 [[ "$(json_scalar "${work_dir}/keygen.json" schema)" == "mesh-backup-command-result-v1" ]] || die "backup keygen schema changed"
@@ -1392,6 +1445,7 @@ assert_same_snapshot "${work_dir}/source-before-create.hashes.json" "${work_dir}
 assert_no_known_credentials_in_diagnostics \
   "${source_data}/admin.token" \
   "${source_data}/master.key" \
+  "${active_lighthouse_enrollment_token_file}" \
   "${enrollment_token_file}" \
   "${active_member_enrollment_token_file}" \
   "${backup_key}" \

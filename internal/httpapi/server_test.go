@@ -12,7 +12,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -1825,7 +1824,8 @@ func TestRevokedNodeArchivalRequiresExactConfirmationAndCleansRuntimeTelemetry(t
 		"node_id", "network_id", "name", "ip", "role", "revoked_at", "archived_at",
 		"enrollment_records_removed", "agent_recovery_records_removed", "certificate_issuances_removed",
 		"revocations_removed", "blocklist_entries_removed", "routed_subnet_reservations_released", "config_revision",
-		"runtime_telemetry_record_removed", "runtime_telemetry_cleanup_complete",
+		"runtime_telemetry_record_removed", "mobile_runtime_record_removed",
+		"runtime_telemetry_cleanup_complete",
 	}
 	if len(archivedFields) != len(expectedFields) {
 		t.Fatalf("archival response schema=%s", responseBody)
@@ -1835,7 +1835,7 @@ func TestRevokedNodeArchivalRequiresExactConfirmationAndCleansRuntimeTelemetry(t
 			t.Fatalf("archival response omitted %q: %s", field, responseBody)
 		}
 	}
-	if response.StatusCode != http.StatusOK || response.Header.Get("Cache-Control") != "no-store" || archived.NodeID != target.Node.ID || archived.NetworkID != network.ID || archived.Name != target.Node.Name || archived.IP != target.Node.IP || archived.Role != target.Node.Role || archived.LastCertificateExpiredAt != nil || archived.EnrollmentRecordsRemoved != 1 || archived.AgentRecoveryRecordsRemoved != 0 || archived.CertificateIssuancesRemoved != 0 || archived.RevocationsRemoved != 0 || archived.BlocklistEntriesRemoved != 0 || archived.RoutedSubnetReservationsReleased != 1 || archived.ConfigRevision != expectedRevision || !archived.RuntimeTelemetryRecordRemoved || !archived.RuntimeTelemetryCleanupComplete {
+	if response.StatusCode != http.StatusOK || response.Header.Get("Cache-Control") != "no-store" || archived.NodeID != target.Node.ID || archived.NetworkID != network.ID || archived.Name != target.Node.Name || archived.IP != target.Node.IP || archived.Role != target.Node.Role || archived.LastCertificateExpiredAt != nil || archived.EnrollmentRecordsRemoved != 1 || archived.AgentRecoveryRecordsRemoved != 0 || archived.CertificateIssuancesRemoved != 0 || archived.RevocationsRemoved != 0 || archived.BlocklistEntriesRemoved != 0 || archived.RoutedSubnetReservationsReleased != 1 || archived.ConfigRevision != expectedRevision || !archived.RuntimeTelemetryRecordRemoved || archived.MobileRuntimeRecordRemoved || !archived.RuntimeTelemetryCleanupComplete {
 		t.Fatalf("archival status=%d cache=%q body=%#v", response.StatusCode, response.Header.Get("Cache-Control"), archived)
 	}
 	if _, found, err := telemetry.Get(target.Node.ID); err != nil || found {
@@ -1899,10 +1899,7 @@ func TestRevokedNodeArchivalRequiresExactConfirmationAndCleansRuntimeTelemetry(t
 }
 
 func TestImmediateCertificateRotationRequiresExactIdempotentAdminRequest(t *testing.T) {
-	nebulaCert, err := exec.LookPath("nebula-cert")
-	if err != nil {
-		t.Skip("nebula-cert is required for the real certificate rotation HTTP test")
-	}
+	nebulaCert := pinnedNebulaCertForTest(t)
 	store, err := control.OpenStore(filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -2654,8 +2651,13 @@ func TestManagedNodeEndpointsAreScopedAndSigned(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusConflict {
-		t.Fatalf("credential-colliding rotation returned %d", response.StatusCode)
+	if response.StatusCode != http.StatusConflict ||
+		response.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf(
+			"credential-colliding rotation returned status=%d cache=%q",
+			response.StatusCode,
+			response.Header.Get("Cache-Control"),
+		)
 	}
 
 	request, _ = http.NewRequest(http.MethodGet, server.URL+"/api/v1/agent/config", nil)
@@ -3103,6 +3105,224 @@ func TestRuntimeTelemetryEndpointRejectsRollbackAndProjectsConfigBoundRecovery(t
 	}
 }
 
+func TestMobileRuntimeEndpointIsStrictConfigBoundStaleAndRevocationAware(
+	t *testing.T,
+) {
+	store, err := control.OpenStore(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	box, err := control.NewSecretBox(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := control.NewService(store, box, &httpTestIssuer{})
+	network, err := service.CreateNetwork(
+		context.Background(),
+		control.CreateNetworkInput{
+			Name: "mobile-runtime",
+			CIDR: "10.94.0.0/24",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateNode(
+		network.ID,
+		control.CreateNodeInput{Name: "iphone"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentToken := strings.Repeat("u", 42) + "A"
+	bundle, err := service.Enroll(
+		context.Background(),
+		created.EnrollmentToken,
+		testNebulaPublicKey('U'),
+		control.HashToken(agentToken),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminToken := strings.Repeat("z", 43)
+	receivedAt := time.Now().UTC()
+	telemetryStore := runtimetelemetry.NewMemoryStore()
+	t.Cleanup(func() { _ = telemetryStore.Close() })
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server, _, _ := newTestHTTPServerWithRuntimeTelemetry(
+		t,
+		service,
+		adminToken,
+		false,
+		logger,
+		func() time.Time { return receivedAt },
+		telemetryStore,
+	)
+	read, written := uint64(3), uint64(2)
+	input := runtimetelemetry.MobileRuntimeReportInput{
+		Version:                runtimetelemetry.MobileRuntimeVersionV1,
+		InstanceGeneration:     1,
+		Sequence:               1,
+		State:                  runtimetelemetry.MobileStateTunnelRunning,
+		ConfigRevision:         bundle.ConfigRevision,
+		ConfigSHA256:           bundle.ConfigSHA256,
+		CertificateFingerprint: bundle.CertificateFingerprint,
+		CertificateGeneration:  bundle.CertificateGeneration,
+		EngineIdentity:         strings.Repeat("e", 64),
+		RuntimeUptimeMS:        10_000,
+		PacketsRead:            &read,
+		PacketsWritten:         &written,
+	}
+	controlBefore := readControlState(t, store)
+	response := postMobileRuntime(t, server, agentToken, input)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusNoContent ||
+		response.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf(
+			"accepted mobile runtime status=%d cache=%q",
+			response.StatusCode,
+			response.Header.Get("Cache-Control"),
+		)
+	}
+	record, found, err := telemetryStore.GetMobile(bundle.Node.ID)
+	if err != nil ||
+		!found ||
+		record.ConfigRevision != bundle.ConfigRevision ||
+		!record.ReceivedAt.Equal(receivedAt) {
+		t.Fatalf("record=%#v found=%t err=%v", record, found, err)
+	}
+	if !reflect.DeepEqual(controlBefore, readControlState(t, store)) {
+		t.Fatal("mobile runtime report mutated authoritative control state")
+	}
+
+	get := func(authenticated bool) (*http.Response, []byte) {
+		request, requestErr := http.NewRequest(
+			http.MethodGet,
+			server.URL+"/api/v1/nodes/"+bundle.Node.ID+"/mobile-runtime",
+			nil,
+		)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		if authenticated {
+			request.Header.Set("Authorization", "Bearer "+adminToken)
+		}
+		readResponse, requestErr := server.Client().Do(request)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		body, readErr := io.ReadAll(readResponse.Body)
+		_ = readResponse.Body.Close()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		return readResponse, body
+	}
+	readResponse, _ := get(false)
+	if readResponse.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated mobile runtime read=%d", readResponse.StatusCode)
+	}
+	readResponse, body := get(true)
+	var projection runtimetelemetry.MobileRuntimeProjection
+	if err := json.Unmarshal(body, &projection); err != nil {
+		t.Fatal(err)
+	}
+	if readResponse.StatusCode != http.StatusOK ||
+		!projection.Fresh ||
+		projection.ServerState != runtimetelemetry.MobileStateTunnelRunning ||
+		bytes.Contains(body, []byte(bundle.ConfigSHA256)) ||
+		bytes.Contains(body, []byte(bundle.CertificateFingerprint)) {
+		t.Fatalf("projection status=%d body=%s", readResponse.StatusCode, body)
+	}
+
+	mismatch := input
+	mismatch.ConfigRevision++
+	response = postMobileRuntime(t, server, agentToken, mismatch)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusConflict {
+		t.Fatalf("desired-state mismatch returned %d", response.StatusCode)
+	}
+	duplicate := []byte(fmt.Sprintf(
+		`{"version":1,"version":1,"instance_generation":1,"sequence":1,"state":"tunnel-running","config_revision":%d,"config_sha256":"%s","certificate_fingerprint":"%s","certificate_generation":%d,"engine_identity":"%s","runtime_uptime_ms":10000,"packets_read":3,"packets_written":2}`,
+		bundle.ConfigRevision,
+		bundle.ConfigSHA256,
+		bundle.CertificateFingerprint,
+		bundle.CertificateGeneration,
+		strings.Repeat("e", 64),
+	))
+	request, _ := http.NewRequest(
+		http.MethodPost,
+		server.URL+"/api/v1/agent/mobile-runtime",
+		bytes.NewReader(duplicate),
+	)
+	request.Header.Set("Authorization", "Bearer "+agentToken)
+	request.Header.Set("Content-Type", "application/json")
+	response, err = server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("duplicate mobile JSON member returned %d", response.StatusCode)
+	}
+
+	receivedAt = receivedAt.Add(3 * time.Minute)
+	readResponse, body = get(true)
+	if err := json.Unmarshal(body, &projection); err != nil {
+		t.Fatal(err)
+	}
+	if readResponse.StatusCode != http.StatusOK ||
+		projection.Fresh ||
+		projection.ServerState != "stale" {
+		t.Fatalf("stale projection status=%d body=%s", readResponse.StatusCode, body)
+	}
+
+	suspended := input
+	suspended.Sequence++
+	suspended.State = runtimetelemetry.MobileStateSuspended
+	suspended.RuntimeUptimeMS++
+	suspended.PacketsRead = nil
+	suspended.PacketsWritten = nil
+	response = postMobileRuntime(t, server, agentToken, suspended)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("suspension evidence returned %d", response.StatusCode)
+	}
+	receivedAt = receivedAt.Add(10 * time.Minute)
+	readResponse, body = get(true)
+	if err := json.Unmarshal(body, &projection); err != nil {
+		t.Fatal(err)
+	}
+	if readResponse.StatusCode != http.StatusOK ||
+		!projection.Fresh ||
+		projection.ServerState != runtimetelemetry.MobileStateSuspended {
+		t.Fatalf(
+			"suspended projection status=%d body=%s",
+			readResponse.StatusCode,
+			body,
+		)
+	}
+
+	if _, err := service.RevokeNode(bundle.Node.ID); err != nil {
+		t.Fatal(err)
+	}
+	response = postMobileRuntime(t, server, agentToken, suspended)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("revoked mobile bearer returned %d", response.StatusCode)
+	}
+	readResponse, body = get(true)
+	if err := json.Unmarshal(body, &projection); err != nil {
+		t.Fatal(err)
+	}
+	if readResponse.StatusCode != http.StatusOK ||
+		projection.Fresh ||
+		projection.ServerState != "revoked" {
+		t.Fatalf("revoked projection status=%d body=%s", readResponse.StatusCode, body)
+	}
+}
+
 func postRuntimeTelemetry(t *testing.T, server *httptest.Server, bearer string, input runtimetelemetry.ReportInput) *http.Response {
 	t.Helper()
 	body, err := json.Marshal(input)
@@ -3110,6 +3330,34 @@ func postRuntimeTelemetry(t *testing.T, server *httptest.Server, bearer string, 
 		t.Fatal(err)
 	}
 	request, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/agent/runtime-telemetry", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+bearer)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+func postMobileRuntime(
+	t *testing.T,
+	server *httptest.Server,
+	bearer string,
+	input runtimetelemetry.MobileRuntimeReportInput,
+) *http.Response {
+	t.Helper()
+	body, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequest(
+		http.MethodPost,
+		server.URL+"/api/v1/agent/mobile-runtime",
+		bytes.NewReader(body),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

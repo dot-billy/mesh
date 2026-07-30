@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"mesh/internal/control"
+	"mesh/internal/runtimetelemetry"
 )
 
 func TestOpenAPIExactlyCoversRegisteredApplicationRoutes(t *testing.T) {
@@ -30,8 +31,8 @@ func TestOpenAPIExactlyCoversRegisteredApplicationRoutes(t *testing.T) {
 		}
 	}
 	sort.Strings(contract)
-	if len(contract) != 70 {
-		t.Fatalf("OpenAPI operation count = %d, want 70", len(contract))
+	if len(contract) != 77 {
+		t.Fatalf("OpenAPI operation count = %d, want 77", len(contract))
 	}
 	if strings.Join(registered, "\n") != strings.Join(contract, "\n") {
 		t.Fatalf(
@@ -144,6 +145,74 @@ func TestOpenAPIDesktopPollingDocumentsRetryAfter(t *testing.T) {
 	}
 }
 
+func TestOpenAPIMobileRuntimeContractIsStrictAndExamplesAreValid(t *testing.T) {
+	document := decodedOpenAPI(t)
+	components := document["components"].(map[string]any)
+	schemas := components["schemas"].(map[string]any)
+	input := schemas["MobileruntimeReportInput"].(map[string]any)
+	properties := input["properties"].(map[string]any)
+	version := properties["version"].(map[string]any)
+	if version["const"] != float64(1) {
+		t.Fatalf("mobile runtime version schema = %#v", version)
+	}
+	for _, name := range []string{
+		"instance_generation",
+		"sequence",
+		"config_revision",
+		"certificate_generation",
+	} {
+		property := properties[name].(map[string]any)
+		if property["minimum"] != float64(1) ||
+			property["maximum"] != float64(9007199254740991) {
+			t.Fatalf("mobile runtime %s schema = %#v", name, property)
+		}
+	}
+	for _, name := range []string{
+		"config_sha256",
+		"certificate_fingerprint",
+		"engine_identity",
+	} {
+		property := properties[name].(map[string]any)
+		if property["minLength"] != float64(64) ||
+			property["maxLength"] != float64(64) ||
+			property["pattern"] != `^[0-9a-f]{64}$` {
+			t.Fatalf("mobile runtime %s schema = %#v", name, property)
+		}
+	}
+	if variants, ok := input["oneOf"].([]any); !ok || len(variants) != 3 {
+		t.Fatalf("mobile runtime state variants = %#v", input["oneOf"])
+	}
+
+	paths := document["paths"].(map[string]any)
+	report := paths["/api/v1/agent/mobile-runtime"].(map[string]any)["post"].(map[string]any)
+	request := report["requestBody"].(map[string]any)
+	requestMedia := request["content"].(map[string]any)["application/json"].(map[string]any)
+	example := requestMedia["example"].(map[string]any)
+	if example["version"] != float64(1) ||
+		example["instance_generation"] != float64(1) ||
+		example["state"] != "tunnel-running" ||
+		len(example["config_sha256"].(string)) != 64 ||
+		len(example["certificate_fingerprint"].(string)) != 64 ||
+		len(example["engine_identity"].(string)) != 64 {
+		t.Fatalf("mobile runtime request example = %#v", example)
+	}
+	if _, err := runtimetelemetry.DecodeMobileRuntimeReportInput(
+		mustMarshalOpenAPIExample(t, example),
+	); err != nil {
+		t.Fatalf("mobile runtime OpenAPI request example is invalid: %v", err)
+	}
+
+	read := paths["/api/v1/nodes/{nodeID}/mobile-runtime"].(map[string]any)["get"].(map[string]any)
+	response := read["responses"].(map[string]any)["200"].(map[string]any)
+	responseMedia := response["content"].(map[string]any)["application/json"].(map[string]any)
+	projection := responseMedia["example"].(map[string]any)
+	if projection["schema"] != "mesh-mobile-runtime-projection-v1" ||
+		projection["server_state"] != "tunnel-running" ||
+		projection["fresh"] != true {
+		t.Fatalf("mobile runtime response example = %#v", projection)
+	}
+}
+
 func TestOpenAPIEndpointIsPublicAndCanonical(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
@@ -201,6 +270,15 @@ func decodedOpenAPI(t *testing.T) map[string]any {
 		t.Fatalf("OpenAPI version = %#v", document["openapi"])
 	}
 	return document
+}
+
+func mustMarshalOpenAPIExample(t *testing.T, value any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func registeredApplicationRoutes(t *testing.T) []string {

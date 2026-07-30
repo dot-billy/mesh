@@ -1,0 +1,13 @@
+[Unit]
+Description=Preserve the quickstart proof underlay endpoint
+Wants=network-online.target
+After=network-online.target
+Before=mesh-agent.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mesh-quickstart-underlay
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -81,7 +81,12 @@ type onlineFileIdentity struct {
 type inspectedOnlineWorkspace struct {
 	name      string
 	directory onlineFileIdentity
-	files     map[string]onlineFileIdentity
+	files     map[string]onlineWorkspaceFileSnapshot
+}
+
+type onlineWorkspaceFileSnapshot struct {
+	identity onlineFileIdentity
+	sha256   [sha256.Size]byte
 }
 
 func ensureOnlineIntakeDirectory(path string, expectedUID uint32) error {
@@ -353,7 +358,7 @@ func inspectOnlineWorkspace(parent *os.Root, name string, expectedUID uint32) (i
 	if closeErr != nil {
 		return inspectedOnlineWorkspace{}, closeErr
 	}
-	files := make(map[string]onlineFileIdentity, len(entries))
+	files := make(map[string]onlineWorkspaceFileSnapshot, len(entries))
 	for _, entry := range entries {
 		entryName := entry.Name()
 		maximum, artifact, err := onlineWorkspaceFilePolicy(entryName)
@@ -371,16 +376,22 @@ func inspectOnlineWorkspace(parent *os.Root, name string, expectedUID uint32) (i
 		if err != nil {
 			return inspectedOnlineWorkspace{}, fmt.Errorf("open workspace entry %q: %w", entryName, err)
 		}
+		hasher := sha256.New()
+		written, readErr := io.Copy(hasher, io.LimitReader(file, maximum+1))
 		opened, statErr := file.Stat()
+		pathAfter, pathErr := root.Lstat(entryName)
 		closeErr := file.Close()
-		if statErr != nil || closeErr != nil || !os.SameFile(info, opened) {
+		if readErr != nil || statErr != nil || pathErr != nil || closeErr != nil ||
+			written != info.Size() || !os.SameFile(info, opened) || !os.SameFile(info, pathAfter) {
 			return inspectedOnlineWorkspace{}, fmt.Errorf("workspace entry %q changed while opening", entryName)
 		}
 		identity, ok := onlineIdentityFromInfo(opened)
 		if !ok {
 			return inspectedOnlineWorkspace{}, fmt.Errorf("workspace entry %q has no Linux identity", entryName)
 		}
-		files[entryName] = identity
+		var digest [sha256.Size]byte
+		copy(digest[:], hasher.Sum(nil))
+		files[entryName] = onlineWorkspaceFileSnapshot{identity: identity, sha256: digest}
 	}
 	after, err := root.Stat(".")
 	if err != nil || !os.SameFile(before, after) || validateOnlinePrivateDirectoryInfo(after, expectedUID, true) != nil {

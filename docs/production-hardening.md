@@ -24,7 +24,7 @@ MESH_HELM_KUBERNETES_IMAGE=mesh-control-plane:helm-contract-verified make helm-k
 make linux-package-security-baseline BUNDLE=/absolute/path/mesh-linux-bundle.tar
 # Repeat for each exact Windows amd64/arm64 staging candidate:
 make windows-package-security-baseline BUNDLE=/absolute/path/mesh-windows-bundle.tar
-# Repeat for each exact Darwin amd64/arm64 staging candidate:
+# Repeat for each exact final signed Darwin amd64/arm64 bundle-v2 candidate:
 make darwin-package-security-baseline BUNDLE=/absolute/path/mesh-darwin-bundle.tar
 ```
 
@@ -62,13 +62,34 @@ fail-closed vulnerability and secret policies. Release creation requires both
 the matching package-security receipt and fresh native Authenticode receipt per
 Windows artifact. This does not cover a native Windows installer, DACLs,
 service integration, or an installed host;
-the [Darwin staging-bundle gate](darwin-package-security.md) independently
-reconstructs each bundle-v1 archive, verifies the source-built patched thin
-Mach-O runtime plus reviewed launchd assets, binds the exact 7-file/9-directory
-tree and 52/53-package inventories, and applies the same fail-closed scanner
-policies. Release creation requires one matching receipt per Darwin artifact.
-Native macOS installation, launchd activation, extended-ACL enforcement,
-codesigning/notarization, and installed-host validation remain separate work.
+the [Darwin final signed-bundle gate](darwin-package-security.md) independently
+reconstructs each bundle-v2 archive, verifies the source-built patched thin
+Mach-O runtime plus reviewed launchd assets, binds the exact signed
+7-file/9-directory tree and 52/53-package inventories, and applies the same
+fail-closed scanner policies. Protected native signing produces a fresh
+three-executable receipt; Linux assembly proves the signed forms derive only
+from the pre-existing Go linker signature boundary. Release creation requires
+both the matching package-security receipt and that native code-signing
+receipt per Darwin artifact. The macOS source also applies the compiled
+Team-ID/code-identifier policy through a strict fixed-argument native codesign
+boundary before launchd activation and enrollment execution. No approved
+identity or real passing signed artifact exists yet. Native macOS installation,
+launchd activation, extended-ACL enforcement, protected signing execution,
+notarization, and installed-host validation remain separate work.
+
+The separate Mesh Admin source boundary uses a root-derived release-manifest
+pair: `macos-admin/universal` for the final stapled zip and
+`macos-admin-evidence/portable` for its canonical protected receipt. Authoring
+requires a fresh receipt, the expected unsigned source-receipt digest, and the
+compiled Team ID; portable re-download verification authenticates both files
+with the release threshold from an independently authenticated current root.
+No approved application identity, protected receipt, signed metadata, public
+download, native post-download verification, or offline staple evidence
+exists yet. Native verification source pins both the verifier executable and
+trusted current root by independently supplied hashes, rechecks the complete
+application and Apple evidence, and can reject routes/non-loopback unicast
+addresses before and after the check. Only an external clean-host fixture can
+prove that isolation remained continuous.
 The cross-built [Darwin path-security and supervised-child adapter](darwin-path-security.md)
 now implements the intended fail-closed descriptor/ACL, persistent-gate,
 direct-child, identity/argv proof, and teardown mechanisms. Only portable tests
@@ -81,9 +102,13 @@ run on this Linux host and does not install launchd or cover reboot, signing,
 upgrade, rollback, packet, or adversarial race cases. The installer-owned
 persistent-gate mutation, exact-plist replacement, publication/activation
 journal, and same-lock high-water/active/previous state now have portable crash-order fault injection and both Darwin
-cross-builds. The fixed system-domain controller now proves service state only
-through successful gate-closed bootout/bootstrap mutations and never parses
-launchctl's non-API status output. Native execution of that controller and real
+cross-builds. The Darwin build of the narrow `mesh-install` command now wires
+canonical online intake, exact root-private offline intake, recovery,
+post-enrollment gate activation, and exact persisted-previous rollback to
+those primitives. The fixed system-domain controller proves service state only
+through successful gate-closed bootout/bootstrap mutations, uses one exact
+non-restarting kickstart after gate opening, and never parses launchctl's
+non-API status output. Native execution of the production command and real
 system-domain activation remain mandatory. Compiled-root metadata intake,
 create-only trusted-root persistence, bounded online artifact capture,
 root-private offline snapshot assembly/import, deterministic intake-stage
@@ -91,6 +116,20 @@ recovery, and journaled rollback are implemented but still require clean-host
 native proof. The offline snapshot reader accepts only an exact physical
 root:wheel private tree and authenticates its artifact exclusively through the
 signed release metadata before immutable capture.
+The Darwin production-enrollment source boundary also resolves all three
+installed executables to the exact persisted active release, reauthenticates
+the release, `current` selector, launchd plist, quiescent installer state, and
+closed persistent gate under the installer lock, then deliberately returns a
+release-gate error before runtime execution or enrollment-token input. Native
+installed-host proof and removal of that explicit rejection remain mandatory.
+The fixed `uninstall-runtime` source path removes only runtime activation:
+gate, loaded job, exact live plist, selector, and active/previous selections,
+in that order with state deactivation last. It retains immutable releases,
+trusted roots, high-water authority, installer files, and agent enrollment
+state. It refuses unjournaled current-switch residue; once plist or selector
+removal begins, normal mutation paths reject the incomplete activation surface
+until the same command completes. Native interruption and retained-state proof
+remain mandatory.
 The native harness now has a second explicit gate for a proof-only system
 launchd label and exact `/Library/LaunchDaemons` fixture. Its v2 receipt binds
 the gate, label, scanned bundle digest, host facts, and transcript. Passing
@@ -258,11 +297,11 @@ change. Scanner logs must remain fully redacted.
    pass, and every Linux candidate passes `make linux-package-security-baseline
    BUNDLE=/absolute/candidate.tar`; every Windows staging candidate passes
    `make windows-package-security-baseline BUNDLE=/absolute/candidate.tar`;
-   every Darwin staging candidate passes `make
+   every final signed Darwin bundle-v2 candidate passes `make
    darwin-package-security-baseline BUNDLE=/absolute/candidate.tar`,
    with current vulnerability data and no unreviewed secret exceptions. Retain
-   every bound artifact receipt and never use a test-only unscanned bypass in a
-   production manifest.
+   every bound artifact and native signing receipt and never use a test-only
+   unscanned bypass in a production manifest.
 2. Full race tests, builds, platform compile gates, and every affected real
    lifecycle smoke pass with the release toolchain.
 3. The image/package and origin objects are rebuilt, authenticated, immutable,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and bind one exact Mesh Darwin staging-bundle security scan."""
+"""Validate and bind one exact final signed Mesh Darwin bundle security scan."""
 
 from __future__ import annotations
 
@@ -140,7 +140,7 @@ def validate_inspection(document: dict[str, Any], staged: pathlib.Path, artifact
     package = document.get("package")
     require(isinstance(package, dict), "candidate package metadata is missing")
     exact_keys(package, {"schema", "version", "commit", "build_time", "security_floor", "agent_state_read_min", "agent_state_read_max", "agent_state_write_version", "go_version", "target", "runtime", "entries"}, "candidate package")
-    require(package["schema"] == "mesh-darwin-node-staging-bundle-v1", "only current Darwin staging schema v1 is accepted")
+    require(package["schema"] == "mesh-darwin-node-bundle-v2", "only current final signed Darwin bundle schema v2 is accepted")
     require(isinstance(package["version"], str) and 0 < len(package["version"]) <= 128, "candidate version is invalid")
     require(isinstance(package["commit"], str) and COMMIT.fullmatch(package["commit"]), "candidate commit is invalid")
     require(canonical_time(package["build_time"]), "candidate build time is not canonical UTC")
@@ -265,7 +265,7 @@ def finalize(args: argparse.Namespace) -> None:
             "artifact_and_scan": "stable candidate, networkless read-only non-root scanners, no Docker socket",
             "database_update": "networked scanner with only an empty private database cache mounted",
         },
-        "schema": "mesh-darwin-package-security-receipt-v1",
+        "schema": "mesh-darwin-package-security-receipt-v2",
         "secret_scan": {
             "binary_strings_report": hash_file(binary_secrets_path), "gitleaks_version": "v8.30.1",
             "policy": "default rules over exact package metadata, launchd assets, license, and all three Mach-O executables' strings; only the exact public oauth2 v0.36.0 Go checksum is allowlisted",

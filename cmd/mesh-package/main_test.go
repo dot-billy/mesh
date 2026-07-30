@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"mesh/internal/darwinbundle"
 	"mesh/internal/linuxbundle"
 	"mesh/internal/verifierbundle"
 	"mesh/internal/windowsbundle"
@@ -220,6 +221,57 @@ func TestBuildWindowsSignedCommandRejectsIncompleteInput(t *testing.T) {
 		return windowsbundle.BuildResult{}, nil
 	}
 	err := buildWindowsSigned([]string{"build-windows-signed", "--unsigned-bundle", "/in/unsigned.tar"}, io.Discard, builder)
+	if err == nil || !strings.Contains(err.Error(), "--meshctl is required") {
+		t.Fatalf("incomplete input error = %v", err)
+	}
+	if called {
+		t.Fatal("builder called for incomplete input")
+	}
+}
+
+func TestBuildDarwinSignedCommand(t *testing.T) {
+	var captured darwinbundle.SignedBuildOptions
+	builder := func(options darwinbundle.SignedBuildOptions) (darwinbundle.BuildResult, error) {
+		captured = options
+		return darwinbundle.BuildResult{
+			OutputPath: "/out/final.tar", Size: 123, SHA256: strings.Repeat("a", 64),
+			PackageJSONSHA256: strings.Repeat("b", 64),
+			Package:           darwinbundle.Package{Target: darwinbundle.Target{OS: "darwin", Arch: "arm64"}},
+		}, nil
+	}
+	args := []string{
+		"build-darwin-signed", "--unsigned-bundle", "/in/unsigned.tar",
+		"--meshctl", "/in/meshctl", "--nebula", "/in/nebula", "--nebula-cert", "/in/nebula-cert",
+		"--codesign-receipt", "/in/codesign.json", "--expected-codesign-policy-sha256", strings.Repeat("c", 64),
+		"--output", "/out/final.tar",
+	}
+	var output bytes.Buffer
+	if err := buildDarwinSigned(args, &output, builder); err != nil {
+		t.Fatal(err)
+	}
+	want := darwinbundle.SignedBuildOptions{
+		UnsignedBundlePath: "/in/unsigned.tar", SignedMeshctlPath: "/in/meshctl",
+		SignedNebulaPath: "/in/nebula", SignedNebulaCertPath: "/in/nebula-cert",
+		CodesignReceiptPath: "/in/codesign.json", ExpectedPolicySHA256: strings.Repeat("c", 64),
+		OutputPath: "/out/final.tar",
+	}
+	if !reflect.DeepEqual(captured, want) {
+		t.Fatalf("builder options = %+v, want %+v", captured, want)
+	}
+	for _, boundary := range []string{"final signed Darwin node bundle", "native code-signing receipt", "no software was installed", strings.Repeat("b", 64)} {
+		if !strings.Contains(output.String(), boundary) {
+			t.Fatalf("output %q does not contain %q", output.String(), boundary)
+		}
+	}
+}
+
+func TestBuildDarwinSignedCommandRejectsIncompleteInput(t *testing.T) {
+	called := false
+	builder := func(darwinbundle.SignedBuildOptions) (darwinbundle.BuildResult, error) {
+		called = true
+		return darwinbundle.BuildResult{}, nil
+	}
+	err := buildDarwinSigned([]string{"build-darwin-signed", "--unsigned-bundle", "/in/unsigned.tar"}, io.Discard, builder)
 	if err == nil || !strings.Contains(err.Error(), "--meshctl is required") {
 		t.Fatalf("incomplete input error = %v", err)
 	}

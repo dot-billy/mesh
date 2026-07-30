@@ -879,6 +879,15 @@ func TestDarwinNativeReleaseLayoutAndOptionalPublication(t *testing.T) {
 		if !reflect.DeepEqual(thirdInspection, secondInspection) || stagedAuthority != journalAuthority || thirdStage.name != acceptedStageName {
 			t.Fatalf("native Darwin accepted staging = inspection match %t authority match %t name %q", reflect.DeepEqual(thirdInspection, secondInspection), stagedAuthority == journalAuthority, thirdStage.name)
 		}
+		if err := validateDarwinInstalledRuntime(
+			layout,
+			store,
+			journalGate,
+			launchdDirectory,
+			filepath.Join(rootPath, "releases", secondInstalledID, "bin"),
+		); err == nil || !strings.Contains(err.Error(), "overlap accepted release intake") {
+			t.Fatalf("intake-overlap native Darwin enrollment runtime error = %v", err)
+		}
 		journal, err := NewInstallerJournalFor(thirdStage, journalSwitch, journalAuthority, false)
 		if err != nil {
 			t.Fatal(err)
@@ -968,8 +977,51 @@ func TestDarwinNativeReleaseLayoutAndOptionalPublication(t *testing.T) {
 		if _, err := os.Lstat(filepath.Join(journalDirectory, installerJournalName)); !os.IsNotExist(err) {
 			t.Fatalf("completed Darwin installer journal remains: %v", err)
 		}
+		activeBinaryDirectory := filepath.Join(rootPath, "releases", thirdInstalledID, "bin")
+		if err := validateDarwinInstalledRuntime(
+			layout,
+			store,
+			journalGate,
+			launchdDirectory,
+			activeBinaryDirectory,
+		); err != nil {
+			t.Fatalf("validate exact active native Darwin installed runtime: %v", err)
+		}
+		if err := validateDarwinInstalledRuntime(
+			layout,
+			store,
+			journalGate,
+			launchdDirectory,
+			filepath.Join(rootPath, "current", "bin"),
+		); err == nil || !strings.Contains(err.Error(), "exact active") {
+			t.Fatalf("native Darwin current-selector enrollment runtime error = %v", err)
+		}
+		if err := journalGate.Open(); err != nil {
+			t.Fatal(err)
+		}
+		if err := validateDarwinInstalledRuntime(
+			layout,
+			store,
+			journalGate,
+			launchdDirectory,
+			activeBinaryDirectory,
+		); err == nil || !strings.Contains(err.Error(), "closed runtime gate") {
+			t.Fatalf("open-gate native Darwin enrollment runtime error = %v", err)
+		}
+		if err := journalGate.Close(); err != nil {
+			t.Fatal(err)
+		}
 		if err := store.BeginRollback(layout); err != nil {
 			t.Fatal(err)
+		}
+		if err := validateDarwinInstalledRuntime(
+			layout,
+			store,
+			journalGate,
+			launchdDirectory,
+			activeBinaryDirectory,
+		); err == nil || !strings.Contains(err.Error(), "overlap an installer journal") {
+			t.Fatalf("journal-overlap native Darwin enrollment runtime error = %v", err)
 		}
 		prepared, found, err := func() (InstallerJournal, bool, error) {
 			lock, err := store.AcquireLock()
@@ -1008,6 +1060,55 @@ func TestDarwinNativeReleaseLayoutAndOptionalPublication(t *testing.T) {
 		if err := lock.Close(); err != nil {
 			t.Fatal(err)
 		}
+		residuePath := filepath.Join(rootPath, ".current-0123456789abcdef0123456789abcdef")
+		if err := os.Symlink("releases/"+secondAuthority.InstalledID, residuePath); err != nil {
+			t.Fatal(err)
+		}
+		if err := layout.RejectCurrentTransactionTemporaries(); err == nil || !strings.Contains(err.Error(), "residue") {
+			t.Fatalf("unjournaled native Darwin current residue error = %v", err)
+		}
+		if err := os.Remove(residuePath); err != nil {
+			t.Fatal(err)
+		}
+		if err := layout.root.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		runNativeDarwinRuntimeUninstall(
+			t,
+			layout,
+			store,
+			journalGate,
+			service,
+			launchdDirectory,
+			rolledBack,
+		)
+		deactivated, found, err := store.LoadInstallState()
+		if err != nil || !found || deactivated.Active != nil || deactivated.Previous != nil ||
+			deactivated.HighWater != rolledBack.HighWater {
+			t.Fatalf("native Darwin runtime-uninstall state = %+v, found=%t err=%v", deactivated, found, err)
+		}
+		if service.loaded {
+			t.Fatal("native Darwin runtime uninstall left the fake launchd service loaded")
+		}
+		if open, err := journalGate.Inspect(); err != nil || open {
+			t.Fatalf("native Darwin runtime-uninstall gate open=%t err=%v", open, err)
+		}
+		layout.mu.Lock()
+		currentAfterUninstall, currentAfterUninstallErr := layout.readCurrentLocked()
+		layout.mu.Unlock()
+		if currentAfterUninstallErr != nil || currentAfterUninstall.Exists {
+			t.Fatalf("native Darwin runtime-uninstall current=%+v err=%v", currentAfterUninstall, currentAfterUninstallErr)
+		}
+		for _, name := range []string{LaunchdPlistName, launchdPlistPendingName} {
+			if _, err := os.Lstat(filepath.Join(launchdDirectory, name)); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("native Darwin runtime-uninstall plist %q remains: %v", name, err)
+			}
+		}
+		for _, retained := range []AuthenticatedDarwinRelease{secondAuthority, journalAuthority} {
+			if _, err := layout.InspectPublishedAuthority(retained); err != nil {
+				t.Fatalf("native Darwin runtime uninstall changed retained release %q: %v", retained.InstalledID, err)
+			}
+		}
 	}
 
 	releasesPath := filepath.Join(rootPath, "releases")
@@ -1027,6 +1128,69 @@ func TestDarwinNativeReleaseLayoutAndOptionalPublication(t *testing.T) {
 		if _, err := os.Lstat(stage.Path()); !os.IsNotExist(err) {
 			t.Fatalf("discarded Darwin stage remains: %v", err)
 		}
+	}
+}
+
+func runNativeDarwinRuntimeUninstall(
+	t *testing.T,
+	layout *ReleaseLayout,
+	store *InstallerJournalStore,
+	gate *RuntimeGate,
+	service LaunchdServiceController,
+	launchdDirectory string,
+	source DarwinInstallState,
+) {
+	t.Helper()
+	if source.Active == nil {
+		t.Fatal("native Darwin runtime uninstall requires an active source")
+	}
+	inspection, err := layout.InspectPublishedAuthority(*source.Active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := layout.NewCurrentSwitch("", source.Active.InstalledID, inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publisher, err := NewLaunchdPlistPublisher(layout, source.Active.InstalledID, inspection, launchdDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := publisher.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	lock, err := store.AcquireLock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := lock.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if _, found, err := lock.Load(); err != nil || found {
+		t.Fatalf("native Darwin runtime uninstall journal found=%t err=%v", found, err)
+	}
+	if _, found, err := lock.LoadIntakeRecord(); err != nil || found {
+		t.Fatalf("native Darwin runtime uninstall intake found=%t err=%v", found, err)
+	}
+	state, found, err := lock.LoadInstallState()
+	if err != nil || !found || !sameDarwinInstallState(state, source) {
+		t.Fatalf("native Darwin runtime-uninstall source = %+v, found=%t err=%v", state, found, err)
+	}
+	operations := &productionDarwinRuntimeUninstallOperations{
+		source: cloneDarwinInstallState(source), state: cloneDarwinInstallState(source),
+		layout: layout, lock: lock, gate: gate, service: service,
+		current: current, publisher: publisher,
+	}
+	deactivated, err := deactivateDarwinRuntime(operations, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deactivated.Active != nil || deactivated.Previous != nil || deactivated.HighWater != source.HighWater {
+		t.Fatalf("native Darwin runtime-uninstall result = %+v", deactivated)
 	}
 }
 

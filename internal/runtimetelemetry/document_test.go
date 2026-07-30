@@ -37,7 +37,7 @@ func TestDecodeStateMigratesCanonicalV1Document(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeState legacy v1: %v", err)
 	}
-	if state.Schema != StateSchemaV7 || len(state.Records) != 1 || state.Records[0].Observation.Version != VersionV1 ||
+	if state.Schema != StateSchemaV8 || len(state.Records) != 1 || state.Records[0].Observation.Version != VersionV1 ||
 		state.Records[0].ProcessContinuity != ContinuityUnclassified ||
 		state.Records[0].ActiveProbe != UnsupportedActiveProbe() || state.Records[0].ProbeTransition != ProbeTransitionUnavailable || state.Records[0].AppliedConfigSHA256 != "" ||
 		state.Records[0].RouteOverlap != UnsupportedRouteOverlap() ||
@@ -49,7 +49,8 @@ func TestDecodeStateMigratesCanonicalV1Document(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EncodeState migrated v7: %v", err)
 	}
-	if bytes.Equal(current, legacy) || !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v7"`)) ||
+	if bytes.Equal(current, legacy) || !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v8"`)) ||
+		!bytes.Contains(current, []byte(`"mobile_records":[]`)) ||
 		!bytes.Contains(current, []byte(`"process_continuity":"unclassified"`)) ||
 		!bytes.Contains(current, []byte(`"active_probe":{"version":1,"state":"unsupported","sample_age_ms":null,"attempted":0,"replied":0,"duration_ms":0}`)) ||
 		!bytes.Contains(current, []byte(`"applied_config_sha256":"","probe_transition":"unavailable"`)) ||
@@ -69,7 +70,7 @@ func TestDecodeStateMigratesCanonicalV2Document(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeState legacy v2: %v", err)
 	}
-	if state.Schema != StateSchemaV7 || len(state.Records) != 2 ||
+	if state.Schema != StateSchemaV8 || len(state.Records) != 2 ||
 		state.Records[0].ProcessContinuity != ContinuityUnclassified ||
 		state.Records[1].ProcessContinuity != ContinuityUnavailable ||
 		state.Records[0].ActiveProbe != UnsupportedActiveProbe() || state.Records[1].ActiveProbe != UnsupportedActiveProbe() ||
@@ -81,7 +82,8 @@ func TestDecodeStateMigratesCanonicalV2Document(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(current, legacy) || !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v7"`)) ||
+	if bytes.Equal(current, legacy) || !bytes.Contains(current, []byte(`"schema":"mesh-runtime-telemetry-state-v8"`)) ||
+		!bytes.Contains(current, []byte(`"mobile_records":[]`)) ||
 		!bytes.Contains(current, []byte(`"process_continuity":"unavailable"`)) {
 		t.Fatalf("migrated v2 document is not canonical v7: %s", current)
 	}

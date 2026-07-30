@@ -38,6 +38,32 @@ void main() {
     await lifecycle.dispose();
   });
 
+  test('can defer the first poll after an already-completed refresh', () async {
+    final lifecycle = FakeLifecycleSource(AppLifecycleState.resumed);
+    final timers = FakeTimerFactory();
+    var polls = 0;
+    final poller = LifecyclePoller(
+      lifecycle: lifecycle,
+      interval: const Duration(seconds: 15),
+      poll: () async {
+        polls += 1;
+      },
+      timerFactory: timers.create,
+    );
+
+    poller.start(pollImmediately: false);
+    await pumpEventQueue();
+    expect(polls, 0);
+    expect(timers.active, hasLength(1));
+
+    timers.fireAll();
+    await pumpEventQueue();
+    expect(polls, 1);
+
+    await poller.dispose();
+    await lifecycle.dispose();
+  });
+
   test('never overlaps requests and coalesces a pending refresh', () async {
     final lifecycle = FakeLifecycleSource(AppLifecycleState.resumed);
     final timers = FakeTimerFactory();

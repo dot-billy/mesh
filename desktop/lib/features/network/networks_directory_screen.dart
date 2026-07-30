@@ -10,6 +10,7 @@ class NetworksDirectoryScreen extends StatefulWidget {
   const NetworksDirectoryScreen({
     required this.state,
     required this.role,
+    required this.permissions,
     required this.onSelectNetwork,
     required this.onCreateNetwork,
     required this.onRefresh,
@@ -18,6 +19,7 @@ class NetworksDirectoryScreen extends StatefulWidget {
 
   final LoadableViewModel<FleetViewModel> state;
   final MeshRole role;
+  final Set<MeshPermission> permissions;
   final ValueChanged<String> onSelectNetwork;
   final Future<MutationSubmissionResult> Function(CreateNetworkRequest request)?
   onCreateNetwork;
@@ -72,7 +74,7 @@ class _NetworksDirectoryScreenState extends State<NetworksDirectoryScreen> {
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
                   ),
-                  if (widget.role.allows(MeshPermission.networksWrite))
+                  if (widget.permissions.contains(MeshPermission.networksWrite))
                     Tooltip(
                       message: widget.onCreateNetwork == null
                           ? 'Network creation is unavailable in this session.'

@@ -294,7 +294,7 @@ func documentReport(document postgresstore.Document, resources, audit int, canon
 }
 
 func summarizeControlShape(document decodedControlDocument, metadata FixtureMetadata, phase string) (ControlShapeReport, error) {
-	if document.Version != control.ControlStateVersionFirewallScopes {
+	if document.Version != control.ControlStateVersionSecurityGroups {
 		return ControlShapeReport{}, errors.New("maximum-document control graph is not current native-DNS schema v12")
 	}
 	if len(document.Networks) != 1 {

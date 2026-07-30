@@ -14,12 +14,14 @@ import (
 	"time"
 
 	"mesh/internal/buildinfo"
+	"mesh/internal/darwincodesign"
+	"mesh/internal/darwinnodepackage"
 	"mesh/internal/installtrust"
 	releasetrust "mesh/internal/release"
 	"mesh/internal/windowsauthenticode"
 )
 
-const releaseUsage = "usage: mesh-release <generate-key|export-public|sign|create-root|inspect-root|assemble-root-update|create-bootstrap-manifest|create-bootstrap-handoff|create-bootstrap-anchor|verify-bootstrap|create-release-manifest|create-channel-manifest|build-identity|installer-policy|windows-authenticode-policy|verify-windows-native-evidence|verify-darwin-native-evidence|assemble-online-bundle|assemble-snapshot|assemble-darwin-snapshot|create-origin-index|publish-origin-generation|inspect-origin-generation> [flags]"
+const releaseUsage = "usage: mesh-release <generate-key|export-public|sign|create-root|inspect-root|assemble-root-update|create-bootstrap-manifest|create-bootstrap-handoff|create-bootstrap-anchor|verify-bootstrap|create-release-manifest|create-channel-manifest|build-identity|installer-policy|windows-authenticode-policy|darwin-codesign-policy|darwin-node-package-policy|verify-darwin-node-package-release|verify-windows-native-evidence|verify-darwin-native-evidence|verify-apple-app-release|verify-published-apple-app|assemble-online-bundle|assemble-snapshot|assemble-darwin-snapshot|create-origin-index|publish-origin-generation|inspect-origin-generation> [flags]"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -58,10 +60,20 @@ func main() {
 		err = installerPolicy(os.Args[2:], os.Stdout)
 	case "windows-authenticode-policy":
 		err = windowsAuthenticodePolicy(os.Args[2:], os.Stdout)
+	case "darwin-codesign-policy":
+		err = darwinCodesignPolicy(os.Args[2:], os.Stdout)
+	case "darwin-node-package-policy":
+		err = darwinNodePackagePolicy(os.Args[2:], os.Stdout)
+	case "verify-darwin-node-package-release":
+		err = verifyDarwinNodePackageRelease(os.Args[2:], os.Stdout)
 	case "verify-windows-native-evidence":
 		err = verifyWindowsNativeEvidence(os.Args[2:], os.Stdout)
 	case "verify-darwin-native-evidence":
 		err = verifyDarwinNativeEvidence(os.Args[2:], os.Stdout)
+	case "verify-apple-app-release":
+		err = verifyAppleAppRelease(os.Args[2:], os.Stdout)
+	case "verify-published-apple-app":
+		err = verifyPublishedAppleApp(os.Args[2:], os.Stdout)
 	case "assemble-online-bundle":
 		err = assembleOnlineBundle(os.Args[2:], os.Stdout)
 	case "assemble-snapshot":
@@ -170,6 +182,66 @@ func windowsAuthenticodePolicy(args []string, output io.Writer) error {
 	})
 	if err != nil {
 		return fmt.Errorf("encode Windows Authenticode policy: %w", err)
+	}
+	value := frame
+	if *printSHA256 {
+		value = policy.SHA256
+	}
+	_, err = fmt.Fprintln(output, value)
+	return err
+}
+
+func darwinCodesignPolicy(args []string, output io.Writer) error {
+	flags := flag.NewFlagSet("darwin-codesign-policy", flag.ContinueOnError)
+	teamID := flags.String("team-id", "", "approved 10-character Apple Developer Team ID")
+	meshInstallIdentifier := flags.String("mesh-install-identifier", "", "approved mesh-install code identifier")
+	meshctlIdentifier := flags.String("meshctl-identifier", "", "approved meshctl code identifier")
+	nebulaIdentifier := flags.String("nebula-identifier", "", "approved nebula code identifier")
+	nebulaCertIdentifier := flags.String("nebula-cert-identifier", "", "approved nebula-cert code identifier")
+	printSHA256 := flags.Bool("print-sha256", false, "print the canonical policy JSON SHA-256 instead of the linker frame")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("darwin-codesign-policy does not accept positional arguments")
+	}
+	frame, policy, err := darwincodesign.EncodePolicy(darwincodesign.PolicySpec{
+		TeamID: *teamID, MeshInstallIdentifier: *meshInstallIdentifier,
+		MeshctlIdentifier: *meshctlIdentifier,
+		NebulaIdentifier:  *nebulaIdentifier, NebulaCertIdentifier: *nebulaCertIdentifier,
+	})
+	if err != nil {
+		return fmt.Errorf("encode Darwin code-signing policy: %w", err)
+	}
+	value := frame
+	if *printSHA256 {
+		value = policy.SHA256
+	}
+	_, err = fmt.Fprintln(output, value)
+	return err
+}
+
+func darwinNodePackagePolicy(args []string, output io.Writer) error {
+	flags := flag.NewFlagSet("darwin-node-package-policy", flag.ContinueOnError)
+	packageIdentifier := flags.String("package-identifier", "", "approved flat package identifier")
+	packageRootPath := flags.String("package-root-path", "", "approved Mesh-owned package root below the fixed install location")
+	installedBootstrapPath := flags.String("installed-bootstrap-path", "", "approved installed mesh-install path")
+	packageSnapshotPath := flags.String("package-snapshot-path", "", "approved root-private package snapshot path")
+	printSHA256 := flags.Bool("print-sha256", false, "print the canonical policy JSON SHA-256 instead of the linker frame")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("darwin-node-package-policy does not accept positional arguments")
+	}
+	frame, policy, err := darwinnodepackage.EncodePolicy(darwinnodepackage.PolicySpec{
+		PackageIdentifier:      *packageIdentifier,
+		PackageRootPath:        *packageRootPath,
+		InstalledBootstrapPath: *installedBootstrapPath,
+		PackageSnapshotPath:    *packageSnapshotPath,
+	})
+	if err != nil {
+		return fmt.Errorf("encode Darwin node package policy: %w", err)
 	}
 	value := frame
 	if *printSHA256 {

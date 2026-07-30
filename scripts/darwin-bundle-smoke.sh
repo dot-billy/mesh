@@ -8,6 +8,7 @@ umask 077
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/mesh-darwin-bundle-smoke.XXXXXX")"
+export_dir="${MESH_DARWIN_BUNDLE_SMOKE_OUTPUT_DIR:-}"
 
 cleanup() {
   local status=$?
@@ -21,17 +22,76 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' HUP INT TERM
 
-for command_name in go cmp cp date basename find mktemp rm truncate stat; do
+for command_name in go cmp cp date basename find git chmod mktemp rm truncate stat; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     printf 'SKIP: required command %s is unavailable\n' "${command_name}" >&2
     exit 77
   }
 done
+if [[ -n "${export_dir}" ]]; then
+  [[ "${export_dir}" == /* && "${export_dir}" != / && -d "${export_dir}" && ! -L "${export_dir}" ]] || {
+    printf 'MESH_DARWIN_BUNDLE_SMOKE_OUTPUT_DIR must be an existing real absolute non-root directory\n' >&2
+    exit 1
+  }
+  [[ "$(cd -- "${export_dir}" && pwd -P)" == "${export_dir}" ]] || {
+    printf 'MESH_DARWIN_BUNDLE_SMOKE_OUTPUT_DIR cannot traverse symlinks\n' >&2
+    exit 1
+  }
+  [[ -z "$(find "${export_dir}" -mindepth 1 -print -quit)" ]] || {
+    printf 'MESH_DARWIN_BUNDLE_SMOKE_OUTPUT_DIR must be empty\n' >&2
+    exit 1
+  }
+fi
 
 tools_dir="${work_dir}/tools"
 release_dir="${work_dir}/release"
 mkdir -p -- "${tools_dir}" "${release_dir}"
 chmod 0700 "${tools_dir}" "${release_dir}"
+
+printf 'Caching the pinned patched Nebula module graph for offline runtime builds\n'
+prefetch_source="${work_dir}/nebula-prefetch-source"
+prefetch_environment=(
+  env
+  GOENV=off
+  GOFLAGS=-mod=readonly
+  GONOPROXY=
+  GONOSUMDB=
+  GOPRIVATE=
+  GOSUMDB=sum.golang.org
+  GOTELEMETRY=off
+  GOTOOLCHAIN=go1.26.5
+  GOWORK=off
+)
+"${prefetch_environment[@]}" go mod download github.com/slackhq/nebula@v1.10.3
+module_cache="$("${prefetch_environment[@]}" go env GOMODCACHE)"
+[[ "${module_cache}" == /* && -d "${module_cache}" && ! -L "${module_cache}" ]] || {
+  printf 'Go module cache is not a real absolute directory\n' >&2
+  exit 1
+}
+nebula_source="${module_cache}/github.com/slackhq/nebula@v1.10.3"
+[[ -d "${nebula_source}" && ! -L "${nebula_source}" ]] || {
+  printf 'pinned Nebula module source is not cached as a real directory\n' >&2
+  exit 1
+}
+cp -a -- "${nebula_source}" "${prefetch_source}"
+chmod -R u+w -- "${prefetch_source}"
+while IFS= read -r patch_name; do
+  [[ -n "${patch_name}" && "${patch_name}" != */* ]] || {
+    printf 'Nebula patch series contains an unsafe name\n' >&2
+    exit 1
+  }
+  patch_path="${repo_root}/third_party/nebula-observer/${patch_name}"
+  [[ -f "${patch_path}" && ! -L "${patch_path}" ]] || {
+    printf 'Nebula patch is missing or linked: %s\n' "${patch_name}" >&2
+    exit 1
+  }
+  git -C "${prefetch_source}" apply --check --whitespace=error-all "${patch_path}"
+  git -C "${prefetch_source}" apply --whitespace=error-all "${patch_path}"
+done <"${repo_root}/third_party/nebula-observer/series"
+(
+  cd -- "${prefetch_source}"
+  "${prefetch_environment[@]}" go mod download all
+)
 
 printf 'Building release, package, dependency, and verification tools\n'
 (
@@ -193,5 +253,16 @@ verify_target() {
 printf 'Verifying one canonical 2-of-2 manifest against both exact artifacts\n'
 verify_target amd64 "${bundle_amd64}"
 verify_target arm64 "${bundle_arm64}"
+
+if [[ -n "${export_dir}" ]]; then
+  exported_amd64="${export_dir}/mesh-darwin-amd64-test.tar"
+  exported_arm64="${export_dir}/mesh-darwin-arm64-test.tar"
+  cp --no-clobber -- "${bundle_amd64}" "${exported_amd64}"
+  cp --no-clobber -- "${bundle_arm64}" "${exported_arm64}"
+  cmp --silent -- "${bundle_amd64}" "${exported_amd64}"
+  cmp --silent -- "${bundle_arm64}" "${exported_arm64}"
+  chmod 0400 "${exported_amd64}" "${exported_arm64}"
+  printf 'Exported exact verified test bundles to %s\n' "${export_dir}"
+fi
 
 printf 'PASS: deterministic threshold-authenticated Darwin staging bundles for amd64 and arm64; no native macOS lifecycle claim was made\n'
