@@ -1,7 +1,7 @@
 # Mesh Tunnel iOS source proof
 
 This directory is the source and controlled-beta qualification boundary for
-Mesh Tunnel on iPhone and iPad. TestFlight builds `1` through `10` exercised
+Mesh Tunnel on iPhone and iPad. TestFlight builds `1` through `11` exercised
 the signed application, OIDC, manager recovery, provision-first enrollment,
 retained identity, provider startup, and host inspection in successive bounded
 steps. Builds `8` and `9` proved that an authenticated local identity can be
@@ -9,16 +9,17 @@ enrolled, committed, and recovered, but no released build established a
 running packet path. Build `10` corrects the initial-inspection race around an
 already enrolled identity.
 
-The current successor changes the runtime architecture instead of adding
-another host-state workaround. It keeps Mesh OIDC, fixed-policy
+Externally distributed Build `0.1.0 (11)` changes the runtime architecture
+instead of adding another host-state workaround. It keeps Mesh OIDC, fixed-policy
 self-enrollment, device-only Go/Keychain custody, signed configuration, and the
 normal Apple VPN manager flow. The Packet Tunnel now follows Mobile Nebula's
 production transport: Go discovers the provider-owned `utun` descriptor and
 constructs pinned Nebula 1.10.3 with
 `overlay.NewFdDeviceFromConfig`. The production provider does not start the
-Swift `NEPacketTunnelFlow` packet-copy loops. This source is a TestFlight
-qualification candidate, not yet physical packet-path evidence or a supported
-VPN.
+Swift `NEPacketTunnelFlow` packet-copy loops. App Store Connect reports Build
+11 valid, Beta Review approved, attached to `Mesh Tunnel External Testers`, and
+`IN_BETA_TESTING`. Distribution is not physical packet-path evidence or a
+supported VPN.
 
 ## What exists
 
@@ -521,23 +522,25 @@ crash log was available when checked, so the exact local substage is unknown.
 Build `0.1.0 (9)` subsequently read and displayed the authenticated local
 identity left by that attempt, proving local configuration commit and retained
 identity recovery. Its initial inspection race allowed Sign in to reach fixed
-stage `failed-starting` before Start existing tunnel was enabled. Current
-successor source keeps all actions disabled until initial inspection completes
-and routes a concurrently observed authenticated current identity to its
-prepared same-origin manager without OIDC, self-enrollment, or another token.
-That control-state correction remains source-tested; no physical run has proved
-provider startup or packet exchange.
+stage `failed-starting` before Start existing tunnel was enabled. Build
+`0.1.0 (10)` keeps all actions disabled until initial inspection completes and
+routes a concurrently observed authenticated current identity to its prepared
+same-origin manager without OIDC, self-enrollment, or another token. Build
+`0.1.0 (11)` retains that correction, replaces the production Swift
+packet-copy transport with the native `utun` transport described below, and is
+externally distributed. No physical Build 11 run has proved provider startup or
+packet exchange.
 
 ## Deliberately unresolved
 
-The successor deliberately follows upstream Mobile Nebula's `utun` transport.
+Build 11 deliberately follows upstream Mobile Nebula's `utun` transport.
 The bounded `overlay.UserDevice` callback adapter remains a native-host test
 fixture, where two real Nebula engines prove certificate-authenticated direct
 request/reply packets, empty relay state, post-rebind traffic, and repeatable
 clean shutdown over loopback UDP. Production source instead selects
 `overlay.NewFdDeviceFromConfig` after bounded validation of the provider-owned
 `com.apple.net.utun_control` descriptor. Source and simulator checks prove that
-selection and reject provider packet-copy tasks, but no physical successor run
+selection and reject provider packet-copy tasks, but no physical Build 11 run
 has yet proved that descriptor discovery, Apple settings, iOS UDP, or peer
 traffic succeeds.
 
@@ -547,7 +550,7 @@ upstream-aligned transport boundary, physical-device network-settings,
 Keychain, UDP, packet, and resource measurements,
 roaming/suspension/crash/reboot evidence,
 heartbeat/renewal/rotation/revocation convergence, cutoff, response-loss,
-reinstall, and transfer coverage, privacy and legal review, installed successor
+reinstall, and transfer coverage, privacy and legal review, physical Build 11
 TestFlight execution, and Custom App distribution evidence. The
 earlier framework-v4 build `0.1.0 (1)` entered `Testing` and was installed on
 2026-07-25. Its launch and VPN permission screens do not prove that an
